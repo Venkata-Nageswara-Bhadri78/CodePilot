@@ -1,0 +1,101 @@
+package com.developer.copilot.controller;
+
+import java.time.LocalDateTime;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.developer.copilot.dto.auth.AuthResponse;
+import com.developer.copilot.dto.auth.LoginRequest;
+import com.developer.copilot.dto.auth.RegisterRequest;
+import com.developer.copilot.dto.auth.UserResponse;
+import com.developer.copilot.dto.common.ApiResponse;
+import com.developer.copilot.service.AuthService;
+import com.developer.copilot.dto.auth.VerifyOtpRequest;
+import com.developer.copilot.dto.auth.ResendOtpRequest;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+
+@RestController
+@RequestMapping("/api/v1/auth")
+@RequiredArgsConstructor
+@Validated
+public class AuthController {
+    private final AuthService authService;
+
+    @PostMapping("/register")
+    public ResponseEntity<ApiResponse<Void>> register(@Valid @RequestBody RegisterRequest request) {
+
+        authService.register(request);
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+            .success(true)
+            .message("User registered successfully.")
+            .timestamp(LocalDateTime.now())
+            .build();
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
+
+        AuthResponse authResponse = authService.login(request);
+
+        ApiResponse<AuthResponse> response = ApiResponse.<AuthResponse>builder()
+                .success(true)
+                .message("Login successful.")
+                .data(authResponse)
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/verify-email")
+    public ResponseEntity<ApiResponse<Void>> verifyEmail(@Valid @RequestBody VerifyOtpRequest request) {
+
+        authService.verifyOtp(request);
+
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("Email verified successfully.")
+                        .timestamp(LocalDateTime.now())
+                        .build());
+    }
+
+    @PostMapping("/resend-otp")
+    public ResponseEntity<ApiResponse<Void>> resendOtp(@Valid @RequestBody ResendOtpRequest request) {
+
+        authService.resendOtp(request);
+
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("OTP sent successfully.")
+                        .timestamp(LocalDateTime.now())
+                        .build());
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<UserResponse>> me() {
+
+        return ResponseEntity.ok(
+                ApiResponse.<UserResponse>builder()
+                        .success(true)
+                        .message("Current user.")
+                        .data(authService.me())
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+    
+}

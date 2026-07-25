@@ -1,0 +1,1136 @@
+==================================================
+FILE: src/main/java/com/developer/copilot/CopilotApplication.java
+==================================================
+package com.developer.copilot;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class CopilotApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(CopilotApplication.class, args);
+	}
+
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/config/JpaConfig.java
+==================================================
+package com.developer.copilot.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+
+@Configuration
+@EnableJpaAuditing
+public class JpaConfig {
+    
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/config/SecurityBeansConfig.java
+==================================================
+package com.developer.copilot.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+@Configuration
+public class SecurityBeansConfig {
+    
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(
+            AuthenticationConfiguration configuration)
+            throws Exception {
+
+        return configuration.getAuthenticationManager();
+
+    }
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/config/SecurityConfig.java
+==================================================
+package com.developer.copilot.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import com.developer.copilot.jwt.JwtAuthenticationFilter;
+
+import lombok.RequiredArgsConstructor;
+
+@Configuration
+@RequiredArgsConstructor
+public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
+        http
+        .csrf(csrf -> csrf.disable())
+        .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers(
+                "/swagger-ui/**",
+                "/swagger-ui.html",
+                "/v3/api-docs/**"
+            ).permitAll()
+        
+            .requestMatchers(
+                "/api/v1/auth/**", "/error"
+            ).permitAll()
+        
+            .anyRequest().authenticated()
+        )
+        .addFilterBefore(
+                jwtAuthenticationFilter,
+                UsernamePasswordAuthenticationFilter.class);
+
+                
+
+        return http.build();
+    }
+
+    
+
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/config/SwaggerConfig.java
+==================================================
+package com.developer.copilot.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.info.Contact;
+import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
+
+@Configuration
+public class SwaggerConfig {
+
+    @Bean
+    public OpenAPI openAPI() {
+
+        final String securitySchemeName = "Bearer Authentication";
+
+        return new OpenAPI()
+
+                .info(new Info()
+                        .title("Copilot REST API")
+                        .description("Backend APIs for Copilot Application")
+                        .version("v1.0.0")
+                        .contact(new Contact()
+                                .name("Bhadri Venkata Nageswara")
+                                .email("your-email@example.com"))
+                        .license(new License()
+                                .name("Apache 2.0")))
+
+                .addSecurityItem(
+                        new SecurityRequirement()
+                                .addList(securitySchemeName))
+
+                .schemaRequirement(
+                        securitySchemeName,
+
+                        new SecurityScheme()
+
+                                .name(securitySchemeName)
+
+                                .type(SecurityScheme.Type.HTTP)
+
+                                .scheme("bearer")
+
+                                .bearerFormat("JWT"));
+
+    }
+
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/controller/AuthController.java
+==================================================
+package com.developer.copilot.controller;
+
+import java.time.LocalDateTime;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.developer.copilot.dto.auth.AuthResponse;
+import com.developer.copilot.dto.auth.LoginRequest;
+import com.developer.copilot.dto.auth.RegisterRequest;
+import com.developer.copilot.dto.auth.UserResponse;
+import com.developer.copilot.dto.common.ApiResponse;
+import com.developer.copilot.service.AuthService;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+
+@RestController
+@RequestMapping("/api/v1/auth")
+@RequiredArgsConstructor
+@Validated
+public class AuthController {
+    private final AuthService authService;
+
+    @PostMapping("/register")
+    public ResponseEntity<ApiResponse<Void>> register(@Valid @RequestBody RegisterRequest request) {
+
+        authService.register(request);
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+            .success(true)
+            .message("User registered successfully.")
+            .timestamp(LocalDateTime.now())
+            .build();
+        
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<ApiResponse<AuthResponse>> login(
+            @Valid @RequestBody LoginRequest request) {
+
+        AuthResponse authResponse = authService.login(request);
+
+        ApiResponse<AuthResponse> response = ApiResponse.<AuthResponse>builder()
+                .success(true)
+                .message("Login successful.")
+                .data(authResponse)
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<UserResponse>> me() {
+
+        return ResponseEntity.ok(
+                ApiResponse.<UserResponse>builder()
+                        .success(true)
+                        .message("Current user.")
+                        .data(authService.me())
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+    
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/controller/TestController.java
+==================================================
+package com.developer.copilot.controller;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class TestController {
+
+    @GetMapping("/api/v1/test")
+    public String test() {
+        return "JWT Authentication Successful";
+    }
+
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/dto/auth/AuthResponse.java
+==================================================
+package com.developer.copilot.dto.auth;
+
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+@Getter
+@AllArgsConstructor
+public class AuthResponse {
+
+    private String accessToken;
+    private String tokenType;
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/dto/auth/LoginRequest.java
+==================================================
+package com.developer.copilot.dto.auth;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter
+@Setter
+public class LoginRequest {
+    @NotBlank
+    @Email
+    private String email;
+
+    @NotBlank
+    private String password;
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/dto/auth/RegisterRequest.java
+==================================================
+package com.developer.copilot.dto.auth;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter
+@Setter
+public class RegisterRequest {
+    @NotBlank
+    @Size(min=3, max=50)
+    private String username;
+
+    @NotBlank
+    @Size(min=3, max=100)
+    private String fullName;
+
+    @NotBlank
+    @Email
+    private String email;
+
+    @NotBlank
+    @Size(min = 8, max = 100)
+    @Pattern(
+        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&]).+$",
+        message = "Password must contain uppercase, lowercase, number and special character."
+    )
+    private String password;
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/dto/auth/UserResponse.java
+==================================================
+package com.developer.copilot.dto.auth;
+
+import com.developer.copilot.enums.Role;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+@Getter
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+public class UserResponse {
+
+    private Long id;
+
+    private String username;
+
+    private String fullName;
+
+    private String email;
+
+    private Role role;
+
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/dto/common/ApiResponse.java
+==================================================
+package com.developer.copilot.dto.common;
+
+import java.time.LocalDateTime;
+
+import lombok.Builder;
+import lombok.Getter;
+
+@Getter
+@Builder
+public class ApiResponse<T> {
+
+    private boolean success;
+
+    private String message;
+
+    private T data;
+
+    private LocalDateTime timestamp;
+
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/entity/BaseEntity.java
+==================================================
+package com.developer.copilot.entity;
+
+import java.time.LocalDateTime;
+
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.EntityListeners;
+import jakarta.persistence.MappedSuperclass;
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter
+@Setter
+@MappedSuperclass
+@EntityListeners(AuditingEntityListener.class)
+public class BaseEntity {
+
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/entity/EmailVerification.java
+==================================================
+package com.developer.copilot.entity;
+
+import java.time.LocalDateTime;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Entity
+@Table(
+    name = "email_verification",
+    uniqueConstraints = {
+        @UniqueConstraint(columnNames = "id")
+    }
+)
+@Getter
+@Setter
+@NoArgsConstructor
+public class EmailVerification extends BaseEntity{
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne
+    private User user;
+
+    @Column(name = "otp", nullable = false)
+    private Long otp;
+
+    @Column(name = "expires_at", nullable = false)
+    private LocalDateTime expiresAt = LocalDateTime.now().plusMinutes(10);
+
+    @Column(name = "email_verified", nullable = false)
+    private Boolean verified;
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/entity/PasswordResetToken.java
+==================================================
+package com.developer.copilot.entity;
+
+public class PasswordResetToken {
+    
+}
+
+/*
+id
+
+user_id
+
+token
+
+expires_at
+
+used
+
+created_at
+
+updated_at
+
+*/
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/entity/User.java
+==================================================
+package com.developer.copilot.entity;
+
+import com.developer.copilot.enums.Role;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Entity
+@Table(
+        name = "users",
+        uniqueConstraints = {
+                @UniqueConstraint(columnNames = "username"),
+                @UniqueConstraint(columnNames = "email")
+        }
+)
+@Getter
+@Setter
+@NoArgsConstructor
+public class User extends BaseEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, length = 50)
+    private String username;
+
+    @Column(name = "full_name", nullable = false, length = 100)
+    private String fullName;
+
+    @Column(nullable = false, length = 255)
+    private String email;
+
+    @Column(nullable = false)
+    private String password;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Role role = Role.USER;
+
+    @Column(nullable = false)
+    private Boolean enabled = false;
+
+    @Column(name = "email_verified", nullable = false)
+    private Boolean emailVerified = false;
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/enums/Role.java
+==================================================
+package com.developer.copilot.enums;
+
+public enum Role {
+    USER,
+    ADMIN
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/exception/GlobalExceptionHandler.java
+==================================================
+package com.developer.copilot.exception;
+
+import java.time.LocalDateTime;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import com.developer.copilot.dto.common.ApiResponse;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ResourceAlreadyExistsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResourceAlreadyExists(
+            ResourceAlreadyExistsException ex) {
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(response);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleValidation(
+            MethodArgumentNotValidException ex) {
+
+        String message = ex.getBindingResult()
+                .getFieldError()
+                .getDefaultMessage();
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(message)
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Void>> handleException(Exception ex) {
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message("Something went wrong.")
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(response);
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidCredentials(
+        InvalidCredentialsException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(response);
+    }
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/exception/InvalidCredentialsException.java
+==================================================
+package com.developer.copilot.exception;
+
+public class InvalidCredentialsException extends RuntimeException {
+
+    public InvalidCredentialsException(String message) {
+        super(message);
+    }
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/exception/ResourceAlreadyExistsException.java
+==================================================
+package com.developer.copilot.exception;
+
+public class ResourceAlreadyExistsException extends RuntimeException {
+
+    public ResourceAlreadyExistsException(String message) {
+        super(message);
+    }
+
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/jwt/CustomUserDetailsService.java
+==================================================
+package com.developer.copilot.jwt;
+
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+import com.developer.copilot.repository.UserRepository;
+import com.developer.copilot.security.CustomUserDetails;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class CustomUserDetailsService implements UserDetailsService {
+
+    private final UserRepository userRepository;
+
+    @Override
+    public UserDetails loadUserByUsername(String email)
+            throws UsernameNotFoundException {
+
+        return userRepository.findByEmail(email)
+                .map(CustomUserDetails::new)
+                .orElseThrow(() ->
+                        new UsernameNotFoundException("User not found"));
+
+    }
+
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/jwt/JwtAuthenticationFilter.java
+==================================================
+package com.developer.copilot.jwt;
+
+import java.io.IOException;
+
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.developer.copilot.entity.User;
+import com.developer.copilot.repository.UserRepository;
+import com.developer.copilot.security.CustomUserDetails;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+
+@Component
+@RequiredArgsConstructor
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private final JwtService jwtService;
+    private final UserRepository userRepository;
+
+    @Override
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain)
+            throws ServletException, IOException {
+
+        String authHeader = request.getHeader("Authorization");
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        String jwt = authHeader.substring(7);
+        
+        Long userId = jwtService.extractUserId(jwt);
+        
+
+        if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            User user = userRepository.findById(userId).orElseThrow();
+            UserDetails userDetails = new CustomUserDetails(user);
+
+            if (jwtService.isTokenValid(jwt, user)) {
+
+                UsernamePasswordAuthenticationToken authToken =
+                        new UsernamePasswordAuthenticationToken(
+                                userDetails,
+                                null,
+                                userDetails.getAuthorities());
+
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+            }
+        }
+
+        filterChain.doFilter(request, response);
+
+    }
+
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/jwt/JwtService.java
+==================================================
+package com.developer.copilot.jwt;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+
+import javax.crypto.SecretKey;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import com.developer.copilot.entity.User;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+
+@Service
+public class JwtService {
+
+    @Value("${app.jwt.secret}")
+    private String secret;
+
+    @Value("${app.jwt.expiration}")
+    private long expiration;
+
+    private SecretKey getSigningKey() {
+        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public String generateToken(User user) {
+
+        Date now = new Date();
+        Date expiry = new Date(now.getTime() + expiration);
+    
+        return Jwts.builder()
+                .subject(user.getId().toString())
+                .claim("email", user.getEmail())
+                .claim("role", user.getRole().name())
+                .issuedAt(now)
+                .expiration(expiry)
+                .signWith(getSigningKey())
+                .compact();
+    }
+
+    public Long extractUserId(String token) {
+        return Long.parseLong(extractClaims(token).getSubject());
+    }
+
+    public String extractEmail(String token) {
+
+        return extractClaims(token).getSubject();
+    }
+
+    public boolean isTokenValid(String token, User user) {
+
+        return extractUserId(token).equals(user.getId())
+                && !extractClaims(token).getExpiration().before(new Date());
+    
+    }
+
+    private Claims extractClaims(String token) {
+
+        return Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+
+    }
+
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/mapper/AuthMapper.java
+==================================================
+package com.developer.copilot.mapper;
+
+import org.springframework.stereotype.Component;
+
+import com.developer.copilot.dto.auth.UserResponse;
+import com.developer.copilot.entity.User;
+
+@Component
+public class AuthMapper {
+
+    public UserResponse toUserResponse(User user) {
+
+        return UserResponse.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .role(user.getRole())
+                .build();
+
+    }
+
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/repository/EmailVerificationRepository.java
+==================================================
+package com.developer.copilot.repository;
+
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.developer.copilot.entity.EmailVerification;
+
+public interface EmailVerificationRepository extends JpaRepository<EmailVerification, Long>{
+
+    Optional<EmailVerification> findTopByUserIdOrderByCreatedAtDesc(Long userId);
+    void deleteByUserId(Long userId);
+    
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/repository/PasswordResetRepository.java
+==================================================
+package com.developer.copilot.repository;
+
+public class PasswordResetRepository {
+    
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/repository/UserRepository.java
+==================================================
+package com.developer.copilot.repository;
+
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.developer.copilot.entity.User;
+
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByEmail(String email);
+    Optional<User> findByUsername(String username);
+    boolean existsByEmail(String email);
+    boolean existsByUsername(String username);
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/security/CustomUserDetails.java
+==================================================
+package com.developer.copilot.security;
+
+import java.util.Collection;
+import java.util.List;
+
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import com.developer.copilot.entity.User;
+
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+public class CustomUserDetails implements UserDetails {
+
+    private final User user;
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+
+        return List.of(
+                new SimpleGrantedAuthority("ROLE_" + user.getRole().name())
+        );
+
+    }
+
+    @Override
+    public String getPassword() {
+        return user.getPassword();
+    }
+
+    @Override
+    public String getUsername() {
+        return user.getEmail();
+    }
+
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return user.getEnabled();
+    }
+}
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/service/AuthService.java
+==================================================
+package com.developer.copilot.service;
+
+import com.developer.copilot.dto.auth.AuthResponse;
+import com.developer.copilot.dto.auth.LoginRequest;
+import com.developer.copilot.dto.auth.RegisterRequest;
+import com.developer.copilot.dto.auth.UserResponse;
+
+public interface AuthService {
+    void register(RegisterRequest registerRequest);
+    AuthResponse login(LoginRequest request);
+    UserResponse me();
+}
+
+
+
+==================================================
+FILE: src/main/java/com/developer/copilot/service/impl/AuthServiceImpl.java
+==================================================
+package com.developer.copilot.service.impl;
+
+import com.developer.copilot.repository.UserRepository;
+import com.developer.copilot.security.CustomUserDetails;
+
+import lombok.RequiredArgsConstructor;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import com.developer.copilot.dto.auth.AuthResponse;
+import com.developer.copilot.dto.auth.LoginRequest;
+import com.developer.copilot.dto.auth.RegisterRequest;
+import com.developer.copilot.dto.auth.UserResponse;
+import com.developer.copilot.entity.User;
+import com.developer.copilot.enums.Role;
+import com.developer.copilot.exception.InvalidCredentialsException;
+import com.developer.copilot.exception.ResourceAlreadyExistsException;
+import com.developer.copilot.jwt.JwtService;
+import com.developer.copilot.service.AuthService;
+
+@Service
+@RequiredArgsConstructor
+public class AuthServiceImpl implements AuthService{
+    
+    private final PasswordEncoder passwordEncoder;
+    private final UserRepository userRepository;
+
+    private final JwtService jwtService;
+
+    @Override
+    public void register(RegisterRequest registerRequest) {
+        if (userRepository.existsByUsername(registerRequest.getUsername())) {
+            throw new ResourceAlreadyExistsException("Username already exists.");
+        }
+        
+        if (userRepository.existsByEmail(registerRequest.getEmail())) {
+            throw new ResourceAlreadyExistsException("Email already exists.");
+        }
+        
+        User user = new User();
+        user.setUsername(registerRequest.getUsername());
+        user.setEmail(registerRequest.getEmail());
+        user.setFullName(registerRequest.getFullName());
+        user.setPassword(passwordEncoder.encode(registerRequest.getPassword()));
+
+        user.setRole(Role.USER);
+        user.setEnabled(false);
+        user.setEmailVerified(false);
+
+        userRepository.save(user);
+    }
+
+    @Override
+    public AuthResponse login(LoginRequest request){
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new InvalidCredentialsException("Invalid Email or Password"));
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new InvalidCredentialsException("Invalid email or password.");
+        }
+        return new AuthResponse(
+            jwtService.generateToken(user),
+            "Bearer"
+        );
+    }
+
+    @Override
+    public UserResponse me() {
+
+        Authentication authentication =
+                SecurityContextHolder.getContext().getAuthentication();
+
+        CustomUserDetails userDetails =
+                (CustomUserDetails) authentication.getPrincipal();
+
+        User user = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow();
+
+        return UserResponse.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .role(user.getRole())
+                .build();
+    }
+}
+
+
+
