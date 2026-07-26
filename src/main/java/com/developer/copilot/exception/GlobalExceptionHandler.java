@@ -7,8 +7,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import com.developer.copilot.exception.InvalidOtpException;
-import com.developer.copilot.exception.OtpExpiredException;
 
 import com.developer.copilot.dto.common.ApiResponse;
 
@@ -102,5 +100,83 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(response);
+   }
+
+   @ExceptionHandler(InvalidPasswordResetTokenException.class)
+   public ResponseEntity<ApiResponse<Void>> handleInvalidPasswordResetToken(InvalidPasswordResetTokenException ex) {
+
+       ApiResponse<Void> response = ApiResponse.<Void>builder()
+               .success(false)
+               .message(ex.getMessage())
+               .timestamp(LocalDateTime.now())
+               .build();
+
+       return ResponseEntity
+               .status(HttpStatus.BAD_REQUEST)
+               .body(response);
+   }
+
+   @ExceptionHandler(PasswordResetTokenExpiredException.class)
+   public ResponseEntity<ApiResponse<Void>> handlePasswordResetTokenExpired(PasswordResetTokenExpiredException ex) {
+
+       ApiResponse<Void> response = ApiResponse.<Void>builder()
+               .success(false)
+               .message(ex.getMessage())
+               .timestamp(LocalDateTime.now())
+               .build();
+
+       return ResponseEntity
+               .status(HttpStatus.BAD_REQUEST)
+               .body(response);
+   }
+
+   @ExceptionHandler(PasswordResetTokenUsedException.class)
+   public ResponseEntity<ApiResponse<Void>> handlePasswordResetTokenUsed(PasswordResetTokenUsedException ex) {
+
+       ApiResponse<Void> response = ApiResponse.<Void>builder()
+               .success(false)
+               .message(ex.getMessage())
+               .timestamp(LocalDateTime.now())
+               .build();
+
+       return ResponseEntity
+               .status(HttpStatus.BAD_REQUEST)
+               .body(response);
+   }
+
+   @ExceptionHandler(InvalidRefreshTokenException.class)
+   public ResponseEntity<ApiResponse<Void>> handleInvalidRefreshToken(InvalidRefreshTokenException ex) {
+
+       ApiResponse<Void> response = ApiResponse.<Void>builder()
+               .success(false)
+               .message(ex.getMessage())
+               .timestamp(LocalDateTime.now())
+               .build();
+
+       return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+   }
+
+   @ExceptionHandler(RefreshTokenExpiredException.class)
+   public ResponseEntity<ApiResponse<Void>> handleRefreshTokenExpired(RefreshTokenExpiredException ex) {
+
+       ApiResponse<Void> response = ApiResponse.<Void>builder()
+               .success(false)
+               .message(ex.getMessage())
+               .timestamp(LocalDateTime.now())
+               .build();
+
+       return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+   }
+
+   @ExceptionHandler(RefreshTokenRevokedException.class)
+   public ResponseEntity<ApiResponse<Void>> handleRefreshTokenRevoked(RefreshTokenRevokedException ex) {
+
+       ApiResponse<Void> response = ApiResponse.<Void>builder()
+               .success(false)
+               .message(ex.getMessage())
+               .timestamp(LocalDateTime.now())
+               .build();
+
+       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
    }
 }

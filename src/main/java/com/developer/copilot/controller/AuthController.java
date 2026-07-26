@@ -9,13 +9,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.developer.copilot.dto.auth.AuthResponse;
+import com.developer.copilot.dto.auth.ForgotPasswordRequest;
 import com.developer.copilot.dto.auth.LoginRequest;
+import com.developer.copilot.dto.auth.LogoutRequest;
+import com.developer.copilot.dto.auth.RefreshTokenRequest;
 import com.developer.copilot.dto.auth.RegisterRequest;
 import com.developer.copilot.dto.auth.UserResponse;
 import com.developer.copilot.dto.common.ApiResponse;
 import com.developer.copilot.service.AuthService;
 import com.developer.copilot.dto.auth.VerifyOtpRequest;
 import com.developer.copilot.dto.auth.ResendOtpRequest;
+import com.developer.copilot.dto.auth.ResetPasswordRequest;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -85,6 +89,32 @@ public class AuthController {
                         .build());
     }
 
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        authService.forgotPassword(request);
+
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("If the account exists, a password reset email has been sent.")
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        authService.resetPassword(request);
+
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("Password reset successfully.")
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<UserResponse>> me() {
 
@@ -98,4 +128,43 @@ public class AuthController {
         );
     }
     
+    @PostMapping("/refresh-token")
+    public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(@Valid @RequestBody RefreshTokenRequest request){
+        AuthResponse authResponse = authService.refreshToken(request);
+
+        return ResponseEntity.ok(
+                ApiResponse.<AuthResponse>builder()
+                        .success(true)
+                        .message("Token refreshed successfully.")
+                        .data(authResponse)
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(@Valid @RequestBody LogoutRequest request) {
+        authService.logout(request);
+
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("Logged out successfully.")
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+
+    @PostMapping("/logout-all")
+    public ResponseEntity<ApiResponse<Void>> logoutAllDevices() {
+        authService.logoutAllDevices();
+
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("Logged out from all devices successfully.")
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
 }

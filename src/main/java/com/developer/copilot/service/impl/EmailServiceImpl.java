@@ -1,10 +1,8 @@
 package com.developer.copilot.service.impl;
 
-import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 
-import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -49,6 +47,33 @@ public class EmailServiceImpl implements EmailService {
         } catch (Exception ex) {
             ex.printStackTrace();
             throw new RuntimeException("Unable to send verification email.", ex);
+        }
+    }
+
+    @Override
+    public void sendPasswordResetEmail(String recipientEmail, String recipientName, String resetToken) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(emailProperties.getFrom(), emailProperties.getSenderName());
+            helper.setTo(recipientEmail);
+            helper.setSubject("Reset your Password - AI Copilot");
+
+            String html = emailTemplateService.process(
+                    "password-reset",
+                    Map.of(
+                            "name", recipientName,
+                            "token", resetToken,
+                            "expiryMinutes", 15
+                    )
+            );
+
+            helper.setText(html, true);
+            mailSender.send(message);
+
+        } catch (Exception ex) {
+            throw new RuntimeException("Unable to send password reset email.", ex);
         }
     }
 }
