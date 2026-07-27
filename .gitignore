@@ -47,3 +47,8 @@ logs/
 
 ### Application Properties ###
 src/main/resources/application.properties
+
+
+### Extras for debugging, documentation referances for development ###
+
+documentation/
