@@ -19,6 +19,11 @@ import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.common.dto.ApiResponse;
+import com.developer.copilot.common.storage.exception.StorageException;
+import com.developer.copilot.user.exception.DuplicateResumeException;
+import com.developer.copilot.user.exception.InvalidResumeException;
+import com.developer.copilot.user.exception.ResumeLimitExceededException;
+import com.developer.copilot.user.exception.ResumeNotFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -189,4 +194,78 @@ public class GlobalExceptionHandler {
 
        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
    }
+
+   @ExceptionHandler(DuplicateResumeException.class)
+   public ResponseEntity<ApiResponse<Void>> handleDuplicateResume(
+                DuplicateResumeException ex) {
+
+        return ResponseEntity.badRequest().body(
+                ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+
+   }
+
+   @ExceptionHandler(ResumeNotFoundException.class)
+   public ResponseEntity<ApiResponse<Void>> handleResumeNotFound(
+                ResumeNotFoundException ex) {
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(
+                        ApiResponse.<Void>builder()
+                                .success(false)
+                                .message(ex.getMessage())
+                                .timestamp(LocalDateTime.now())
+                                .build()
+                );
+
+    }
+
+    @ExceptionHandler(InvalidResumeException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidResume(
+        InvalidResumeException ex) {
+
+        return ResponseEntity.badRequest()
+                .body(
+                        ApiResponse.<Void>builder()
+                                .success(false)
+                                .message(ex.getMessage())
+                                .timestamp(LocalDateTime.now())
+                                .build()
+                );
+
+    }
+
+    @ExceptionHandler(ResumeLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResumeLimit(
+                ResumeLimitExceededException ex) {
+
+        return ResponseEntity.badRequest()
+                .body(
+                        ApiResponse.<Void>builder()
+                                .success(false)
+                                .message(ex.getMessage())
+                                .timestamp(LocalDateTime.now())
+                                .build()
+                );
+
+    }
+
+    @ExceptionHandler(StorageException.class)
+    public ResponseEntity<ApiResponse<Void>> handleStorage(
+                StorageException ex) {
+
+        return ResponseEntity.internalServerError()
+                .body(
+                        ApiResponse.<Void>builder()
+                                .success(false)
+                                .message(ex.getMessage())
+                                .timestamp(LocalDateTime.now())
+                                .build()
+                );
+
+    }
 }

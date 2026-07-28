@@ -45,3 +45,15 @@ spring.mail.properties.mail.smtp.writetimeout=5000
 # Sender Information
 app.mail.from=<your-email@gmail.com>
 app.mail.sender-name=AI Copilot
+
+# MinIO Configuration
+storage.provider=minio
+storage.endpoint=http://localhost:9000
+storage.access-key=<your-minio-access-key-here>
+storage.secret-key=<your-minio-secret-key-here>
+storage.bucket-name=copilot-resumes
+storage.auto-create-bucket=true
+
+# Resume Configuration
+resume.max-resume-count=10
+resume.max-file-size-mb=5
