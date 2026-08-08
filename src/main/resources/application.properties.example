@@ -45,3 +45,28 @@ spring.mail.properties.mail.smtp.writetimeout=5000
 # Sender Information
 app.mail.from=<your-email@gmail.com>
 app.mail.sender-name=AI Copilot
+
+# MinIO Configuration
+storage.provider=minio
+storage.endpoint=http://localhost:9000
+storage.access-key=minioadmin
+storage.secret-key=minioadmin
+storage.bucket-name=copilot-resumes
+storage.auto-create-bucket=true
+
+# Resume Configuration
+resume.max-resume-count=10
+resume.max-file-size-mb=5
+
+
+# Google AI Studio API Key (or OpenAI API Key / Custom Agentic AI URL)
+spring.ai.openai.api-key=${GEMINI_API_KEY:THIS_IS_EXAMPLE_KEY}
+spring.ai.openai.base-url=https://generativelanguage.googleapis.com/v1beta/openai/
+spring.ai.openai.chat.options.model=gemini-flash-latest
+spring.ai.openai.chat.options.temperature=0.7
+
+# Application AI Custom Settings
+app.ai.provider=gemini
+app.ai.default-model=gemini-flash-latest
+app.ai.streaming-timeout-seconds=60
+app.ai.agentic-server-url=http://localhost:8000/v1
