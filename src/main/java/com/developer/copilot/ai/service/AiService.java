@@ -1,8 +1,10 @@
 package com.developer.copilot.ai.service;
 
 import com.developer.copilot.ai.dto.request.AiChatRequest;
+import com.developer.copilot.ai.dto.request.JobExtractionAiRequest;
 import com.developer.copilot.ai.dto.response.AiChatResponse;
 import com.developer.copilot.ai.dto.response.AiStreamChunk;
+import com.developer.copilot.ai.dto.response.JobExtractionAiResponse;
 
 import reactor.core.publisher.Flux;
 
@@ -44,4 +46,14 @@ public interface AiService {
      * @return model identifier string
      */
     String getActiveModel();
+
+    /**
+     * Parses a pasted job posting into strict structured JSON with zero hallucination -
+     * any field not clearly present in the source text is returned empty rather than guessed.
+     * Used exclusively by the {@code jobextraction} module's "Extract Job Info" flow.
+     *
+     * @param request the canonicalized job URL and raw pasted posting text
+     * @return the strictly parsed job fields
+     */
+    JobExtractionAiResponse extractJobInfo(JobExtractionAiRequest request);
 }

@@ -1,5 +1,6 @@
 package com.developer.copilot.jobs.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
@@ -12,16 +13,20 @@ import java.util.List;
 @Builder
 public class JobRequest {
 
+    @NotBlank(message = "Source URL cannot be blank.")
     @Size(max = 2000, message = "Source URL cannot exceed 2000 characters.")
     private String sourceUrl;
 
+    @NotBlank(message = "Original description cannot be blank.")
     private String originalDescription;
 
     private String description;
 
+    @NotBlank(message = "Title cannot be blank.")
     @Size(max = 255, message = "Title cannot exceed 255 characters.")
     private String title;
 
+    @NotBlank(message = "Company cannot be blank.")
     @Size(max = 255, message = "Company cannot exceed 255 characters.")
     private String company;
 

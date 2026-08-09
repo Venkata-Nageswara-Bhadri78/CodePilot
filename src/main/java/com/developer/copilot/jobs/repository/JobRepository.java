@@ -22,6 +22,18 @@ public interface JobRepository extends JpaRepository<JobEntity, Long> {
 
     void deleteByIdAndUserId(Long id, Long userId);
 
+    /**
+     * Used to enforce "a user cannot add the same job posting twice", matched against the
+     * canonicalized {@code sourceUrl} hash rather than the raw URL itself.
+     */
+    boolean existsByUserIdAndSourceUrlHash(Long userId, String sourceUrlHash);
+
+    /**
+     * Same duplicate check, excluding the job currently being updated (so re-saving a job
+     * with its own unchanged URL is never flagged as a duplicate of itself).
+     */
+    boolean existsByUserIdAndSourceUrlHashAndIdNot(Long userId, String sourceUrlHash, Long id);
+
     @Query("SELECT j FROM JobEntity j WHERE j.user.id = :userId AND " +
            "(:search IS NULL OR :search = '' OR " +
            "LOWER(j.title) LIKE LOWER(CONCAT('%', :search, '%')) OR " +

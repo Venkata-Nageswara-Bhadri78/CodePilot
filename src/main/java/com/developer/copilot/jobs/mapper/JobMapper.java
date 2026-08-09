@@ -21,9 +21,10 @@ public class JobMapper {
             return null;
         }
 
+        // Note: sourceUrl/sourceUrlHash are deliberately NOT set here - JobServiceImpl owns
+        // normalization, hashing, and duplicate-checking for sourceUrl exclusively.
         return JobEntity.builder()
                 .user(user)
-                .sourceUrl(request.getSourceUrl())
                 .originalDescription(request.getOriginalDescription())
                 .description(request.getDescription())
                 .title(request.getTitle())
@@ -46,7 +47,7 @@ public class JobMapper {
             return;
         }
 
-        entity.setSourceUrl(request.getSourceUrl());
+        // sourceUrl is handled exclusively by JobServiceImpl (normalization + dedupe check).
         entity.setOriginalDescription(request.getOriginalDescription());
         entity.setDescription(request.getDescription());
         entity.setTitle(request.getTitle());
@@ -71,7 +72,7 @@ public class JobMapper {
             return;
         }
 
-        if (patch.getSourceUrl() != null) entity.setSourceUrl(patch.getSourceUrl());
+        // sourceUrl is handled exclusively by JobServiceImpl (normalization + dedupe check).
         if (patch.getOriginalDescription() != null) entity.setOriginalDescription(patch.getOriginalDescription());
         if (patch.getDescription() != null) entity.setDescription(patch.getDescription());
         if (patch.getTitle() != null) entity.setTitle(patch.getTitle());

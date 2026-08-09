@@ -2,12 +2,15 @@ package com.developer.copilot.jobs.service;
 
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.repository.UserRepository;
+import com.developer.copilot.common.util.UrlNormalizationUtil;
 import com.developer.copilot.jobs.dto.JobPatchRequest;
 import com.developer.copilot.jobs.dto.JobRequest;
 import com.developer.copilot.jobs.dto.JobResponse;
 import com.developer.copilot.jobs.dto.request.UpdateLocationRequest;
 import com.developer.copilot.jobs.entity.JobEntity;
+import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
+import com.developer.copilot.jobs.exception.JobValidationException;
 import com.developer.copilot.jobs.mapper.JobMapper;
 import com.developer.copilot.jobs.repository.JobRepository;
 import com.developer.copilot.jobs.service.impl.JobServiceImpl;
@@ -41,6 +44,9 @@ class JobServiceImplTest {
     @Spy
     private JobMapper jobMapper = new JobMapper();
 
+    @Spy
+    private UrlNormalizationUtil urlNormalizationUtil = new UrlNormalizationUtil();
+
     @InjectMocks
     private JobServiceImpl jobService;
 
@@ -62,6 +68,9 @@ class JobServiceImplTest {
                 .user(testUser)
                 .title("Software Development Engineer I")
                 .company("Amazon")
+                .sourceUrl("https://www.amazon.jobs/en/jobs/12345")
+                .sourceUrlHash(urlNormalizationUtil.sha256Hex("https://amazon.jobs/en/jobs/12345"))
+                .originalDescription("Full pasted job posting text.")
                 .location("Bengaluru, India")
                 .employmentType("Full Time")
                 .workMode("Hybrid")
@@ -79,6 +88,7 @@ class JobServiceImplTest {
     @Test
     void testCreateJob() {
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
         when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> {
             JobEntity job = invocation.getArgument(0);
             job.setId(100L);
@@ -88,6 +98,8 @@ class JobServiceImplTest {
         JobRequest request = JobRequest.builder()
                 .title("Software Development Engineer I")
                 .company("Amazon")
+                .sourceUrl("https://www.amazon.jobs/en/jobs/12345?utm_source=linkedin")
+                .originalDescription("Full pasted job posting text.")
                 .location("Bengaluru, India")
                 .industry("Information Technology")
                 .sourcePlatform("LinkedIn")
@@ -101,7 +113,38 @@ class JobServiceImplTest {
         assertEquals("Amazon", response.getCompany());
         assertEquals("Information Technology", response.getIndustry());
         assertEquals("LinkedIn", response.getSourcePlatform());
+        // Tracking parameter must be stripped by normalization.
+        assertEquals("https://amazon.jobs/en/jobs/12345", response.getSourceUrl());
         verify(jobRepository, times(1)).save(any(JobEntity.class));
+    }
+
+    @Test
+    void testCreateJob_DuplicateSourceUrl_Rejected() {
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(true);
+
+        JobRequest request = JobRequest.builder()
+                .title("Software Development Engineer I")
+                .company("Amazon")
+                .sourceUrl("https://amazon.jobs/en/jobs/12345")
+                .originalDescription("Full pasted job posting text.")
+                .build();
+
+        assertThrows(DuplicateJobException.class, () -> jobService.createJob(request));
+        verify(jobRepository, never()).save(any(JobEntity.class));
+    }
+
+    @Test
+    void testPatchJob_BlankMandatoryField_Rejected() {
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
+
+        JobPatchRequest request = JobPatchRequest.builder()
+                .title("")
+                .build();
+
+        assertThrows(JobValidationException.class, () -> jobService.patchJob(100L, request));
+        verify(jobRepository, never()).save(any(JobEntity.class));
     }
 
     @Test
