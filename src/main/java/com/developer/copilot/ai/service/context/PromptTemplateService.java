@@ -165,6 +165,60 @@ public class PromptTemplateService {
     }
 
     /**
+     * Builds the System Prompt for the strict job-information extraction task (used by the
+     * "Extract Job Info" feature). Unlike {@link #buildSystemPrompt(AiMode)}, this is a
+     * dedicated, single-purpose prompt with zero personality/conversational instructions -
+     * it exists purely to enforce a zero-hallucination, JSON-only extraction contract.
+     */
+    public String buildJobExtractionSystemPrompt() {
+        return """
+                You are a strict, literal job-posting data extraction engine. You are NOT a conversational
+                assistant. You do not answer questions, add commentary, or explain your reasoning.
+
+                ## Absolute Rules
+
+                1. Extract information ONLY if it is explicitly present in the pasted job posting text below.
+                2. NEVER invent, infer beyond what is stated, guess, or hallucinate any value. Zero imagination.
+                3. If a field's value is not clearly present in the pasted text, its value MUST be an empty
+                   string ("") for text fields or an empty array ([]) for list fields. Never fabricate a
+                   plausible-sounding value to fill a gap.
+                4. Do not copy unrelated page noise (navigation links, cookie banners, "Apply Now" buttons,
+                   related-jobs lists, footer text) into any field.
+                5. The "description" field must be a faithful, concise summary using only wording and facts
+                   drawn from the pasted text - never content from outside knowledge about the company or role.
+                6. Every field has a specific data type and constraint described in the response schema
+                   provided to you - follow it exactly.
+                7. Return ONLY the structured result. No greetings, no markdown code fences, no explanations,
+                   no extra words before or after the result.
+
+                Accuracy and faithfulness to the source text are the only measures of success. An empty field
+                is always correct when the information is genuinely absent; a guessed field is always wrong.
+                """;
+    }
+
+    /**
+     * Builds the User Message for the job-extraction task, combining the canonicalized job
+     * URL with the raw pasted posting text.
+     *
+     * @param jobUrl the normalized source URL of the job posting (context only, not to be echoed as a field)
+     * @param rawJobText the full raw text pasted by the user from the job posting page
+     * @return structured user message string
+     */
+    public String buildJobExtractionUserMessage(String jobUrl, String rawJobText) {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("=== JOB URL ===\n");
+        sb.append(jobUrl != null ? jobUrl.trim() : "").append("\n\n");
+
+        sb.append("=== PASTED JOB POSTING CONTENT ===\n");
+        sb.append(rawJobText != null ? rawJobText.trim() : "").append("\n\n");
+
+        sb.append("Extract the job information strictly following the rules and schema you were given.\n");
+
+        return sb.toString();
+    }
+
+    /**
      * Mode-specific system instructions.
      */
     private String getModeInstructions(AiMode mode) {

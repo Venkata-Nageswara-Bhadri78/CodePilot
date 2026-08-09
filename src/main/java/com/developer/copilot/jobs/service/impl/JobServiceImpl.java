@@ -3,13 +3,16 @@ package com.developer.copilot.jobs.service.impl;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
 import com.developer.copilot.auth.repository.UserRepository;
+import com.developer.copilot.common.util.UrlNormalizationUtil;
 import com.developer.copilot.jobs.dto.JobPatchRequest;
 import com.developer.copilot.jobs.dto.JobRequest;
 import com.developer.copilot.jobs.dto.JobResponse;
 import com.developer.copilot.jobs.dto.JobSummaryResponse;
 import com.developer.copilot.jobs.dto.request.*;
 import com.developer.copilot.jobs.entity.JobEntity;
+import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
+import com.developer.copilot.jobs.exception.JobValidationException;
 import com.developer.copilot.jobs.mapper.JobMapper;
 import com.developer.copilot.jobs.repository.JobRepository;
 import com.developer.copilot.jobs.service.JobService;
@@ -30,12 +33,14 @@ public class JobServiceImpl implements JobService {
     private final JobRepository jobRepository;
     private final UserRepository userRepository;
     private final JobMapper jobMapper;
+    private final UrlNormalizationUtil urlNormalizationUtil;
 
     @Override
     @Transactional
     public JobResponse createJob(JobRequest request) {
         User currentUser = getCurrentUser();
         JobEntity jobEntity = jobMapper.toEntity(request, currentUser);
+        applySourceUrl(jobEntity, request.getSourceUrl(), currentUser.getId(), null);
         JobEntity savedJob = jobRepository.save(jobEntity);
         return jobMapper.toJobResponse(savedJob);
     }
@@ -67,6 +72,7 @@ public class JobServiceImpl implements JobService {
         User currentUser = getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         jobMapper.updateEntityFromRequest(job, request);
+        applySourceUrl(job, request.getSourceUrl(), currentUser.getId(), job.getId());
         JobEntity updatedJob = jobRepository.save(job);
         return jobMapper.toJobResponse(updatedJob);
     }
@@ -76,7 +82,19 @@ public class JobServiceImpl implements JobService {
     public JobResponse patchJob(Long id, JobPatchRequest request) {
         User currentUser = getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
+
+        // Mandatory fields are optional-by-absence in a patch, but never optional-by-blank
+        // once the caller explicitly includes them.
+        rejectIfBlank("Title", request.getTitle());
+        rejectIfBlank("Company", request.getCompany());
+        rejectIfBlank("Original description", request.getOriginalDescription());
+
         jobMapper.updateEntityFromPatch(job, request);
+
+        if (request.getSourceUrl() != null) {
+            applySourceUrl(job, request.getSourceUrl(), currentUser.getId(), job.getId());
+        }
+
         JobEntity updatedJob = jobRepository.save(job);
         return jobMapper.toJobResponse(updatedJob);
     }
@@ -195,7 +213,7 @@ public class JobServiceImpl implements JobService {
     public JobResponse updateSourceUrl(Long id, UpdateSourceUrlRequest request) {
         User currentUser = getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
-        job.setSourceUrl(request.getSourceUrl());
+        applySourceUrl(job, request.getSourceUrl(), currentUser.getId(), job.getId());
         return jobMapper.toJobResponse(jobRepository.save(job));
     }
 
@@ -239,5 +257,40 @@ public class JobServiceImpl implements JobService {
     private JobEntity getJobEntityForCurrentUser(Long id, User currentUser) {
         return jobRepository.findByIdAndUserId(id, currentUser.getId())
                 .orElseThrow(() -> new JobNotFoundException("Job not found with id: " + id));
+    }
+
+    /**
+     * Normalizes the given raw source URL, computes its dedupe hash, verifies no other job
+     * of this user already carries the same canonical URL, and applies both the normalized
+     * URL and its hash onto the entity. This is the single owner of sourceUrl mutation for
+     * every create/update path (full create, full update, single-field update, and patch).
+     *
+     * @param excludeJobId when updating an existing job, its own id (so re-saving the same
+     *                     URL on itself is never flagged as a duplicate); {@code null} on create
+     */
+    private void applySourceUrl(JobEntity entity, String rawSourceUrl, Long currentUserId, Long excludeJobId) {
+        if (rawSourceUrl == null || rawSourceUrl.isBlank()) {
+            throw new JobValidationException("Source URL cannot be blank.");
+        }
+
+        String normalizedUrl = urlNormalizationUtil.normalizeLenient(rawSourceUrl);
+        String urlHash = urlNormalizationUtil.sha256Hex(normalizedUrl);
+
+        boolean duplicateExists = (excludeJobId == null)
+                ? jobRepository.existsByUserIdAndSourceUrlHash(currentUserId, urlHash)
+                : jobRepository.existsByUserIdAndSourceUrlHashAndIdNot(currentUserId, urlHash, excludeJobId);
+
+        if (duplicateExists) {
+            throw new DuplicateJobException("This post was already added to your records.");
+        }
+
+        entity.setSourceUrl(normalizedUrl);
+        entity.setSourceUrlHash(urlHash);
+    }
+
+    private void rejectIfBlank(String fieldName, String value) {
+        if (value != null && value.isBlank()) {
+            throw new JobValidationException(fieldName + " cannot be blank.");
+        }
     }
 }

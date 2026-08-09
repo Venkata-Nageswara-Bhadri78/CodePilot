@@ -7,12 +7,15 @@ import java.util.Optional;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.metadata.Usage;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.stereotype.Service;
 
 import com.developer.copilot.ai.config.AiProperties;
 import com.developer.copilot.ai.dto.request.AiChatRequest;
+import com.developer.copilot.ai.dto.request.JobExtractionAiRequest;
 import com.developer.copilot.ai.dto.response.AiChatResponse;
 import com.developer.copilot.ai.dto.response.AiStreamChunk;
+import com.developer.copilot.ai.dto.response.JobExtractionAiResponse;
 import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.ai.service.AiService;
 import com.developer.copilot.ai.service.context.PromptTemplateService;
@@ -204,6 +207,39 @@ public class AiServiceImpl implements AiService {
     @Override
     public String getActiveModel() {
         return aiProperties.getDefaultModel() + " (Provider: " + aiProperties.getProvider() + ")";
+    }
+
+    @Override
+    public JobExtractionAiResponse extractJobInfo(JobExtractionAiRequest request) {
+        log.info("Extracting structured job information for URL: {}", request.getJobUrl());
+
+        try {
+            String systemPrompt = promptTemplateService.buildJobExtractionSystemPrompt();
+            String userMessage = promptTemplateService.buildJobExtractionUserMessage(
+                    request.getJobUrl(),
+                    request.getRawJobText()
+            );
+
+            JobExtractionAiResponse result = chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(userMessage)
+                    // Deterministic extraction: no creativity/variance allowed for structured parsing.
+                    .options(OpenAiChatOptions.builder().temperature(0.0))
+                    .call()
+                    .entity(JobExtractionAiResponse.class);
+
+            if (result == null) {
+                throw new AiServiceException("AI did not return parsable job information. Please try again.");
+            }
+
+            return result;
+
+        } catch (AiServiceException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            log.error("AI job extraction failed for URL {}: {}", request.getJobUrl(), ex.getMessage(), ex);
+            throw new AiServiceException(formatFriendlyErrorMessage(ex), ex);
+        }
     }
 
     /**
