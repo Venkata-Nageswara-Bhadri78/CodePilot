@@ -1,6 +1,7 @@
 package com.developer.copilot.ai.service;
 
 import com.developer.copilot.ai.dto.request.AiChatRequest;
+import com.developer.copilot.ai.dto.request.JobChatAiRequest;
 import com.developer.copilot.ai.dto.request.JobExtractionAiRequest;
 import com.developer.copilot.ai.dto.response.AiChatResponse;
 import com.developer.copilot.ai.dto.response.AiStreamChunk;
@@ -56,4 +57,16 @@ public interface AiService {
      * @return the strictly parsed job fields
      */
     JobExtractionAiResponse extractJobInfo(JobExtractionAiRequest request);
+
+    /**
+     * Continues a multi-turn, job-grounded chat conversation: rebuilds the conversation from
+     * the supplied prior turns and answers the new prompt in that context. Stateless from the
+     * AI module's point of view - all persistence/history-loading is the caller's
+     * ({@code chatassistant} module's) responsibility.
+     *
+     * @param request the job to ground the conversation in, prior turns, and the new prompt
+     * @param userEmail the authenticated user's email
+     * @return the AI's response to the new prompt
+     */
+    AiChatResponse continueJobChat(JobChatAiRequest request, String userEmail);
 }

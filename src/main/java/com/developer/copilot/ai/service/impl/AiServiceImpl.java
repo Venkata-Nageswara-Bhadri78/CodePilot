@@ -2,9 +2,14 @@ package com.developer.copilot.ai.service.impl;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -12,6 +17,9 @@ import org.springframework.stereotype.Service;
 
 import com.developer.copilot.ai.config.AiProperties;
 import com.developer.copilot.ai.dto.request.AiChatRequest;
+import com.developer.copilot.ai.dto.request.AiMode;
+import com.developer.copilot.ai.dto.request.ChatTurnDto;
+import com.developer.copilot.ai.dto.request.JobChatAiRequest;
 import com.developer.copilot.ai.dto.request.JobExtractionAiRequest;
 import com.developer.copilot.ai.dto.response.AiChatResponse;
 import com.developer.copilot.ai.dto.response.AiStreamChunk;
@@ -135,37 +143,7 @@ public class AiServiceImpl implements AiService {
                     .call()
                     .chatResponse();
 
-            String generatedContent = "";
-            String finishReason = "STOP";
-
-            if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
-                generatedContent = response.getResult().getOutput().getText();
-                if (response.getResult().getMetadata() != null && response.getResult().getMetadata().getFinishReason() != null) {
-                    finishReason = response.getResult().getMetadata().getFinishReason();
-                }
-            }
-
-            Long promptTokens = null;
-            Long completionTokens = null;
-            Long totalTokens = null;
-
-            if (response != null && response.getMetadata() != null && response.getMetadata().getUsage() != null) {
-                Usage usage = response.getMetadata().getUsage();
-                promptTokens = usage.getPromptTokens() != null ? usage.getPromptTokens().longValue() : null;
-                completionTokens = usage.getCompletionTokens() != null ? usage.getCompletionTokens().longValue() : null;
-                totalTokens = usage.getTotalTokens() != null ? usage.getTotalTokens().longValue() : null;
-            }
-
-            return AiChatResponse.builder()
-                    .content(generatedContent)
-                    .model(aiProperties.getDefaultModel())
-                    .finishReason(finishReason)
-                    .mode(request.getMode())
-                    .promptTokens(promptTokens)
-                    .completionTokens(completionTokens)
-                    .totalTokens(totalTokens)
-                    .timestamp(LocalDateTime.now())
-                    .build();
+            return mapToAiChatResponse(response, request.getMode());
 
         } catch (Exception ex) {
             log.error("AI synchronous generation failed for user {}: {}", userEmail, ex.getMessage(), ex);
@@ -242,12 +220,89 @@ public class AiServiceImpl implements AiService {
         }
     }
 
+    @Override
+    public AiChatResponse continueJobChat(JobChatAiRequest request, String userEmail) {
+        int turnNumber = (request.getPriorTurns() != null ? request.getPriorTurns().size() : 0) + 1;
+        log.info("Continuing job chat for user: {}, jobId: {}, turn: {}", userEmail, request.getJobId(), turnNumber);
+
+        try {
+            String resumeText = resolveResumeText(request.getCustomResumeText(), userEmail);
+            String jobDescription = resolveJobDescriptionByJobId(request.getJobId(), userEmail);
+
+            String systemPrompt = promptTemplateService.buildJobChatSystemPrompt(resumeText, jobDescription);
+
+            List<Message> conversation = new ArrayList<>();
+            if (request.getPriorTurns() != null) {
+                for (ChatTurnDto turn : request.getPriorTurns()) {
+                    conversation.add(new UserMessage(turn.getUserPrompt()));
+                    conversation.add(new AssistantMessage(turn.getAiResponse()));
+                }
+            }
+            conversation.add(new UserMessage(request.getNewPrompt()));
+
+            ChatResponse response = chatClient.prompt()
+                    .system(systemPrompt)
+                    .messages(conversation)
+                    .call()
+                    .chatResponse();
+
+            return mapToAiChatResponse(response, null);
+
+        } catch (Exception ex) {
+            log.error("AI job chat failed for user {} jobId {}: {}", userEmail, request.getJobId(), ex.getMessage(), ex);
+            throw new AiServiceException(formatFriendlyErrorMessage(ex), ex);
+        }
+    }
+
+    /**
+     * Maps a raw Spring AI {@link ChatResponse} into the project's {@link AiChatResponse}
+     * contract - shared between {@link #chat} and {@link #continueJobChat} so the token/finish
+     * reason extraction logic exists in exactly one place.
+     */
+    private AiChatResponse mapToAiChatResponse(ChatResponse response, AiMode mode) {
+        String generatedContent = "";
+        String finishReason = "STOP";
+
+        if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
+            generatedContent = response.getResult().getOutput().getText();
+            if (response.getResult().getMetadata() != null && response.getResult().getMetadata().getFinishReason() != null) {
+                finishReason = response.getResult().getMetadata().getFinishReason();
+            }
+        }
+
+        Long promptTokens = null;
+        Long completionTokens = null;
+        Long totalTokens = null;
+
+        if (response != null && response.getMetadata() != null && response.getMetadata().getUsage() != null) {
+            Usage usage = response.getMetadata().getUsage();
+            promptTokens = usage.getPromptTokens() != null ? usage.getPromptTokens().longValue() : null;
+            completionTokens = usage.getCompletionTokens() != null ? usage.getCompletionTokens().longValue() : null;
+            totalTokens = usage.getTotalTokens() != null ? usage.getTotalTokens().longValue() : null;
+        }
+
+        return AiChatResponse.builder()
+                .content(generatedContent)
+                .model(aiProperties.getDefaultModel())
+                .finishReason(finishReason)
+                .mode(mode)
+                .promptTokens(promptTokens)
+                .completionTokens(completionTokens)
+                .totalTokens(totalTokens)
+                .timestamp(LocalDateTime.now())
+                .build();
+    }
+
     /**
      * Resolves candidate resume context from custom request override or default resume service.
      */
     private String resolveResumeText(AiChatRequest request, String userEmail) {
-        if (request.getCustomResumeText() != null && !request.getCustomResumeText().isBlank()) {
-            return request.getCustomResumeText().trim();
+        return resolveResumeText(request.getCustomResumeText(), userEmail);
+    }
+
+    private String resolveResumeText(String customResumeText, String userEmail) {
+        if (customResumeText != null && !customResumeText.isBlank()) {
+            return customResumeText.trim();
         }
         return resumeContextService.getResumeContext(userEmail);
     }
@@ -259,23 +314,35 @@ public class AiServiceImpl implements AiService {
         if (request.getJobDescription() != null && !request.getJobDescription().isBlank()) {
             return request.getJobDescription().trim();
         }
+        return resolveJobDescriptionByJobId(request.getJobId(), userEmail);
+    }
 
-        if (request.getJobId() != null && userEmail != null) {
-            Optional<User> userOptional = userRepository.findByEmail(userEmail);
-            if (userOptional.isPresent()) {
-                Optional<JobEntity> jobOptional = jobRepository.findByIdAndUserId(request.getJobId(), userOptional.get().getId());
-                if (jobOptional.isPresent()) {
-                    JobEntity job = jobOptional.get();
-                    if (job.getDescription() != null && !job.getDescription().isBlank()) {
-                        return job.getDescription();
-                    }
-                    if (job.getOriginalDescription() != null && !job.getOriginalDescription().isBlank()) {
-                        return job.getOriginalDescription();
-                    }
-                }
-            }
+    /**
+     * Looks up a saved job owned by the given user and returns its cleaned description,
+     * falling back to the original pasted description, or an empty string if unavailable.
+     */
+    private String resolveJobDescriptionByJobId(Long jobId, String userEmail) {
+        if (jobId == null || userEmail == null) {
+            return "";
         }
 
+        Optional<User> userOptional = userRepository.findByEmail(userEmail);
+        if (userOptional.isEmpty()) {
+            return "";
+        }
+
+        Optional<JobEntity> jobOptional = jobRepository.findByIdAndUserId(jobId, userOptional.get().getId());
+        if (jobOptional.isEmpty()) {
+            return "";
+        }
+
+        JobEntity job = jobOptional.get();
+        if (job.getDescription() != null && !job.getDescription().isBlank()) {
+            return job.getDescription();
+        }
+        if (job.getOriginalDescription() != null && !job.getOriginalDescription().isBlank()) {
+            return job.getOriginalDescription();
+        }
         return "";
     }
 }

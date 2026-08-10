@@ -165,6 +165,52 @@ public class PromptTemplateService {
     }
 
     /**
+     * Builds the System Prompt for a job-scoped multi-turn chat conversation (used by the
+     * "chat about this job" feature). Unlike {@link #buildUserMessage(String, String, String, AiMode)},
+     * which re-embeds the resume and job description into every single user turn, this prompt
+     * embeds that context exactly ONCE in the system message - subsequent turns are passed to
+     * the model as plain conversational messages (see {@code ChatClient.messages(List)}), so
+     * context is never repeated or re-paid for as the conversation grows.
+     *
+     * @param resumeText the candidate's resume context (may be blank)
+     * @param jobDescription the job description this conversation is grounded in (may be blank)
+     * @return the assembled system prompt
+     */
+    public String buildJobChatSystemPrompt(String resumeText, String jobDescription) {
+        StringBuilder sb = new StringBuilder();
+
+        sb.append("""
+                You are "Copilot AI" - an expert career assistant helping a candidate think through one
+                specific job opportunity across an ongoing conversation.
+
+                ## Grounding
+
+                Everything you say must stay grounded in the candidate's resume and the job description
+                provided below, plus the conversation history. Do not lose track of earlier turns - refer
+                back to what was already discussed instead of repeating yourself or re-introducing context
+                the user already has.
+
+                ## Response Style
+
+                - Answer only what the user asked in their latest message.
+                - Keep responses concise, direct, and conversational - like a knowledgeable teammate.
+                - Use Markdown only when it improves readability; prefer bullets over long paragraphs.
+                - Never restate the entire job description or resume back to the user unless asked to.
+                - Never fabricate details about the company or role beyond what's given below.
+                """);
+
+        sb.append("=== CANDIDATE RESUME PROFILE ===\n");
+        sb.append(resumeText != null && !resumeText.isBlank() ? resumeText.trim() : "[No resume context provided]");
+        sb.append("\n\n");
+
+        sb.append("=== TARGET JOB DESCRIPTION ===\n");
+        sb.append(jobDescription != null && !jobDescription.isBlank() ? jobDescription.trim() : "[No job description provided]");
+        sb.append("\n");
+
+        return sb.toString();
+    }
+
+    /**
      * Builds the System Prompt for the strict job-information extraction task (used by the
      * "Extract Job Info" feature). Unlike {@link #buildSystemPrompt(AiMode)}, this is a
      * dedicated, single-purpose prompt with zero personality/conversational instructions -
