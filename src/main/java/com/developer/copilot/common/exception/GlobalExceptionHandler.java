@@ -17,16 +17,102 @@ import com.developer.copilot.auth.exception.PasswordResetTokenExpiredException;
 import com.developer.copilot.auth.exception.PasswordResetTokenUsedException;
 import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
+import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
+import com.developer.copilot.chatassistant.exception.ChatSessionNotFoundException;
 import com.developer.copilot.common.dto.ApiResponse;
+import com.developer.copilot.jobs.exception.DuplicateJobException;
+import com.developer.copilot.jobs.exception.JobNotFoundException;
+import com.developer.copilot.jobs.exception.JobValidationException;
+
+import lombok.extern.slf4j.Slf4j;
 import com.developer.copilot.common.storage.exception.StorageException;
 import com.developer.copilot.user.exception.DuplicateResumeException;
 import com.developer.copilot.user.exception.InvalidResumeException;
 import com.developer.copilot.user.exception.ResumeLimitExceededException;
 import com.developer.copilot.user.exception.ResumeNotFoundException;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(AiServiceException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAiServiceException(AiServiceException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_GATEWAY)
+                .body(response);
+    }
+
+    @ExceptionHandler(JobNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleJobNotFound(JobNotFoundException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(response);
+    }
+
+    @ExceptionHandler(DuplicateJobException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateJob(DuplicateJobException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(response);
+    }
+
+    @ExceptionHandler(JobValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleJobValidation(JobValidationException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
+    @ExceptionHandler(ChatSessionNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleChatSessionNotFound(ChatSessionNotFoundException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(response);
+    }
+
+    @ExceptionHandler(InvalidJobUrlException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidJobUrl(InvalidJobUrlException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
 
     @ExceptionHandler(ResourceAlreadyExistsException.class)
     public ResponseEntity<ApiResponse<Void>> handleResourceAlreadyExists(
@@ -64,6 +150,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleException(Exception ex) {
+        log.error("Unhandled exception occurred: ", ex);
 
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .success(false)
