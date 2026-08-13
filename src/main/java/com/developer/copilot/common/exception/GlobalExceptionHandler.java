@@ -27,10 +27,17 @@ import com.developer.copilot.jobs.exception.JobValidationException;
 
 import lombok.extern.slf4j.Slf4j;
 import com.developer.copilot.common.storage.exception.StorageException;
+import com.developer.copilot.user.exception.AdditionalProfileInformationNotFoundException;
 import com.developer.copilot.user.exception.DuplicateResumeException;
+import com.developer.copilot.user.exception.DuplicateUserProfileException;
+import com.developer.copilot.user.exception.EducationNotFoundException;
 import com.developer.copilot.user.exception.InvalidResumeException;
+import com.developer.copilot.user.exception.ProfileLinkNotFoundException;
+import com.developer.copilot.user.exception.ProjectNotFoundException;
 import com.developer.copilot.user.exception.ResumeLimitExceededException;
 import com.developer.copilot.user.exception.ResumeNotFoundException;
+import com.developer.copilot.user.exception.UserProfileNotFoundException;
+import com.developer.copilot.user.exception.WorkExperienceNotFoundException;
 
 @Slf4j
 @RestControllerAdvice
@@ -354,5 +361,82 @@ public class GlobalExceptionHandler {
                                 .build()
                 );
 
+    }
+
+    @ExceptionHandler(UserProfileNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUserProfileNotFound(UserProfileNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+
+    @ExceptionHandler(DuplicateUserProfileException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateUserProfile(DuplicateUserProfileException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+
+    @ExceptionHandler(WorkExperienceNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleWorkExperienceNotFound(WorkExperienceNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+
+    @ExceptionHandler(EducationNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleEducationNotFound(EducationNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+
+    @ExceptionHandler(ProjectNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleProjectNotFound(ProjectNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+
+    @ExceptionHandler(AdditionalProfileInformationNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAdditionalInfoNotFound(AdditionalProfileInformationNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+
+    @ExceptionHandler(ProfileLinkNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleProfileLinkNotFound(ProfileLinkNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
     }
 }

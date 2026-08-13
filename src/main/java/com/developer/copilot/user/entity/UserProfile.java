@@ -18,11 +18,17 @@ public class UserProfile extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /**
-     * One profile belongs to one user.
-     */
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
+
+    @Column(name = "headline", length = 300)
+    private String headline;
+
+    @Column(name = "summary", columnDefinition = "TEXT")
+    private String summary;
+
+    @Column(name = "technical_skills", columnDefinition = "TEXT")
+    private String technicalSkills;
 
 }
