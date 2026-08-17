@@ -2,8 +2,10 @@ package com.developer.copilot.auth.config;
 
 import java.util.List;
 
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -17,10 +19,12 @@ import com.developer.copilot.auth.jwt.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 
 @Configuration
+@EnableConfigurationProperties(CorsProperties.class)
 @RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final CorsProperties corsProperties;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -29,6 +33,9 @@ public class SecurityConfig {
         .cors(cors -> cors.configurationSource(corsConfigurationSource()))
         .csrf(csrf -> csrf.disable())
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) ->
+                        response.sendError(HttpStatus.UNAUTHORIZED.value())))
         .authorizeHttpRequests(auth -> auth
             .requestMatchers(
                 "/swagger-ui/**",
@@ -38,41 +45,34 @@ public class SecurityConfig {
                 "/swagger-resources/**",
                 "/webjars/**"
             ).permitAll()
-        
             .requestMatchers(
-                "/api/v1/auth/**", "/error"
+                "/api/v1/auth/register",
+                "/api/v1/auth/login",
+                "/api/v1/auth/verify-email",
+                "/api/v1/auth/resend-otp",
+                "/api/v1/auth/forgot-password",
+                "/api/v1/auth/reset-password",
+                "/api/v1/auth/refresh-token",
+                "/error"
             ).permitAll()
         
             .anyRequest().authenticated()
         )
         .addFilterBefore(
                 jwtAuthenticationFilter,
-                UsernamePasswordAuthenticationFilter.class);
-
-                
+                UsernamePasswordAuthenticationFilter.class); 
 
         return http.build();
     }
 
 
-    // For Development Purpose Only
-    // We are allowing localhost:5173 only for now (Will update for all Later)
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
 
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOrigins(
-                List.of(
-                        "http://localhost:5173",
-                        "http://localhost:5174",
-                        "http://localhost:3000",
-                        "http://127.0.0.1:5173",
-                        "http://127.0.0.1:5174",
-                        "http://127.0.0.1:3000"
-                )
-        );
-
+        configuration.setAllowedOrigins(corsProperties.getAllowedOrigins());
+        
         configuration.setAllowedMethods(
                 List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
         );

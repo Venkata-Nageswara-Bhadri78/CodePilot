@@ -59,6 +59,7 @@ public class AuthServiceImpl implements AuthService{
     private final RefreshTokenRepository refreshTokenRepository;
 
     @Override
+    @Transactional
     public void register(RegisterRequest registerRequest) {
         if (userRepository.existsByUsername(registerRequest.getUsername())) {
             throw new ResourceAlreadyExistsException("Username already exists.");
@@ -170,6 +171,7 @@ public class AuthServiceImpl implements AuthService{
 
 
     @Override
+    @Transactional
     public void resendOtp(ResendOtpRequest request) {
 
         User user = userRepository.findByEmail(request.getEmail())
@@ -269,7 +271,7 @@ public class AuthServiceImpl implements AuthService{
         refreshTokenRepository.save(storedToken);
 
         String newAccessToken = jwtService.generateToken(user);
-        return new AuthResponse(newAccessToken, newRefreshToken.getToken(), "Bearer");
+        return new AuthResponse(newAccessToken, "Bearer", newRefreshToken.getToken());
     }
 
     private RefreshToken createRefreshToken(User user) {
@@ -285,7 +287,7 @@ public class AuthServiceImpl implements AuthService{
     private AuthResponse buildAuthResponse(User user) {
         RefreshToken refreshToken = createRefreshToken(user);
         String accessToken = jwtService.generateToken(user);
-        return new AuthResponse(accessToken, refreshToken.getToken(), "Bearer");
+        return new AuthResponse(accessToken, "Bearer", refreshToken.getToken());
     }
     
     private void revokeAllRefreshTokens(User user) {
