@@ -1,5 +1,6 @@
 package com.developer.copilot.jobs.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.*;
@@ -11,21 +12,28 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Schema(description = "Request body for creating or fully replacing a saved job posting")
 public class JobRequest {
 
+    @Schema(description = "The job posting URL (tracking parameters are stripped on save)",
+            example = "https://linkedin.com/jobs/view/1234")
     @NotBlank(message = "Source URL cannot be blank.")
     @Size(max = 2000, message = "Source URL cannot exceed 2000 characters.")
     private String sourceUrl;
 
+    @Schema(description = "Raw job posting text pasted by the user", example = "We are hiring a Software Engineer...")
     @NotBlank(message = "Original description cannot be blank.")
     private String originalDescription;
 
+    @Schema(description = "Cleaned or extracted job description")
     private String description;
 
+    @Schema(description = "Job title", example = "Software Engineer")
     @NotBlank(message = "Title cannot be blank.")
     @Size(max = 255, message = "Title cannot exceed 255 characters.")
     private String title;
 
+    @Schema(description = "Company name", example = "Acme Corp")
     @NotBlank(message = "Company cannot be blank.")
     @Size(max = 255, message = "Company cannot exceed 255 characters.")
     private String company;
@@ -57,5 +65,6 @@ public class JobRequest {
     @Size(max = 50, message = "Source platform cannot exceed 50 characters.")
     private String sourcePlatform;
 
-    private List<String> skills;
+    @Schema(description = "Required skills for the role", example = "[\"Java\", \"Spring Boot\"]")
+    private List<@Size(max = 255, message = "Each skill cannot exceed 255 characters.") String> skills;
 }

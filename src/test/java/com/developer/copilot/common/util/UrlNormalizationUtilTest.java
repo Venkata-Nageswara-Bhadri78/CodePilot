@@ -23,6 +23,29 @@ class UrlNormalizationUtilTest {
     }
 
     @Test
+    void normalizeStrict_validHttp_remainsUnchanged() {
+        assertEquals("http://example.com/job",
+                urlNormalizationUtil.normalizeStrict("http://example.com/job"));
+    }
+
+    @Test
+    void normalizeStrict_removesWww() {
+        assertEquals("https://linkedin.com/jobs/view/123",
+                urlNormalizationUtil.normalizeStrict("https://www.linkedin.com/jobs/view/123"));
+    }
+
+    @Test
+    void normalizeStrict_malformedUrl_throwsInvalidJobUrlException() {
+        assertThrows(InvalidJobUrlException.class,
+                () -> urlNormalizationUtil.normalizeStrict("not-a-url"));
+    }
+
+    @Test
+    void normalizeLenient_malformedUrl_returnsRawStringSafely() {
+        assertEquals("not-a-url", urlNormalizationUtil.normalizeLenient("not-a-url"));
+    }
+
+    @Test
     void normalizeStrict_StripsUtmParamsButKeepsNonTrackingParams() {
         String rawUrl = "https://Example.com/jobs/123?utm_source=linkedin&utm_medium=social&jobId=abc";
 

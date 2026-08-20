@@ -4,6 +4,7 @@ import com.developer.copilot.jobs.entity.JobEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -20,7 +21,9 @@ public interface JobRepository extends JpaRepository<JobEntity, Long> {
 
     boolean existsByIdAndUserId(Long id, Long userId);
 
-    void deleteByIdAndUserId(Long id, Long userId);
+    @Modifying
+    @Query("DELETE FROM JobEntity j WHERE j.id = :id AND j.user.id = :userId")
+    int deleteByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
     /**
      * Used to enforce "a user cannot add the same job posting twice", matched against the

@@ -7,6 +7,7 @@ import com.developer.copilot.jobs.dto.JobPatchRequest;
 import com.developer.copilot.jobs.dto.JobRequest;
 import com.developer.copilot.jobs.dto.JobResponse;
 import com.developer.copilot.jobs.dto.request.UpdateLocationRequest;
+import com.developer.copilot.jobs.dto.request.UpdateSourceUrlRequest;
 import com.developer.copilot.jobs.entity.JobEntity;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
@@ -22,6 +23,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -30,6 +35,10 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -201,12 +210,66 @@ class JobServiceImplTest {
     }
 
     @Test
+    void getAllJobs_withSearch_usesSearchRepository() {
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<JobEntity> page = new PageImpl<>(List.of(testJob));
+        when(jobRepository.searchJobsByUserId(1L, "amazon", pageable)).thenReturn(page);
+
+        jobService.getAllJobs("amazon", pageable);
+
+        verify(jobRepository).searchJobsByUserId(1L, "amazon", pageable);
+        verify(jobRepository, never()).findAllByUserId(anyLong(), any(Pageable.class));
+    }
+
+    @Test
+    void getAllJobs_withoutSearch_usesFindAllRepository() {
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<JobEntity> page = new PageImpl<>(List.of(testJob));
+        when(jobRepository.findAllByUserId(1L, pageable)).thenReturn(page);
+
+        jobService.getAllJobs(null, pageable);
+
+        verify(jobRepository).findAllByUserId(1L, pageable);
+        verify(jobRepository, never()).searchJobsByUserId(anyLong(), anyString(), any(Pageable.class));
+    }
+
+    @Test
+    void updateSourceUrl_success_recalculatesHash() {
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
+        when(jobRepository.existsByUserIdAndSourceUrlHashAndIdNot(eq(1L), any(), eq(100L))).thenReturn(false);
+        when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        UpdateSourceUrlRequest request = UpdateSourceUrlRequest.builder()
+                .sourceUrl("https://www.amazon.jobs/en/jobs/99999?utm_source=linkedin")
+                .build();
+
+        JobResponse response = jobService.updateSourceUrl(100L, request);
+
+        assertEquals("https://amazon.jobs/en/jobs/99999", response.getSourceUrl());
+        verify(jobRepository).save(argThat(job ->
+                "https://amazon.jobs/en/jobs/99999".equals(job.getSourceUrl())
+                        && job.getSourceUrlHash() != null));
+    }
+
+    @Test
+    void deleteJob_notOwnedByUser_throwsNotFound() {
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(jobRepository.deleteByIdAndUserId(999L, 1L)).thenReturn(0);
+
+        assertThrows(JobNotFoundException.class, () -> jobService.deleteJob(999L));
+        verify(jobRepository, never()).existsByIdAndUserId(anyLong(), anyLong());
+    }
+
+    @Test
     void testDeleteJob() {
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
-        when(jobRepository.existsByIdAndUserId(100L, 1L)).thenReturn(true);
-        doNothing().when(jobRepository).deleteByIdAndUserId(100L, 1L);
+        when(jobRepository.deleteByIdAndUserId(100L, 1L)).thenReturn(1);
 
         assertDoesNotThrow(() -> jobService.deleteJob(100L));
         verify(jobRepository, times(1)).deleteByIdAndUserId(100L, 1L);
+        verify(jobRepository, never()).existsByIdAndUserId(anyLong(), anyLong());
     }
 }

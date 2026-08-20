@@ -24,8 +24,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-
 @Service
 @RequiredArgsConstructor
 public class JobServiceImpl implements JobService {
@@ -103,10 +101,10 @@ public class JobServiceImpl implements JobService {
     @Transactional
     public void deleteJob(Long id) {
         User currentUser = getCurrentUser();
-        if (!jobRepository.existsByIdAndUserId(id, currentUser.getId())) {
+        int deletedRows = jobRepository.deleteByIdAndUserId(id, currentUser.getId());
+        if (deletedRows == 0) {
             throw new JobNotFoundException("Job not found with id: " + id);
         }
-        jobRepository.deleteByIdAndUserId(id, currentUser.getId());
     }
 
     @Override
@@ -222,7 +220,12 @@ public class JobServiceImpl implements JobService {
     public JobResponse updateSkills(Long id, UpdateSkillsRequest request) {
         User currentUser = getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
-        job.setSkills(request.getSkills() != null ? new ArrayList<>(request.getSkills()) : new ArrayList<>());
+        if (request.getSkills() != null) {
+            job.getSkills().clear();
+            job.getSkills().addAll(request.getSkills());
+        } else {
+            job.getSkills().clear();
+        }
         return jobMapper.toJobResponse(jobRepository.save(job));
     }
 
