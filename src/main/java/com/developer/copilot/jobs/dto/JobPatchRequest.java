@@ -1,5 +1,6 @@
 package com.developer.copilot.jobs.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
@@ -10,6 +11,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Schema(description = "Partial update payload; only provided fields are applied")
 public class JobPatchRequest {
 
     @Size(max = 2000, message = "Source URL cannot exceed 2000 characters.")
@@ -52,5 +54,5 @@ public class JobPatchRequest {
     @Size(max = 50, message = "Source platform cannot exceed 50 characters.")
     private String sourcePlatform;
 
-    private List<String> skills;
+    private List<@Size(max = 255, message = "Each skill cannot exceed 255 characters.") String> skills;
 }

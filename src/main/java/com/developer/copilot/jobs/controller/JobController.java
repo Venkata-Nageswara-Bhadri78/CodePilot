@@ -7,6 +7,12 @@ import com.developer.copilot.jobs.dto.JobResponse;
 import com.developer.copilot.jobs.dto.JobSummaryResponse;
 import com.developer.copilot.jobs.dto.request.*;
 import com.developer.copilot.jobs.service.JobService;
+import com.developer.copilot.jobs.util.JobSortSupport;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -20,14 +26,21 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 
+@Tag(name = "Jobs", description = "Operations for managing saved job postings")
 @RestController
 @RequestMapping("/api/v1/jobs")
 @RequiredArgsConstructor
 @Validated
+@SecurityRequirement(name = "Bearer Authentication")
 public class JobController {
 
     private final JobService jobService;
 
+    @Operation(summary = "Create a new job", description = "Normalizes the source URL and prevents duplicate job postings for the current user.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Job created successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error or duplicate job URL", content = @Content)
+    })
     @PostMapping
     public ResponseEntity<ApiResponse<JobResponse>> createJob(@Valid @RequestBody JobRequest request) {
         JobResponse createdJob = jobService.createJob(request);
@@ -42,6 +55,11 @@ public class JobController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
+    @Operation(summary = "List jobs", description = "Returns a paginated list of the current user's jobs. Supports optional text search and sorting.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Jobs retrieved successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid sort parameter", content = @Content)
+    })
     @GetMapping
     public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> getAllJobs(
             @RequestParam(required = false) String search,
@@ -50,7 +68,7 @@ public class JobController {
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir) {
 
-        Sort sort = sortDir.equalsIgnoreCase("asc") ? Sort.by(sortBy).ascending() : Sort.by(sortBy).descending();
+        Sort sort = JobSortSupport.resolveSort(sortBy, sortDir);
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Page<JobSummaryResponse> jobs = jobService.getAllJobs(search, pageable);
@@ -65,6 +83,7 @@ public class JobController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "Get job by ID", description = "Returns full job details for a job owned by the current user.")
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<JobResponse>> getJobById(@PathVariable Long id) {
         JobResponse job = jobService.getJobById(id);
@@ -79,6 +98,7 @@ public class JobController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "Replace a job", description = "Fully replaces an existing job. Recalculates the URL hash when the source URL changes.")
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<JobResponse>> updateJob(
             @PathVariable Long id,
@@ -96,6 +116,7 @@ public class JobController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "Partially update a job", description = "Updates only the fields provided in the request body.")
     @PatchMapping("/{id}")
     public ResponseEntity<ApiResponse<JobResponse>> patchJob(
             @PathVariable Long id,
@@ -113,6 +134,7 @@ public class JobController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "Delete a job", description = "Permanently deletes a job and its associated skills.")
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteJob(@PathVariable Long id) {
         jobService.deleteJob(id);
@@ -126,6 +148,7 @@ public class JobController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(summary = "Update job location")
     @PatchMapping("/{id}/location")
     public ResponseEntity<ApiResponse<JobResponse>> updateLocation(
             @PathVariable Long id,
@@ -141,6 +164,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update job title")
     @PatchMapping("/{id}/title")
     public ResponseEntity<ApiResponse<JobResponse>> updateTitle(
             @PathVariable Long id,
@@ -156,6 +180,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update job company")
     @PatchMapping("/{id}/company")
     public ResponseEntity<ApiResponse<JobResponse>> updateCompany(
             @PathVariable Long id,
@@ -171,6 +196,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update employment type")
     @PatchMapping("/{id}/employment-type")
     public ResponseEntity<ApiResponse<JobResponse>> updateEmploymentType(
             @PathVariable Long id,
@@ -186,6 +212,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update work mode")
     @PatchMapping("/{id}/work-mode")
     public ResponseEntity<ApiResponse<JobResponse>> updateWorkMode(
             @PathVariable Long id,
@@ -201,6 +228,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update experience requirement")
     @PatchMapping("/{id}/experience")
     public ResponseEntity<ApiResponse<JobResponse>> updateExperience(
             @PathVariable Long id,
@@ -216,6 +244,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update salary")
     @PatchMapping("/{id}/salary")
     public ResponseEntity<ApiResponse<JobResponse>> updateSalary(
             @PathVariable Long id,
@@ -231,6 +260,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update education requirement")
     @PatchMapping("/{id}/education")
     public ResponseEntity<ApiResponse<JobResponse>> updateEducation(
             @PathVariable Long id,
@@ -246,6 +276,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update department")
     @PatchMapping("/{id}/department")
     public ResponseEntity<ApiResponse<JobResponse>> updateDepartment(
             @PathVariable Long id,
@@ -261,6 +292,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update industry")
     @PatchMapping("/{id}/industry")
     public ResponseEntity<ApiResponse<JobResponse>> updateIndustry(
             @PathVariable Long id,
@@ -276,6 +308,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update source platform")
     @PatchMapping("/{id}/source-platform")
     public ResponseEntity<ApiResponse<JobResponse>> updateSourcePlatform(
             @PathVariable Long id,
@@ -291,6 +324,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update source URL", description = "Normalizes the URL and enforces duplicate detection.")
     @PatchMapping("/{id}/source-url")
     public ResponseEntity<ApiResponse<JobResponse>> updateSourceUrl(
             @PathVariable Long id,
@@ -306,6 +340,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Replace job skills")
     @PatchMapping("/{id}/skills")
     public ResponseEntity<ApiResponse<JobResponse>> updateSkills(
             @PathVariable Long id,
@@ -321,6 +356,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update cleaned description")
     @PatchMapping("/{id}/description")
     public ResponseEntity<ApiResponse<JobResponse>> updateDescription(
             @PathVariable Long id,
@@ -336,6 +372,7 @@ public class JobController {
                 .build());
     }
 
+    @Operation(summary = "Update original description")
     @PatchMapping("/{id}/original-description")
     public ResponseEntity<ApiResponse<JobResponse>> updateOriginalDescription(
             @PathVariable Long id,

@@ -63,7 +63,8 @@ public class JobMapper {
         entity.setSourcePlatform(request.getSourcePlatform());
 
         if (request.getSkills() != null) {
-            entity.setSkills(new ArrayList<>(request.getSkills()));
+            entity.getSkills().clear();
+            entity.getSkills().addAll(request.getSkills());
         }
     }
 
@@ -86,7 +87,10 @@ public class JobMapper {
         if (patch.getDepartment() != null) entity.setDepartment(patch.getDepartment());
         if (patch.getIndustry() != null) entity.setIndustry(patch.getIndustry());
         if (patch.getSourcePlatform() != null) entity.setSourcePlatform(patch.getSourcePlatform());
-        if (patch.getSkills() != null) entity.setSkills(new ArrayList<>(patch.getSkills()));
+        if (patch.getSkills() != null) {
+            entity.getSkills().clear();
+            entity.getSkills().addAll(patch.getSkills());
+        }
     }
 
     public JobResponse toJobResponse(JobEntity entity) {
