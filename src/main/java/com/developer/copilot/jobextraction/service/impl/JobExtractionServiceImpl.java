@@ -1,7 +1,5 @@
 package com.developer.copilot.jobextraction.service.impl;
 
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -10,7 +8,7 @@ import com.developer.copilot.ai.dto.response.JobExtractionAiResponse;
 import com.developer.copilot.ai.service.AiService;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
-import com.developer.copilot.auth.repository.UserRepository;
+import com.developer.copilot.common.security.CurrentUserService;
 import com.developer.copilot.common.util.UrlNormalizationUtil;
 import com.developer.copilot.jobextraction.dto.request.JobExtractionRequest;
 import com.developer.copilot.jobextraction.dto.response.JobExtractionResultResponse;
@@ -34,21 +32,25 @@ public class JobExtractionServiceImpl implements JobExtractionService {
 
     private final UrlNormalizationUtil urlNormalizationUtil;
     private final JobRepository jobRepository;
-    private final UserRepository userRepository;
     private final AiService aiService;
     private final JobExtractionMapper jobExtractionMapper;
+    private final CurrentUserService currentUserService;
 
     @Override
     @Transactional(readOnly = true)
     public JobExtractionResultResponse extractJobInfo(JobExtractionRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
+
+        if (!Boolean.TRUE.equals(currentUser.getEmailVerified())) {
+            throw new InvalidCredentialsException("Please verify your email before using this feature.");
+        }
 
         // Strict: an invalid URL must be rejected before we spend an AI call on it.
         String normalizedUrl = urlNormalizationUtil.normalizeStrict(request.getSourceUrl());
 
         String urlHash = urlNormalizationUtil.sha256Hex(normalizedUrl);
         if (jobRepository.existsByUserIdAndSourceUrlHash(currentUser.getId(), urlHash)) {
-            log.info("Rejected duplicate job extraction for user {} and URL {}", currentUser.getId(), normalizedUrl);
+            log.info("Rejected duplicate job extraction for user {} and urlHash {}", currentUser.getId(), urlHash);
             throw new DuplicateJobException("This post was already added to your records.");
         }
 
@@ -59,16 +61,12 @@ public class JobExtractionServiceImpl implements JobExtractionService {
 
         JobExtractionAiResponse aiResponse = aiService.extractJobInfo(aiRequest);
 
-        return jobExtractionMapper.toResultResponse(aiResponse, normalizedUrl, request.getRawJobText());
-    }
+        JobExtractionResultResponse result =
+                jobExtractionMapper.toResultResponse(aiResponse, normalizedUrl, request.getRawJobText());
 
-    private User getCurrentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            throw new InvalidCredentialsException("User is not authenticated.");
-        }
-        String email = authentication.getName();
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> new InvalidCredentialsException("User account not found."));
+        log.info("Job extraction completed for user {} and urlHash {}, manualReviewRequired={}",
+                currentUser.getId(), urlHash, result.isRequiresManualReview());
+
+        return result;
     }
 }

@@ -47,7 +47,9 @@ public class JobExtractionController {
                     + "the (optionally edited) result to save the record.")
     public ResponseEntity<ApiResponse<JobExtractionResultResponse>> parseJobInfo(
             @Valid @RequestBody JobExtractionRequest request) {
-        log.info("Incoming job extraction request for URL: {}", request.getSourceUrl());
+        log.info("Incoming job extraction request, sourceUrl length: {}",
+                request.getSourceUrl() != null ? request.getSourceUrl().length() : 0);
+        log.debug("Incoming job extraction request for URL: {}", request.getSourceUrl());
 
         JobExtractionResultResponse result = jobExtractionService.extractJobInfo(request);
 
