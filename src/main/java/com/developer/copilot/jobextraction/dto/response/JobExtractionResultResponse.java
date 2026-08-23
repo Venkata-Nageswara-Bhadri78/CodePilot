@@ -70,4 +70,9 @@ public class JobExtractionResultResponse {
 
     @Schema(description = "Extracted list of required/preferred skills, empty list if none found")
     private List<String> skills;
+
+    @Schema(description = "True when the AI could not confidently extract the required title and/or company "
+            + "fields - the frontend should highlight these for manual entry before the user can save via "
+            + "POST /api/v1/jobs (which requires both to be non-blank)")
+    private boolean requiresManualReview;
 }

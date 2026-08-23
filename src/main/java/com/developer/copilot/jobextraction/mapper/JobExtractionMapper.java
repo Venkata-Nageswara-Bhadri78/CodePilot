@@ -1,7 +1,6 @@
 package com.developer.copilot.jobextraction.mapper;
 
 import java.util.ArrayList;
-import java.util.Collections;
 
 import org.springframework.stereotype.Component;
 
@@ -21,12 +20,15 @@ public class JobExtractionMapper {
             String normalizedSourceUrl,
             String rawJobText
     ) {
+        String title = aiResponse.getTitle();
+        String company = aiResponse.getCompany();
+
         return JobExtractionResultResponse.builder()
                 .sourceUrl(normalizedSourceUrl)
                 .originalDescription(rawJobText)
                 .description(aiResponse.getDescription())
-                .title(aiResponse.getTitle())
-                .company(aiResponse.getCompany())
+                .title(title)
+                .company(company)
                 .location(aiResponse.getLocation())
                 .employmentType(aiResponse.getEmploymentType())
                 .workMode(aiResponse.getWorkMode())
@@ -38,7 +40,12 @@ public class JobExtractionMapper {
                 .sourcePlatform(aiResponse.getSourcePlatform())
                 .skills(aiResponse.getSkills() != null
                         ? new ArrayList<>(aiResponse.getSkills())
-                        : Collections.emptyList())
+                        : new ArrayList<>())
+                .requiresManualReview(isBlank(title) || isBlank(company))
                 .build();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }
