@@ -5,6 +5,7 @@ import com.developer.copilot.common.security.CurrentUserService;
 import com.developer.copilot.common.storage.dto.StoredFile;
 import com.developer.copilot.common.storage.service.FileStorageService;
 import com.developer.copilot.user.config.ResumeProperties;
+import com.developer.copilot.user.dto.ResumeDownload;
 import com.developer.copilot.user.dto.ResumeResponse;
 import com.developer.copilot.user.dto.ResumeUploadResponse;
 import com.developer.copilot.user.entity.Resume;
@@ -13,16 +14,18 @@ import com.developer.copilot.user.exception.DuplicateResumeException;
 import com.developer.copilot.user.exception.InvalidResumeException;
 import com.developer.copilot.user.exception.ResumeLimitExceededException;
 import com.developer.copilot.user.exception.ResumeNotFoundException;
+import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.mapper.ResumeMapper;
 import com.developer.copilot.user.repository.ResumeRepository;
 import com.developer.copilot.user.repository.UserProfileRepository;
 import com.developer.copilot.user.service.UserService;
+import com.developer.copilot.user.util.PdfValidationUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -46,37 +49,29 @@ public class UserServiceImpl implements UserService {
 
         UserProfile profile = userProfileRepository
                 .findByUser(user)
-                .orElseGet(() -> {
-                    UserProfile userProfile = UserProfile.builder()
-                            .user(user)
-                            .build();
-                    return userProfileRepository.save(userProfile);
-                });
+                .orElseThrow(UserProfileNotFoundException::new);
 
         if (resumeRepository.countByUserProfileAndActiveTrue(profile)
                 >= resumeProperties.getMaxResumeCount()) {
 
             throw new ResumeLimitExceededException(
                     resumeProperties.getMaxResumeCount());
-
         }
 
         if (file.isEmpty()) {
             throw new InvalidResumeException("Resume cannot be empty.");
         }
 
-        if (!"application/pdf".equalsIgnoreCase(file.getContentType())) {
+        if (!"application/pdf".equalsIgnoreCase(file.getContentType())
+                || !PdfValidationUtil.hasPdfMagicBytes(file)) {
             throw new InvalidResumeException("Only PDF files are allowed.");
         }
 
-        if (file.getSize() >
-                resumeProperties.getMaxFileSizeMb() * 1024L * 1024L) {
-
+        if (file.getSize() > resumeProperties.getMaxFileSizeMb() * 1024L * 1024L) {
             throw new InvalidResumeException(
                     "Maximum file size is "
                             + resumeProperties.getMaxFileSizeMb()
-                            + " MB."
-            );
+                            + " MB.");
         }
 
         StoredFile storedFile = fileStorageService.upload(
@@ -90,7 +85,6 @@ public class UserServiceImpl implements UserService {
         ).isPresent()) {
 
             fileStorageService.delete(storedFile.getStorageKey());
-
             throw new DuplicateResumeException();
         }
 
@@ -106,16 +100,12 @@ public class UserServiceImpl implements UserService {
                 .highPriority(firstResume)
                 .build();
 
-                try {
-                        resumeRepository.save(resume);
-                    
-                } catch (Exception ex) {
-                    
-                        fileStorageService.delete(storedFile.getStorageKey());
-                    
-                    throw ex;
-                    
-                }
+        try {
+            resumeRepository.save(resume);
+        } catch (Exception ex) {
+            fileStorageService.delete(storedFile.getStorageKey());
+            throw ex;
+        }
 
         log.info(
                 "User {} uploaded resume '{}'",
@@ -130,13 +120,14 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<ResumeResponse> getAllResumes() {
 
         User user = currentUserService.getCurrentUser();
 
         UserProfile profile = userProfileRepository
                 .findByUser(user)
-                .orElseThrow(ResumeNotFoundException::new);
+                .orElseThrow(UserProfileNotFoundException::new);
 
         return resumeRepository
                 .findByUserProfileAndActiveTrue(profile)
@@ -144,60 +135,56 @@ public class UserServiceImpl implements UserService {
                 .map(resumeMapper::toResponse)
                 .toList();
     }
-    
+
     @Override
-    @Transactional
-    public Resource downloadResume(Long resumeId) {
+    @Transactional(readOnly = true)
+    public ResumeDownload downloadResume(Long resumeId) {
 
         User user = currentUserService.getCurrentUser();
 
         UserProfile profile = userProfileRepository
                 .findByUser(user)
-                .orElseThrow(ResumeNotFoundException::new);
+                .orElseThrow(UserProfileNotFoundException::new);
 
         Resume resume = resumeRepository
-                .findByIdAndUserProfileAndActiveTrue(
-                        resumeId,
-                        profile
-                )
+                .findByIdAndUserProfileAndActiveTrue(resumeId, profile)
                 .orElseThrow(ResumeNotFoundException::new);
 
-        return fileStorageService.download(
-                resume.getStorageKey()
-        );
+        Resource resource = fileStorageService.download(resume.getStorageKey());
 
+        return new ResumeDownload(resource, resume.getOriginalFilename());
     }
-    
+
     @Override
+    @Transactional
     public void deleteResume(Long resumeId) {
 
         User user = currentUserService.getCurrentUser();
 
         UserProfile profile = userProfileRepository
                 .findByUser(user)
-                .orElseThrow(ResumeNotFoundException::new);
+                .orElseThrow(UserProfileNotFoundException::new);
 
         Resume resume = resumeRepository
-                .findByIdAndUserProfileAndActiveTrue(
-                        resumeId,
-                        profile
-                )
+                .findByIdAndUserProfileAndActiveTrue(resumeId, profile)
                 .orElseThrow(ResumeNotFoundException::new);
 
-        fileStorageService.delete(
-                resume.getStorageKey()
-        );
+        boolean wasPrimary = resume.getHighPriority();
+        String storageKey = resume.getStorageKey();
 
-        resumeRepository.delete(resume);
+        resume.setActive(false);
+        resume.setHighPriority(false);
+        resumeRepository.save(resume);
 
-        log.info(
-                "User {} deleted resume {}",
-                user.getId(),
-                resumeId
-        );
+        fileStorageService.delete(storageKey);
 
+        if (wasPrimary) {
+            promoteMostRecentResume(profile);
+        }
+
+        log.info("User {} deleted resume {}", user.getId(), resumeId);
     }
-    
+
     @Override
     @Transactional
     public void setHighPriorityResume(Long resumeId) {
@@ -206,27 +193,15 @@ public class UserServiceImpl implements UserService {
 
         UserProfile profile = userProfileRepository
                 .findByUser(user)
-                .orElseThrow(ResumeNotFoundException::new);
+                .orElseThrow(UserProfileNotFoundException::new);
 
         Resume selectedResume = resumeRepository
-                .findByIdAndUserProfileAndActiveTrue(
-                        resumeId,
-                        profile
-                )
+                .findByIdAndUserProfileAndActiveTrue(resumeId, profile)
                 .orElseThrow(ResumeNotFoundException::new);
 
-        resumeRepository
-                .findByHighPriorityTrueAndUserProfileAndActiveTrue(profile)
-                .ifPresent(existing -> {
-
-                    existing.setHighPriority(false);
-
-                    resumeRepository.save(existing);
-
-                });
+        resumeRepository.clearHighPriorityForProfile(profile);
 
         selectedResume.setHighPriority(true);
-
         resumeRepository.save(selectedResume);
 
         log.info(
@@ -234,6 +209,16 @@ public class UserServiceImpl implements UserService {
                 user.getId(),
                 resumeId
         );
+    }
 
+    private void promoteMostRecentResume(UserProfile profile) {
+        resumeRepository
+                .findByUserProfileAndActiveTrueOrderByCreatedAtDesc(profile)
+                .stream()
+                .findFirst()
+                .ifPresent(remaining -> {
+                    remaining.setHighPriority(true);
+                    resumeRepository.save(remaining);
+                });
     }
 }

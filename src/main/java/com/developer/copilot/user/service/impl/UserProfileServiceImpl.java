@@ -21,6 +21,9 @@ import com.developer.copilot.user.entity.Project;
 import com.developer.copilot.user.entity.UserProfile;
 import com.developer.copilot.user.entity.WorkExperience;
 import com.developer.copilot.user.exception.AdditionalProfileInformationNotFoundException;
+import com.developer.copilot.common.storage.service.FileStorageService;
+import com.developer.copilot.user.entity.Resume;
+import com.developer.copilot.user.repository.ResumeRepository;
 import com.developer.copilot.user.exception.DuplicateUserProfileException;
 import com.developer.copilot.user.exception.EducationNotFoundException;
 import com.developer.copilot.user.exception.ProfileLinkNotFoundException;
@@ -52,6 +55,8 @@ public class UserProfileServiceImpl implements UserProfileService {
     private final ProjectRepository projectRepository;
     private final AdditionalProfileInformationRepository additionalProfileInformationRepository;
     private final ProfileLinkRepository profileLinkRepository;
+    private final ResumeRepository resumeRepository;
+    private final FileStorageService fileStorageService;
     private final UserProfileMapper userProfileMapper;
 
     // ─── Profile ─────────────────────────────────────────────────────────────
@@ -108,6 +113,8 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Transactional
     public void deleteProfile() {
         UserProfile profile = resolveProfile();
+
+        deleteResumesForProfile(profile);
 
         workExperienceRepository.deleteAll(workExperienceRepository.findByUserProfile(profile));
         educationRepository.deleteAll(educationRepository.findByUserProfile(profile));
@@ -423,6 +430,14 @@ public class UserProfileServiceImpl implements UserProfileService {
         User user = currentUserService.getCurrentUser();
         return userProfileRepository.findByUser(user)
                 .orElseThrow(UserProfileNotFoundException::new);
+    }
+
+    private void deleteResumesForProfile(UserProfile profile) {
+        List<Resume> resumes = resumeRepository.findByUserProfile(profile);
+        for (Resume resume : resumes) {
+            fileStorageService.delete(resume.getStorageKey());
+            resumeRepository.delete(resume);
+        }
     }
 
     private UserProfileResponse buildFullProfileResponse(UserProfile profile) {

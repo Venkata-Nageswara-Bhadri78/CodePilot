@@ -1,0 +1,176 @@
+package com.developer.copilot.user.service;
+
+import com.developer.copilot.auth.entity.User;
+import com.developer.copilot.common.security.CurrentUserService;
+import com.developer.copilot.common.storage.service.FileStorageService;
+import com.developer.copilot.user.dto.experience.WorkExperienceRequest;
+import com.developer.copilot.user.dto.profile.UserProfileRequest;
+import com.developer.copilot.user.entity.Resume;
+import com.developer.copilot.user.entity.UserProfile;
+import com.developer.copilot.user.entity.WorkExperience;
+import com.developer.copilot.user.exception.DuplicateUserProfileException;
+import com.developer.copilot.user.exception.UserProfileNotFoundException;
+import com.developer.copilot.user.mapper.UserProfileMapper;
+import com.developer.copilot.user.repository.AdditionalProfileInformationRepository;
+import com.developer.copilot.user.repository.EducationRepository;
+import com.developer.copilot.user.repository.ProfileLinkRepository;
+import com.developer.copilot.user.repository.ProjectRepository;
+import com.developer.copilot.user.repository.ResumeRepository;
+import com.developer.copilot.user.repository.UserProfileRepository;
+import com.developer.copilot.user.repository.WorkExperienceRepository;
+import com.developer.copilot.user.service.impl.UserProfileServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.Spy;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class UserProfileServiceImplTest {
+
+    @Mock
+    private CurrentUserService currentUserService;
+
+    @Mock
+    private UserProfileRepository userProfileRepository;
+
+    @Mock
+    private WorkExperienceRepository workExperienceRepository;
+
+    @Mock
+    private EducationRepository educationRepository;
+
+    @Mock
+    private ProjectRepository projectRepository;
+
+    @Mock
+    private AdditionalProfileInformationRepository additionalProfileInformationRepository;
+
+    @Mock
+    private ProfileLinkRepository profileLinkRepository;
+
+    @Mock
+    private ResumeRepository resumeRepository;
+
+    @Mock
+    private FileStorageService fileStorageService;
+
+    @Spy
+    private UserProfileMapper userProfileMapper = new UserProfileMapper();
+
+    @InjectMocks
+    private UserProfileServiceImpl userProfileService;
+
+    private User user;
+    private UserProfile profile;
+
+    @BeforeEach
+    void setUp() {
+        user = new User();
+        user.setId(1L);
+        user.setFullName("Test User");
+        user.setEmail("test@example.com");
+
+        profile = UserProfile.builder()
+                .id(10L)
+                .user(user)
+                .headline("Dev")
+                .build();
+
+        lenient().when(currentUserService.getCurrentUser()).thenReturn(user);
+    }
+
+    @Test
+    void createProfile_success() {
+        UserProfileRequest request = new UserProfileRequest();
+        request.setHeadline("Engineer");
+
+        when(userProfileRepository.existsByUser(user)).thenReturn(false);
+        when(userProfileRepository.save(any(UserProfile.class))).thenAnswer(invocation -> {
+            UserProfile saved = invocation.getArgument(0);
+            saved.setId(10L);
+            return saved;
+        });
+        when(workExperienceRepository.findByUserProfile(any())).thenReturn(List.of());
+        when(educationRepository.findByUserProfile(any())).thenReturn(List.of());
+        when(projectRepository.findByUserProfile(any())).thenReturn(List.of());
+        when(additionalProfileInformationRepository.findByUserProfile(any())).thenReturn(List.of());
+        when(profileLinkRepository.findByUserProfile(any())).thenReturn(List.of());
+
+        var response = userProfileService.createProfile(request);
+
+        assertEquals("Engineer", response.getHeadline());
+        assertEquals("test@example.com", response.getEmail());
+    }
+
+    @Test
+    void createProfile_duplicate_throws() {
+        when(userProfileRepository.existsByUser(user)).thenReturn(true);
+
+        assertThrows(DuplicateUserProfileException.class,
+                () -> userProfileService.createProfile(new UserProfileRequest()));
+    }
+
+    @Test
+    void getProfile_notFound_throws() {
+        when(userProfileRepository.findByUser(user)).thenReturn(Optional.empty());
+
+        assertThrows(UserProfileNotFoundException.class, () -> userProfileService.getProfile());
+    }
+
+    @Test
+    void deleteProfile_deletesResumesFromStorageAndDb() {
+        Resume resume = Resume.builder()
+                .id(1L)
+                .userProfile(profile)
+                .storageKey("users/1/resumes/a.pdf")
+                .build();
+
+        when(userProfileRepository.findByUser(user)).thenReturn(Optional.of(profile));
+        when(resumeRepository.findByUserProfile(profile)).thenReturn(List.of(resume));
+        when(workExperienceRepository.findByUserProfile(profile)).thenReturn(List.of());
+        when(educationRepository.findByUserProfile(profile)).thenReturn(List.of());
+        when(projectRepository.findByUserProfile(profile)).thenReturn(List.of());
+        when(additionalProfileInformationRepository.findByUserProfile(profile)).thenReturn(List.of());
+        when(profileLinkRepository.findByUserProfile(profile)).thenReturn(List.of());
+
+        userProfileService.deleteProfile();
+
+        verify(fileStorageService).delete("users/1/resumes/a.pdf");
+        verify(resumeRepository).delete(resume);
+        verify(userProfileRepository).delete(profile);
+    }
+
+    @Test
+    void addWorkExperience_invalidYearRange_failsValidation() {
+        WorkExperienceRequest request = new WorkExperienceRequest();
+        request.setCompanyName("Acme");
+        request.setJobTitle("Dev");
+        request.setStartYear(2023);
+        request.setEndYear(2020);
+
+        assertFalse(request.isEndYearValid());
+    }
+
+    @Test
+    void deleteWorkExperience_removesRow() {
+        WorkExperience experience = WorkExperience.builder().id(5L).userProfile(profile).build();
+
+        when(userProfileRepository.findByUser(user)).thenReturn(Optional.of(profile));
+        when(workExperienceRepository.findByIdAndUserProfile(5L, profile))
+                .thenReturn(Optional.of(experience));
+
+        userProfileService.deleteWorkExperience(5L);
+
+        verify(workExperienceRepository).delete(experience);
+    }
+}

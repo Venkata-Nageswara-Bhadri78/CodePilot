@@ -307,13 +307,15 @@ public class GlobalExceptionHandler {
    public ResponseEntity<ApiResponse<Void>> handleDuplicateResume(
                 DuplicateResumeException ex) {
 
-        return ResponseEntity.badRequest().body(
-                ApiResponse.<Void>builder()
-                        .success(false)
-                        .message(ex.getMessage())
-                        .timestamp(LocalDateTime.now())
-                        .build()
-        );
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(
+                        ApiResponse.<Void>builder()
+                                .success(false)
+                                .message(ex.getMessage())
+                                .timestamp(LocalDateTime.now())
+                                .build()
+                );
 
    }
 
