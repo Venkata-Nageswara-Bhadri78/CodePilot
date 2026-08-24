@@ -14,6 +14,8 @@ import com.developer.copilot.user.dto.profilelink.ProfileLinkResponse;
 import com.developer.copilot.user.dto.project.ProjectRequest;
 import com.developer.copilot.user.dto.project.ProjectResponse;
 import com.developer.copilot.user.service.UserProfileService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -23,9 +25,11 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Tag(name = "User - Profile", description = "User profile and career information")
 @RestController
 @RequestMapping("/api/v1/users/profile")
 @RequiredArgsConstructor
+@SecurityRequirement(name = "Bearer Authentication")
 public class UserProfileController {
 
     private final UserProfileService userProfileService;

@@ -1,5 +1,6 @@
 package com.developer.copilot.user.dto.experience;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -33,5 +34,13 @@ public class WorkExperienceRequest {
 
     @Size(max = 5000, message = "Description must not exceed 5000 characters.")
     private String description;
+
+    @AssertTrue(message = "End year must be greater than or equal to start year.")
+    public boolean isEndYearValid() {
+        if (endYear == null || startYear == null) {
+            return true;
+        }
+        return endYear >= startYear;
+    }
 
 }

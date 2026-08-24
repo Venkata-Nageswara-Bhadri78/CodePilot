@@ -1,5 +1,6 @@
 package com.developer.copilot.user.dto.education;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -33,5 +34,13 @@ public class EducationRequest {
 
     @Size(max = 50, message = "Score or grade must not exceed 50 characters.")
     private String scoreOrGrade;
+
+    @AssertTrue(message = "End year must be greater than or equal to start year.")
+    public boolean isEndYearValid() {
+        if (endYear == null || startYear == null) {
+            return true;
+        }
+        return endYear >= startYear;
+    }
 
 }
