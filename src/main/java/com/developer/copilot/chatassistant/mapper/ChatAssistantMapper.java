@@ -4,6 +4,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
 import com.developer.copilot.chatassistant.dto.response.ChatMessageResponse;
@@ -40,12 +41,16 @@ public class ChatAssistantMapper {
      *                resulting response's {@code chatSessionId}/{@code chatTitle} will be
      *                {@code null} and {@code messages} empty in that case.
      */
-    public ChatSessionResponse toSessionResponse(Long jobId, ChatSession session, List<ChatMessage> messages) {
+    public ChatSessionResponse toSessionResponse(Long jobId, ChatSession session, Page<ChatMessage> messagePage) {
         return ChatSessionResponse.builder()
                 .chatSessionId(session != null ? session.getId() : null)
                 .jobId(jobId)
                 .chatTitle(session != null ? session.getChatTitle() : null)
-                .messages(toMessageResponseList(messages))
+                .messages(toMessageResponseList(messagePage.getContent()))
+                .page(messagePage.getNumber())
+                .size(messagePage.getSize())
+                .totalElements(messagePage.getTotalElements())
+                .totalPages(messagePage.getTotalPages())
                 .build();
     }
 

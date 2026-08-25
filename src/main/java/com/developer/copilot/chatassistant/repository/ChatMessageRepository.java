@@ -2,6 +2,8 @@ package com.developer.copilot.chatassistant.repository;
 
 import java.util.List;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -12,6 +14,8 @@ import com.developer.copilot.chatassistant.entity.ChatMessage;
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> {
 
     List<ChatMessage> findAllByChatSessionIdOrderByTurnNumberAsc(Long chatSessionId);
+
+    Page<ChatMessage> findAllByChatSessionIdOrderByTurnNumberAsc(Long chatSessionId, Pageable pageable);
 
     int countByChatSessionId(Long chatSessionId);
 

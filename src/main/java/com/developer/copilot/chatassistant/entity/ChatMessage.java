@@ -13,6 +13,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -29,6 +30,9 @@ import lombok.Setter;
         name = "chat_messages",
         indexes = {
                 @Index(name = "idx_chat_message_session_turn", columnList = "chat_session_id, turn_number")
+        },
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uq_chat_message_session_turn", columnNames = {"chat_session_id", "turn_number"})
         }
 )
 @Getter

@@ -1,7 +1,9 @@
 package com.developer.copilot.common.exception;
 
 import java.time.LocalDateTime;
+import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -20,7 +22,6 @@ import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
 import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
-import com.developer.copilot.chatassistant.exception.ChatSessionNotFoundException;
 import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
@@ -96,19 +97,6 @@ public class GlobalExceptionHandler {
                 .body(response);
     }
 
-    @ExceptionHandler(ChatSessionNotFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleChatSessionNotFound(ChatSessionNotFoundException ex) {
-        ApiResponse<Void> response = ApiResponse.<Void>builder()
-                .success(false)
-                .message(ex.getMessage())
-                .timestamp(LocalDateTime.now())
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.NOT_FOUND)
-                .body(response);
-    }
-
     @ExceptionHandler(InvalidJobUrlException.class)
     public ResponseEntity<ApiResponse<Void>> handleInvalidJobUrl(InvalidJobUrlException ex) {
         ApiResponse<Void> response = ApiResponse.<Void>builder()
@@ -142,8 +130,10 @@ public class GlobalExceptionHandler {
             MethodArgumentNotValidException ex) {
 
         String message = ex.getBindingResult()
-                .getFieldError()
-                .getDefaultMessage();
+                .getFieldErrors()
+                .stream()
+                .map(fieldError -> fieldError.getField() + ": " + fieldError.getDefaultMessage())
+                .collect(Collectors.joining(", "));
 
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .success(false)
@@ -153,6 +143,21 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.warn("Data integrity violation: {}", ex.getMessage());
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message("The request conflicts with existing data. Please retry.")
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
                 .body(response);
     }
 

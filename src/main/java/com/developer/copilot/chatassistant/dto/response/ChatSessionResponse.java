@@ -26,11 +26,24 @@ public class ChatSessionResponse {
     @Schema(description = "Null if no chat has been started for this job yet")
     private Long chatSessionId;
 
+    @Schema(description = "ID of the job this chat belongs to", example = "42")
     private Long jobId;
 
     @Schema(description = "Deterministic title, e.g. 'Amazon - SDE 1'. Null if no chat started yet.")
     private String chatTitle;
 
-    @Schema(description = "All turns in chronological order. Empty if no chat started yet.")
+    @Schema(description = "Turns in chronological order for the requested page. Empty if no chat started yet.")
     private List<ChatMessageResponse> messages;
+
+    @Schema(description = "Zero-based index of the returned page", example = "0")
+    private Integer page;
+
+    @Schema(description = "Maximum number of turns per page", example = "50")
+    private Integer size;
+
+    @Schema(description = "Total number of turns across all pages", example = "3")
+    private Long totalElements;
+
+    @Schema(description = "Total number of pages available", example = "1")
+    private Integer totalPages;
 }
