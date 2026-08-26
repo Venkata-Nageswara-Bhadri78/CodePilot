@@ -64,6 +64,9 @@ class UserProfileServiceImplTest {
     @Mock
     private FileStorageService fileStorageService;
 
+    @Mock
+    private ResumeParsingService resumeParsingService;
+
     @Spy
     private UserProfileMapper userProfileMapper = new UserProfileMapper();
 
@@ -145,6 +148,7 @@ class UserProfileServiceImplTest {
 
         userProfileService.deleteProfile();
 
+        verify(resumeParsingService).deleteParsedDataFor(List.of(resume));
         verify(fileStorageService).delete("users/1/resumes/a.pdf");
         verify(resumeRepository).delete(resume);
         verify(userProfileRepository).delete(profile);

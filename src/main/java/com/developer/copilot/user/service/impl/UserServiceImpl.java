@@ -18,6 +18,7 @@ import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.mapper.ResumeMapper;
 import com.developer.copilot.user.repository.ResumeRepository;
 import com.developer.copilot.user.repository.UserProfileRepository;
+import com.developer.copilot.user.service.ResumeParsingService;
 import com.developer.copilot.user.service.UserService;
 import com.developer.copilot.user.util.PdfValidationUtil;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +41,7 @@ public class UserServiceImpl implements UserService {
     private final ResumeProperties resumeProperties;
     private final ResumeMapper resumeMapper;
     private final CurrentUserService currentUserService;
+    private final ResumeParsingService resumeParsingService;
 
     @Override
     @Transactional
@@ -102,6 +104,7 @@ public class UserServiceImpl implements UserService {
 
         try {
             resumeRepository.save(resume);
+            resumeParsingService.initializeAndScheduleParsing(resume);
         } catch (Exception ex) {
             fileStorageService.delete(storedFile.getStorageKey());
             throw ex;
@@ -171,6 +174,10 @@ public class UserServiceImpl implements UserService {
 
         boolean wasPrimary = resume.getHighPriority();
         String storageKey = resume.getStorageKey();
+
+        // The stored file is about to be removed, so the parsed data derived from it
+        // would be unverifiable and un-reparseable.
+        resumeParsingService.deleteParsedDataFor(resume);
 
         resume.setActive(false);
         resume.setHighPriority(false);
