@@ -54,6 +54,9 @@ class UserServiceImplTest {
     @Mock
     private CurrentUserService currentUserService;
 
+    @Mock
+    private ResumeParsingService resumeParsingService;
+
     @InjectMocks
     private UserServiceImpl userService;
 
@@ -125,6 +128,7 @@ class UserServiceImplTest {
 
         assertEquals(5L, response.getResumeId());
         verify(resumeRepository).save(argThat(r -> r.getHighPriority()));
+        verify(resumeParsingService).initializeAndScheduleParsing(argThat(r -> r.getId().equals(5L)));
     }
 
     @Test
@@ -178,6 +182,7 @@ class UserServiceImplTest {
 
         userService.deleteResume(2L);
 
+        verify(resumeParsingService).deleteParsedDataFor(primary);
         verify(resumeRepository).save(argThat(r -> r.getId().equals(3L) && r.getHighPriority()));
         verify(fileStorageService).delete("key-2");
     }

@@ -143,6 +143,13 @@
 			<artifactId>minio</artifactId>
 			<version>8.5.17</version>
 		</dependency>
+
+		<!-- PDF text extraction for resume parsing -->
+		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>pdfbox</artifactId>
+			<version>3.0.8</version>
+		</dependency>
 	</dependencies>
 
 	<dependencyManagement>

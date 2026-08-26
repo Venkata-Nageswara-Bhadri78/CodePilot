@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 
 @Configuration
 @EnableJpaAuditing
-@EnableConfigurationProperties(ResumeProperties.class)
+@EnableConfigurationProperties({ResumeProperties.class, InternalApiProperties.class})
 public class JpaConfig {
     
 }

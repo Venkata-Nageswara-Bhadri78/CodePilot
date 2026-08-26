@@ -37,6 +37,7 @@ import com.developer.copilot.user.exception.ProfileLinkNotFoundException;
 import com.developer.copilot.user.exception.ProjectNotFoundException;
 import com.developer.copilot.user.exception.ResumeLimitExceededException;
 import com.developer.copilot.user.exception.ResumeNotFoundException;
+import com.developer.copilot.user.exception.ResumeParsingException;
 import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.exception.WorkExperienceNotFoundException;
 
@@ -354,6 +355,21 @@ public class GlobalExceptionHandler {
                 ResumeLimitExceededException ex) {
 
         return ResponseEntity.badRequest()
+                .body(
+                        ApiResponse.<Void>builder()
+                                .success(false)
+                                .message(ex.getMessage())
+                                .timestamp(LocalDateTime.now())
+                                .build()
+                );
+
+    }
+
+    @ExceptionHandler(ResumeParsingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleResumeParsing(
+                ResumeParsingException ex) {
+
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(
                         ApiResponse.<Void>builder()
                                 .success(false)

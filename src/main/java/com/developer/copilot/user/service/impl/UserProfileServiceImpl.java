@@ -37,6 +37,7 @@ import com.developer.copilot.user.repository.ProfileLinkRepository;
 import com.developer.copilot.user.repository.ProjectRepository;
 import com.developer.copilot.user.repository.UserProfileRepository;
 import com.developer.copilot.user.repository.WorkExperienceRepository;
+import com.developer.copilot.user.service.ResumeParsingService;
 import com.developer.copilot.user.service.UserProfileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -57,6 +58,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     private final ProfileLinkRepository profileLinkRepository;
     private final ResumeRepository resumeRepository;
     private final FileStorageService fileStorageService;
+    private final ResumeParsingService resumeParsingService;
     private final UserProfileMapper userProfileMapper;
 
     // ─── Profile ─────────────────────────────────────────────────────────────
@@ -434,6 +436,10 @@ public class UserProfileServiceImpl implements UserProfileService {
 
     private void deleteResumesForProfile(UserProfile profile) {
         List<Resume> resumes = resumeRepository.findByUserProfile(profile);
+
+        // Parsed data references the resume rows, so it has to go first.
+        resumeParsingService.deleteParsedDataFor(resumes);
+
         for (Resume resume : resumes) {
             fileStorageService.delete(resume.getStorageKey());
             resumeRepository.delete(resume);

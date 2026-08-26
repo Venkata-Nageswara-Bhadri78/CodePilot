@@ -19,4 +19,29 @@ public class ResumeProperties {
      */
     private int maxFileSizeMb = 5;
 
+    /**
+     * Resume text extraction and parsing settings.
+     */
+    private Parsing parsing = new Parsing();
+
+    @Getter
+    @Setter
+    public static class Parsing {
+
+        /**
+         * Total parse attempts before a resume is marked permanently failed.
+         */
+        private int maxAttempts = 3;
+
+        /**
+         * Extracted text is truncated beyond this length to bound memory and column size.
+         */
+        private int maxTextLength = 200_000;
+
+        /**
+         * Stamped onto every parsed record so results produced by an older parser
+         * can be identified and re-parsed after the extraction logic changes.
+         */
+        private String parserVersion = "v1";
+    }
 }

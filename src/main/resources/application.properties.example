@@ -58,6 +58,16 @@ storage.auto-create-bucket=true
 resume.max-resume-count=10
 resume.max-file-size-mb=5
 
+# Resume Parsing Configuration
+resume.parsing.max-attempts=3
+resume.parsing.max-text-length=200000
+resume.parsing.parser-version=v1
+
+# Internal Service-To-Service API
+# Callers of /api/v1/internal/** must send this secret in the X-Internal-Api-Key header.
+internal.api.enabled=true
+internal.api.key=<generate-a-long-random-internal-service-key>
+
 
 # Google AI Studio API Key (or OpenAI API Key / Custom Agentic AI URL)
 spring.ai.openai.api-key=${GEMINI_API_KEY:THIS_IS_EXAMPLE_KEY}
