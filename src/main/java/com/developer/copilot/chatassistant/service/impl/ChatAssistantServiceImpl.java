@@ -1,12 +1,11 @@
 package com.developer.copilot.chatassistant.service.impl;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,19 +14,17 @@ import com.developer.copilot.ai.dto.request.JobChatAiRequest;
 import com.developer.copilot.ai.dto.response.AiChatResponse;
 import com.developer.copilot.ai.service.AiService;
 import com.developer.copilot.auth.entity.User;
-import com.developer.copilot.auth.exception.InvalidCredentialsException;
-import com.developer.copilot.auth.repository.UserRepository;
 import com.developer.copilot.chatassistant.dto.request.SendChatMessageRequest;
 import com.developer.copilot.chatassistant.dto.response.ChatSessionResponse;
 import com.developer.copilot.chatassistant.dto.response.ChatSessionSummaryResponse;
 import com.developer.copilot.chatassistant.dto.response.SendChatMessageResponse;
 import com.developer.copilot.chatassistant.entity.ChatMessage;
 import com.developer.copilot.chatassistant.entity.ChatSession;
-import com.developer.copilot.chatassistant.exception.ChatSessionNotFoundException;
 import com.developer.copilot.chatassistant.mapper.ChatAssistantMapper;
 import com.developer.copilot.chatassistant.repository.ChatMessageRepository;
 import com.developer.copilot.chatassistant.repository.ChatSessionRepository;
 import com.developer.copilot.chatassistant.service.ChatAssistantService;
+import com.developer.copilot.common.security.CurrentUserService;
 import com.developer.copilot.jobs.entity.JobEntity;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
 import com.developer.copilot.jobs.repository.JobRepository;
@@ -49,9 +46,9 @@ public class ChatAssistantServiceImpl implements ChatAssistantService {
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final JobRepository jobRepository;
-    private final UserRepository userRepository;
     private final AiService aiService;
     private final ChatAssistantMapper chatAssistantMapper;
+    private final CurrentUserService currentUserService;
 
     @Override
     @Transactional
@@ -59,8 +56,12 @@ public class ChatAssistantServiceImpl implements ChatAssistantService {
         User currentUser = getCurrentUser();
         JobEntity job = getJobForCurrentUser(jobId, currentUser);
 
-        ChatSession session = chatSessionRepository.findByJobId(jobId)
-                .orElseGet(() -> createSession(job, currentUser));
+        Optional<ChatSession> existingSession = chatSessionRepository.findByJobId(jobId);
+        ChatSession session = existingSession.orElseGet(() -> createSession(job, currentUser));
+        if (existingSession.isEmpty()) {
+            log.info("Created new chat session: chatSessionId={} jobId={} userId={}",
+                    session.getId(), jobId, currentUser.getId());
+        }
 
         List<ChatMessage> priorMessages = chatMessageRepository.findAllByChatSessionIdOrderByTurnNumberAsc(session.getId());
         List<ChatTurnDto> priorTurns = priorMessages.stream()
@@ -76,7 +77,13 @@ public class ChatAssistantServiceImpl implements ChatAssistantService {
                 .newPrompt(request.getPrompt())
                 .build();
 
-        AiChatResponse aiResponse = aiService.continueJobChat(aiRequest, currentUser.getEmail());
+        AiChatResponse aiResponse;
+        try {
+            aiResponse = aiService.continueJobChat(aiRequest, currentUser.getEmail());
+        } catch (RuntimeException e) {
+            log.error("AI service failed for jobId={} userId={}: {}", jobId, currentUser.getId(), e.getMessage());
+            throw e;
+        }
 
         ChatMessage newMessage = ChatMessage.builder()
                 .chatSession(session)
@@ -85,6 +92,9 @@ public class ChatAssistantServiceImpl implements ChatAssistantService {
                 .aiResponse(aiResponse.getContent())
                 .build();
         chatMessageRepository.save(newMessage);
+
+        log.info("Message sent: chatSessionId={} turnNumber={} userId={}",
+                session.getId(), newMessage.getTurnNumber(), currentUser.getId());
 
         return SendChatMessageResponse.builder()
                 .chatSessionId(session.getId())
@@ -95,17 +105,17 @@ public class ChatAssistantServiceImpl implements ChatAssistantService {
 
     @Override
     @Transactional(readOnly = true)
-    public ChatSessionResponse getChatHistory(Long jobId) {
+    public ChatSessionResponse getChatHistory(Long jobId, Pageable pageable) {
         User currentUser = getCurrentUser();
         getJobForCurrentUser(jobId, currentUser);
 
         Optional<ChatSession> sessionOptional = chatSessionRepository.findByJobId(jobId);
         if (sessionOptional.isEmpty()) {
-            return chatAssistantMapper.toSessionResponse(jobId, null, Collections.emptyList());
+            return chatAssistantMapper.toSessionResponse(jobId, null, Page.empty(pageable));
         }
 
         ChatSession session = sessionOptional.get();
-        List<ChatMessage> messages = chatMessageRepository.findAllByChatSessionIdOrderByTurnNumberAsc(session.getId());
+        Page<ChatMessage> messages = chatMessageRepository.findAllByChatSessionIdOrderByTurnNumberAsc(session.getId(), pageable);
         return chatAssistantMapper.toSessionResponse(jobId, session, messages);
     }
 
@@ -123,11 +133,18 @@ public class ChatAssistantServiceImpl implements ChatAssistantService {
         User currentUser = getCurrentUser();
         getJobForCurrentUser(jobId, currentUser);
 
-        ChatSession session = chatSessionRepository.findByJobId(jobId)
-                .orElseThrow(() -> new ChatSessionNotFoundException("No chat found for job id: " + jobId));
+        Optional<ChatSession> sessionOptional = chatSessionRepository.findByJobId(jobId);
+        if (sessionOptional.isEmpty()) {
+            log.info("Delete requested for job with no chat session (idempotent no-op): jobId={} userId={}",
+                    jobId, currentUser.getId());
+            return;
+        }
 
+        ChatSession session = sessionOptional.get();
         chatMessageRepository.deleteByChatSessionId(session.getId());
         chatSessionRepository.delete(session);
+
+        log.info("Chat deleted: chatSessionId={} jobId={} userId={}", session.getId(), jobId, currentUser.getId());
     }
 
     private ChatSession createSession(JobEntity job, User currentUser) {
@@ -141,6 +158,9 @@ public class ChatAssistantServiceImpl implements ChatAssistantService {
 
     /**
      * Deterministic chat title - "{Company} - {Title}" - no AI call needed just to name a chat.
+     * Computed once, at session creation, and intentionally never recomputed afterwards: the
+     * chat title is a snapshot of the job at the time the conversation started, not a live
+     * mirror of the job's current title/company.
      */
     private String buildChatTitle(JobEntity job) {
         String company = job.getCompany() != null ? job.getCompany().trim() : "";
@@ -152,13 +172,7 @@ public class ChatAssistantServiceImpl implements ChatAssistantService {
     }
 
     private User getCurrentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            throw new InvalidCredentialsException("User is not authenticated.");
-        }
-        String email = authentication.getName();
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> new InvalidCredentialsException("User account not found."));
+        return currentUserService.getCurrentUser();
     }
 
     private JobEntity getJobForCurrentUser(Long jobId, User currentUser) {

@@ -21,9 +21,12 @@ import lombok.Setter;
 @Schema(description = "Result of sending a new chat message")
 public class SendChatMessageResponse {
 
+    @Schema(description = "Session ID of the chat", example = "15")
     private Long chatSessionId;
 
+    @Schema(description = "Auto-generated title, e.g. 'Amazon - SDE 1'", example = "Amazon - SDE 1")
     private String chatTitle;
 
+    @Schema(description = "The newly created turn")
     private ChatMessageResponse latestTurn;
 }

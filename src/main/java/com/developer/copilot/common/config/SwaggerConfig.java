@@ -22,11 +22,12 @@ public class SwaggerConfig {
 
                 .info(new Info()
                         .title("Copilot REST API")
-                        .description("Backend APIs for Copilot Application")
+                        .description("Backend APIs for Copilot - a career assistant platform. "
+                                + "All endpoints (except auth) require a Bearer JWT obtained from /api/v1/auth/login.")
                         .version("v1.0.0")
                         .contact(new Contact()
                                 .name("Bhadri Venkata Nageswara")
-                                .email("your-email@example.com"))
+                                .email("support@copilot.dev"))
                         .license(new License()
                                 .name("Apache 2.0")))
 

@@ -2,6 +2,8 @@ package com.developer.copilot.chatassistant.service;
 
 import java.util.List;
 
+import org.springframework.data.domain.Pageable;
+
 import com.developer.copilot.chatassistant.dto.request.SendChatMessageRequest;
 import com.developer.copilot.chatassistant.dto.response.ChatSessionResponse;
 import com.developer.copilot.chatassistant.dto.response.ChatSessionSummaryResponse;
@@ -21,10 +23,12 @@ public interface ChatAssistantService {
     SendChatMessageResponse sendMessage(Long jobId, SendChatMessageRequest request);
 
     /**
-     * Returns the full chat (title + ordered turns) for the given job, or an empty result
+     * Returns a page of the chat (title + ordered turns) for the given job, or an empty result
      * (not a 404) if no conversation has been started yet.
+     *
+     * @param pageable requested page/size of turns, ordered oldest-first
      */
-    ChatSessionResponse getChatHistory(Long jobId);
+    ChatSessionResponse getChatHistory(Long jobId, Pageable pageable);
 
     /**
      * Lists all chat sessions owned by the current user, most-recently-updated first.
@@ -33,8 +37,8 @@ public interface ChatAssistantService {
 
     /**
      * Deletes the entire chat history for a job so the user can start a fresh conversation.
-     *
-     * @throws com.developer.copilot.chatassistant.exception.ChatSessionNotFoundException if no chat exists for that job
+     * Idempotent - if no chat exists for the job, this is a successful no-op rather than an
+     * error, matching standard REST DELETE semantics.
      */
     void deleteChat(Long jobId);
 }
