@@ -1,7 +1,10 @@
 package com.developer.copilot.ai.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,36 +14,49 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Request payload for AI chat and situational prompts")
+@Schema(description = "Request payload for AI chat and situational prompts. "
+        + "Context precedence: customResumeText overrides resumeId; jobDescription overrides jobId. "
+        + "IDs must belong to the authenticated user.")
 public class AiChatRequest {
 
     @NotBlank(message = "Prompt cannot be blank.")
-    @Schema(description = "User situational prompt or question (e.g., 'Generate cold email for hiring manager', 'Rate my resume across JD')",
-            example = "Rate my resume against this job description and suggest 3 high-impact improvements.")
+    @Size(max = 8000, message = "Prompt cannot exceed 8000 characters.")
+    @Schema(description = "User situational prompt or question",
+            example = "Rate my resume against this job description and suggest 3 high-impact improvements.",
+            maxLength = 8000)
     private String prompt;
 
-    @Schema(description = "Job description text or structured JSON context",
-            example = "Senior Full Stack Java Engineer required with 3+ years experience in Spring Boot, React, and AWS.")
+    @Size(max = 50000, message = "Job description cannot exceed 50000 characters.")
+    @Schema(description = "Inline job description text. When present, overrides jobId.",
+            example = "Senior Full Stack Java Engineer required with 3+ years experience in Spring Boot, React, and AWS.",
+            maxLength = 50000)
     private String jobDescription;
 
-    @Schema(description = "Optional Job ID to reference existing saved job in Copilot database",
+    @Schema(description = "Saved job ID owned by the authenticated user. Ignored when jobDescription is provided.",
             example = "1")
     private Long jobId;
 
-    @Schema(description = "Optional Resume ID to reference a specific uploaded resume owned by the user",
+    @Schema(description = "Resume ID owned by the authenticated user. Ignored when customResumeText is provided.",
             example = "5")
     private Long resumeId;
 
-    @Schema(description = "Optional custom resume text to override the default stored user resume context",
-            example = "Venkata Nageswara - Senior Java Full Stack Developer with 4 years experience...")
+    @Size(max = 50000, message = "Custom resume text cannot exceed 50000 characters.")
+    @Schema(description = "Inline resume text that overrides resumeId and the high-priority resume.",
+            example = "Senior Java Full Stack Developer with 4 years experience...",
+            maxLength = 50000)
     private String customResumeText;
 
     @Builder.Default
-    @Schema(description = "Situational mode to guide AI prompt persona and output structure",
+    @Schema(description = "Situational mode guiding AI persona and output structure. "
+            + "GENERAL_CHAT (default), RESUME_REVIEW, COVER_LETTER, COLD_EMAIL, INTERVIEW_PREP, MATCH_ANALYSIS.",
             example = "GENERAL_CHAT")
     private AiMode mode = AiMode.GENERAL_CHAT;
 
-    @Schema(description = "Optional temperature override (0.0 to 1.0) for creativity control",
-            example = "0.7")
+    @DecimalMin(value = "0.0", message = "Temperature must be at least 0.0.")
+    @DecimalMax(value = "2.0", message = "Temperature must be at most 2.0.")
+    @Schema(description = "Optional creativity control from 0.0 (deterministic) to 2.0. Applied when provided.",
+            example = "0.7",
+            minimum = "0.0",
+            maximum = "2.0")
     private Double temperature;
 }
