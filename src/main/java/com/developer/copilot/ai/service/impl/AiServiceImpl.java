@@ -153,7 +153,7 @@ public class AiServiceImpl implements AiService {
 
     @Override
     public String getResumeContext(String userEmail) {
-        return resumeContextService.getResumeContext(userEmail);
+        return resumeContextService.getResumeContext(null);
     }
 
     /**
@@ -226,7 +226,7 @@ public class AiServiceImpl implements AiService {
         log.info("Continuing job chat for user: {}, jobId: {}, turn: {}", userEmail, request.getJobId(), turnNumber);
 
         try {
-            String resumeText = resolveResumeText(request.getCustomResumeText(), userEmail);
+            String resumeText = resolveResumeText(request.getCustomResumeText(), request.getResumeId());
             String jobDescription = resolveJobDescriptionByJobId(request.getJobId(), userEmail);
 
             String systemPrompt = promptTemplateService.buildJobChatSystemPrompt(resumeText, jobDescription);
@@ -297,14 +297,14 @@ public class AiServiceImpl implements AiService {
      * Resolves candidate resume context from custom request override or default resume service.
      */
     private String resolveResumeText(AiChatRequest request, String userEmail) {
-        return resolveResumeText(request.getCustomResumeText(), userEmail);
+        return resolveResumeText(request.getCustomResumeText(), request.getResumeId());
     }
 
-    private String resolveResumeText(String customResumeText, String userEmail) {
+    private String resolveResumeText(String customResumeText, Long resumeId) {
         if (customResumeText != null && !customResumeText.isBlank()) {
             return customResumeText.trim();
         }
-        return resumeContextService.getResumeContext(userEmail);
+        return resumeContextService.getResumeContext(resumeId);
     }
 
     /**

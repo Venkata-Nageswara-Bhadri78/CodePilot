@@ -68,7 +68,6 @@ resume.parsing.parser-version=v1
 internal.api.enabled=true
 internal.api.key=<generate-a-long-random-internal-service-key>
 
-
 # Google AI Studio API Key (or OpenAI API Key / Custom Agentic AI URL)
 spring.ai.openai.api-key=${GEMINI_API_KEY:THIS_IS_EXAMPLE_KEY}
 spring.ai.openai.base-url=https://generativelanguage.googleapis.com/v1beta/openai/
