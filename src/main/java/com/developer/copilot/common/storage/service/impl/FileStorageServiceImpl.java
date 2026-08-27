@@ -7,11 +7,13 @@ import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.StatObjectArgs;
+import io.minio.errors.ErrorResponseException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.developer.copilot.common.storage.dto.StoredFile;
@@ -26,6 +28,7 @@ import org.springframework.core.io.InputStreamResource;
 
 
 import java.io.ByteArrayInputStream;
+import java.util.Locale;
 import java.util.UUID;
 
 @Slf4j
@@ -33,16 +36,21 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class FileStorageServiceImpl implements FileStorageService {
 
+    private static final String PDF_CONTENT_TYPE = "application/pdf";
+    private static final byte[] PDF_MAGIC = new byte[]{'%', 'P', 'D', 'F'};
+
     private final MinioClient minioClient;
     private final StorageProperties storageProperties;
 
     @Override
     public StoredFile upload(MultipartFile file, String folderPath) {
+        String safeFolder = validateFolderPath(folderPath);
+        validatePdfUpload(file);
 
         try {
             byte[] fileBytes = file.getBytes();
             String checksum = ChecksumUtil.generateSha256(new ByteArrayInputStream(fileBytes));
-            String storageKey = folderPath + "/" + UUID.randomUUID() + ".pdf";
+            String storageKey = safeFolder + "/" + UUID.randomUUID() + ".pdf";
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(storageProperties.getBucketName())
@@ -52,7 +60,7 @@ public class FileStorageServiceImpl implements FileStorageService {
                                     fileBytes.length,
                                     -1
                             )
-                            .contentType(file.getContentType())
+                            .contentType(PDF_CONTENT_TYPE)
                             .build()
             );
 
@@ -61,10 +69,12 @@ public class FileStorageServiceImpl implements FileStorageService {
             return StoredFile.builder()
                     .storageKey(storageKey)
                     .originalFilename(file.getOriginalFilename())
-                    .contentType(file.getContentType())
+                    .contentType(PDF_CONTENT_TYPE)
                     .fileSize(file.getSize())
                     .checksum(checksum)
                     .build();
+        } catch (StorageException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new StorageException("Failed to upload file.", ex);
         }
@@ -72,13 +82,14 @@ public class FileStorageServiceImpl implements FileStorageService {
     }
 
     @Override
-    public Resource download(String folderPath) {
+    public Resource download(String storageKey) {
+        String safeKey = validateStorageKey(storageKey);
         try {
             return new InputStreamResource(
                     minioClient.getObject(
                             GetObjectArgs.builder()
                                     .bucket(storageProperties.getBucketName())
-                                    .object(folderPath)
+                                    .object(safeKey)
                                     .build()
                     )
             );
@@ -90,32 +101,42 @@ public class FileStorageServiceImpl implements FileStorageService {
     }
 
     @Override
-    public void delete(String folderPath) {
+    public void delete(String storageKey) {
+        String safeKey = validateStorageKey(storageKey);
         try {
             minioClient.removeObject(
                     RemoveObjectArgs.builder()
                             .bucket(storageProperties.getBucketName())
-                            .object(folderPath)
+                            .object(safeKey)
                             .build()
             );
-            log.info("File deleted successfully : {}", folderPath);
+            log.info("File deleted successfully : {}", safeKey);
         } catch (Exception ex) {
             throw new StorageException("Failed to delete file.", ex);
         }
     }
 
     @Override
-    public boolean exists(String folderPath) {
+    public boolean exists(String storageKey) {
+        String safeKey = validateStorageKey(storageKey);
         try {
             minioClient.statObject(
                     StatObjectArgs.builder()
                             .bucket(storageProperties.getBucketName())
-                            .object(folderPath)
+                            .object(safeKey)
                             .build()
             );
             return true;
+        } catch (ErrorResponseException ex) {
+            String code = ex.errorResponse() != null ? ex.errorResponse().code() : null;
+            if ("NoSuchKey".equals(code) || "NoSuchObject".equals(code) || "NotFound".equals(code)) {
+                return false;
+            }
+            throw new StorageException("Failed to check file existence.", ex);
+        } catch (StorageException ex) {
+            throw ex;
         } catch (Exception ex) {
-            return false;
+            throw new StorageException("Failed to check file existence.", ex);
         }
     }
 
@@ -155,6 +176,79 @@ public class FileStorageServiceImpl implements FileStorageService {
 
         }
 
+    }
+
+    private void validatePdfUpload(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new StorageException("Uploaded file is empty.");
+        }
+        String contentType = file.getContentType();
+        if (contentType != null && !contentType.toLowerCase(Locale.ROOT).contains("pdf")) {
+            throw new StorageException("Only PDF uploads are supported.");
+        }
+        String originalName = file.getOriginalFilename();
+        if (StringUtils.hasText(originalName)
+                && !originalName.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
+            throw new StorageException("Only PDF uploads are supported.");
+        }
+        try {
+            byte[] header = file.getInputStream().readNBytes(4);
+            if (header.length < 4
+                    || header[0] != PDF_MAGIC[0]
+                    || header[1] != PDF_MAGIC[1]
+                    || header[2] != PDF_MAGIC[2]
+                    || header[3] != PDF_MAGIC[3]) {
+                throw new StorageException("Only PDF uploads are supported.");
+            }
+        } catch (StorageException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new StorageException("Failed to validate uploaded file.", ex);
+        }
+    }
+
+    private String validateFolderPath(String folderPath) {
+        if (!StringUtils.hasText(folderPath)) {
+            throw new StorageException("Storage folder path is required.");
+        }
+        String normalized = folderPath.replace('\\', '/').trim();
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        rejectUnsafePath(normalized);
+        return normalized;
+    }
+
+    private String validateStorageKey(String storageKey) {
+        if (!StringUtils.hasText(storageKey)) {
+            throw new StorageException("Storage key is required.");
+        }
+        String normalized = storageKey.replace('\\', '/').trim();
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        rejectUnsafePath(normalized);
+        return normalized;
+    }
+
+    private void rejectUnsafePath(String path) {
+        if (path.contains("..") || path.contains("//")) {
+            throw new StorageException("Invalid storage path.");
+        }
+        for (String segment : path.split("/")) {
+            if (!StringUtils.hasText(segment) || ".".equals(segment) || "..".equals(segment)) {
+                throw new StorageException("Invalid storage path.");
+            }
+            for (int i = 0; i < segment.length(); i++) {
+                char c = segment.charAt(i);
+                if (!(Character.isLetterOrDigit(c) || c == '-' || c == '_' || c == '.')) {
+                    throw new StorageException("Invalid storage path.");
+                }
+            }
+        }
     }
 
 }

@@ -224,10 +224,11 @@ public class PromptTemplateService {
                 ## Absolute Rules
 
                 1. Extract information ONLY if it is explicitly present in the pasted job posting text below.
-                2. NEVER invent, infer beyond what is stated, guess, or hallucinate any value. Zero imagination.
+                2. NEVER invent, infer, guess, or hallucinate any value. Zero imagination. Do not infer
+                   industry from company name, and do not guess sourcePlatform from the URL alone.
                 3. If a field's value is not clearly present in the pasted text, its value MUST be an empty
-                   string ("") for text fields or an empty array ([]) for list fields. Never fabricate a
-                   plausible-sounding value to fill a gap.
+                   string ("") for text fields or an empty array ([]) for list fields — including industry
+                   and sourcePlatform. Never fabricate a plausible-sounding value to fill a gap.
                 4. Do not copy unrelated page noise (navigation links, cookie banners, "Apply Now" buttons,
                    related-jobs lists, footer text) into any field.
                 5. The "description" field must be a faithful, concise summary using only wording and facts

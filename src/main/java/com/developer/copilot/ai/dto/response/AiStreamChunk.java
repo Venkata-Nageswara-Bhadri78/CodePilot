@@ -21,7 +21,7 @@ public class AiStreamChunk {
     @Schema(description = "Indicates whether the stream has completed", example = "false")
     private boolean isCompleted;
 
-    @Schema(description = "Finish reason when stream finishes (e.g., STOP, LENGTH)", example = "STOP")
+    @Schema(description = "Finish reason when stream finishes: STOP on success, ERROR on failure", example = "STOP")
     private String finishReason;
 
     @Schema(description = "LLM model used", example = "gemini-flash-latest")

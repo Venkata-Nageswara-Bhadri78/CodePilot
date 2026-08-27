@@ -14,22 +14,33 @@ import lombok.Data;
 public class AiProperties {
 
     /**
-     * Active AI Provider: gemini, openai, custom-agentic-ai.
+     * Active AI provider label used in health/metadata responses (e.g. gemini, openai).
      */
     private String provider = "gemini";
 
     /**
-     * Default model identifier (e.g. gemini-flash-latest, gemini-2.0-flash, gpt-4o).
+     * Default model identifier applied to ChatClient invocations and response metadata.
      */
     private String defaultModel = "gemini-flash-latest";
 
     /**
-     * Maximum streaming timeout in seconds.
+     * Timeout in seconds for all AI provider calls (synchronous and streaming).
      */
-    private int streamingTimeoutSeconds = 60;
+    private int timeoutSeconds = 60;
 
     /**
-     * Future dedicated Agentic AI / Private LLM server URL.
+     * @deprecated Prefer {@link #timeoutSeconds}. Kept for backward-compatible property binding.
      */
-    private String agenticServerUrl = "http://localhost:8000/v1";
+    @Deprecated
+    public void setStreamingTimeoutSeconds(int streamingTimeoutSeconds) {
+        this.timeoutSeconds = streamingTimeoutSeconds;
+    }
+
+    /**
+     * @deprecated Prefer {@link #getTimeoutSeconds()}.
+     */
+    @Deprecated
+    public int getStreamingTimeoutSeconds() {
+        return timeoutSeconds;
+    }
 }

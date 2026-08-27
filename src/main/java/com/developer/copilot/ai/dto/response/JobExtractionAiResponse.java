@@ -62,12 +62,13 @@ public class JobExtractionAiResponse {
     @JsonPropertyDescription("Team or department exactly as stated, e.g. 'Core Engineering'. Empty string if not present.")
     private String department;
 
-    @JsonPropertyDescription("Industry or business domain of the hiring company, e.g. 'Financial Technology'. "
-            + "Empty string if not present or not clearly inferable.")
+    @JsonPropertyDescription("Industry or business domain ONLY when the posting explicitly states it "
+            + "(e.g. 'Financial Technology'). Empty string \"\" if the posting does not explicitly name an industry — "
+            + "never infer from company name or general knowledge.")
     private String industry;
 
-    @JsonPropertyDescription("The platform or site this posting text most likely originated from, e.g. 'LinkedIn', "
-            + "'Naukri', 'Company Career Site'. Empty string if not determinable.")
+    @JsonPropertyDescription("Source platform ONLY when the pasted text explicitly names it "
+            + "(e.g. 'LinkedIn', 'Naukri'). Empty string \"\" if not explicitly present — never guess the site.")
     private String sourcePlatform;
 
     @JsonPropertyDescription("A concise, cleaned-up plain-text summary of the role and its responsibilities, "

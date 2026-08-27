@@ -20,6 +20,7 @@ import com.developer.copilot.auth.exception.PasswordResetTokenExpiredException;
 import com.developer.copilot.auth.exception.PasswordResetTokenUsedException;
 import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
+import com.developer.copilot.ai.exception.AiResumePendingException;
 import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.common.dto.ApiResponse;
@@ -56,6 +57,32 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_GATEWAY)
+                .body(response);
+    }
+
+    @ExceptionHandler(AiResumePendingException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAiResumePending(AiResumePendingException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(response);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
                 .body(response);
     }
 
@@ -389,11 +416,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleStorage(
                 StorageException ex) {
 
+        log.error("Storage operation failed: {}", ex.getMessage(), ex);
+
         return ResponseEntity.internalServerError()
                 .body(
                         ApiResponse.<Void>builder()
                                 .success(false)
-                                .message(ex.getMessage())
+                                .message("A file storage error occurred. Please try again later.")
                                 .timestamp(LocalDateTime.now())
                                 .build()
                 );
