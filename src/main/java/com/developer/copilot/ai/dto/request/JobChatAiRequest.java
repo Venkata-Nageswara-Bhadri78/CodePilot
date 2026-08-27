@@ -27,6 +27,9 @@ public class JobChatAiRequest {
     @Schema(description = "The job this conversation is grounded in", example = "123")
     private Long jobId;
 
+    @Schema(description = "Optional Resume ID to reference a specific uploaded resume owned by the user")
+    private Long resumeId;
+
     @Schema(description = "Optional custom resume text to override the default stored user resume context")
     private String customResumeText;
 

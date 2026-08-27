@@ -98,7 +98,7 @@ class AiServiceImplTest {
     void continueJobChat_firstTurn_buildsSystemPromptOnceAndSendsOnlyNewPrompt() {
         when(userRepository.findByEmail(USER_EMAIL)).thenReturn(Optional.of(testUser));
         when(jobRepository.findByIdAndUserId(JOB_ID, testUser.getId())).thenReturn(Optional.of(testJob));
-        when(resumeContextService.getResumeContext(USER_EMAIL)).thenReturn("resume text");
+        when(resumeContextService.getResumeContext(null)).thenReturn("resume text");
         when(promptTemplateService.buildJobChatSystemPrompt("resume text", "Cleaned job description text."))
                 .thenReturn("SYSTEM_PROMPT");
         when(aiProperties.getDefaultModel()).thenReturn("gemini-flash-latest");
@@ -130,7 +130,7 @@ class AiServiceImplTest {
     void continueJobChat_withPriorTurns_rebuildsFullHistoryAndBuildsSystemPromptExactlyOnce() {
         when(userRepository.findByEmail(USER_EMAIL)).thenReturn(Optional.of(testUser));
         when(jobRepository.findByIdAndUserId(JOB_ID, testUser.getId())).thenReturn(Optional.of(testJob));
-        when(resumeContextService.getResumeContext(USER_EMAIL)).thenReturn("resume text");
+        when(resumeContextService.getResumeContext(null)).thenReturn("resume text");
         when(promptTemplateService.buildJobChatSystemPrompt(anyString(), anyString())).thenReturn("SYSTEM_PROMPT");
         when(aiProperties.getDefaultModel()).thenReturn("gemini-flash-latest");
         stubChatClientChain("Third answer");
@@ -173,7 +173,7 @@ class AiServiceImplTest {
     void continueJobChat_aiCallFails_throwsAiServiceException() {
         when(userRepository.findByEmail(USER_EMAIL)).thenReturn(Optional.of(testUser));
         when(jobRepository.findByIdAndUserId(JOB_ID, testUser.getId())).thenReturn(Optional.of(testJob));
-        when(resumeContextService.getResumeContext(USER_EMAIL)).thenReturn("resume text");
+        when(resumeContextService.getResumeContext(null)).thenReturn("resume text");
         when(promptTemplateService.buildJobChatSystemPrompt(anyString(), anyString())).thenReturn("SYSTEM_PROMPT");
         when(chatClient.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(anyString())).thenReturn(requestSpec);

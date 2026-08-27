@@ -27,6 +27,10 @@ public class AiChatRequest {
             example = "1")
     private Long jobId;
 
+    @Schema(description = "Optional Resume ID to reference a specific uploaded resume owned by the user",
+            example = "5")
+    private Long resumeId;
+
     @Schema(description = "Optional custom resume text to override the default stored user resume context",
             example = "Venkata Nageswara - Senior Java Full Stack Developer with 4 years experience...")
     private String customResumeText;

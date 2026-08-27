@@ -36,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @Validated
 @SecurityRequirement(name = "Bearer Authentication")
+@SecurityRequirement(name = "InternalApiKey")
 public class InternalResumeController {
 
     private final ResumeParsingService resumeParsingService;
