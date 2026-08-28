@@ -29,6 +29,7 @@ import com.developer.copilot.jobs.exception.JobNotFoundException;
 import com.developer.copilot.jobs.exception.JobValidationException;
 
 import lombok.extern.slf4j.Slf4j;
+import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
 import com.developer.copilot.user.exception.AdditionalProfileInformationNotFoundException;
 import com.developer.copilot.user.exception.DuplicateResumeException;
@@ -73,8 +74,20 @@ public class GlobalExceptionHandler {
                 .body(response);
     }
 
+    /**
+     * {@code IllegalArgumentException} is used across the codebase for intentional,
+     * hardcoded business-validation messages (e.g. "Prior turns cannot exceed 40 entries."),
+     * so it is still mapped to 400 here for backward compatibility. However, this exception
+     * type is also thrown by the JDK/libraries for reasons unrelated to a bad client request
+     * (a null passed where not expected, an invalid enum lookup, etc.), in which case the
+     * client would misleadingly see "bad request" for what is actually a server-side bug.
+     * The WARN log below at least gives operators a signal to investigate if this handler
+     * fires for an exception type/message that was never meant to reach a client.
+     */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
+        log.warn("IllegalArgumentException mapped to 400: {}", ex.getMessage());
+
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .success(false)
                 .message(ex.getMessage())
@@ -427,6 +440,26 @@ public class GlobalExceptionHandler {
                                 .build()
                 );
 
+    }
+
+    /**
+     * Client-caused file validation failures (wrong type, empty file, malformed folder/key).
+     * Logged at WARN, not ERROR, so expected "user uploaded the wrong thing" events don't
+     * pollute the same log signal used to alert on real storage infrastructure failures.
+     */
+    @ExceptionHandler(InvalidFileException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidFile(InvalidFileException ex) {
+        log.warn("Rejected file operation: {}", ex.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(
+                        ApiResponse.<Void>builder()
+                                .success(false)
+                                .message(ex.getMessage())
+                                .timestamp(LocalDateTime.now())
+                                .build()
+                );
     }
 
     @ExceptionHandler(UserProfileNotFoundException.class)

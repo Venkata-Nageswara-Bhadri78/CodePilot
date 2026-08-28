@@ -112,6 +112,33 @@ class UrlNormalizationUtilTest {
     }
 
     @Test
+    void normalizeLenient_BlankInput_ReturnsTrimmedEmptyStringNotNull() {
+        String result = urlNormalizationUtil.normalizeLenient("   ");
+        assertNotNull(result);
+        assertEquals("", result);
+    }
+
+    @Test
+    void normalizeStrict_RootPath_PreservedAsIs() {
+        assertEquals("https://example.com/",
+                urlNormalizationUtil.normalizeStrict("https://example.com/"));
+        assertEquals("https://example.com/",
+                urlNormalizationUtil.normalizeStrict("https://example.com"));
+    }
+
+    @Test
+    void normalizeStrict_NonDefaultPort_IsPreserved() {
+        assertEquals("https://example.com:8443/jobs/42",
+                urlNormalizationUtil.normalizeStrict("https://example.com:8443/jobs/42"));
+    }
+
+    @Test
+    void normalizeStrict_MissingHost_ThrowsInvalidJobUrlException() {
+        assertThrows(InvalidJobUrlException.class,
+                () -> urlNormalizationUtil.normalizeStrict("http:///jobs/42"));
+    }
+
+    @Test
     void sha256Hex_IsStableAndDeterministic() {
         String hash1 = urlNormalizationUtil.sha256Hex("https://example.com/jobs/1");
         String hash2 = urlNormalizationUtil.sha256Hex("https://example.com/jobs/1");

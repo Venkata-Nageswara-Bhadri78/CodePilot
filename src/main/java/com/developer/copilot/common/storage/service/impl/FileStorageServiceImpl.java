@@ -17,6 +17,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.developer.copilot.common.storage.dto.StoredFile;
+import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
 import com.developer.copilot.common.storage.util.ChecksumUtil;
 import io.minio.PutObjectArgs;
@@ -73,7 +74,7 @@ public class FileStorageServiceImpl implements FileStorageService {
                     .fileSize(file.getSize())
                     .checksum(checksum)
                     .build();
-        } catch (StorageException ex) {
+        } catch (InvalidFileException | StorageException ex) {
             throw ex;
         } catch (Exception ex) {
             throw new StorageException("Failed to upload file.", ex);
@@ -180,16 +181,16 @@ public class FileStorageServiceImpl implements FileStorageService {
 
     private void validatePdfUpload(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new StorageException("Uploaded file is empty.");
+            throw new InvalidFileException("Uploaded file is empty.");
         }
         String contentType = file.getContentType();
         if (contentType != null && !contentType.toLowerCase(Locale.ROOT).contains("pdf")) {
-            throw new StorageException("Only PDF uploads are supported.");
+            throw new InvalidFileException("Only PDF uploads are supported.");
         }
         String originalName = file.getOriginalFilename();
         if (StringUtils.hasText(originalName)
                 && !originalName.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
-            throw new StorageException("Only PDF uploads are supported.");
+            throw new InvalidFileException("Only PDF uploads are supported.");
         }
         try {
             byte[] header = file.getInputStream().readNBytes(4);
@@ -198,18 +199,28 @@ public class FileStorageServiceImpl implements FileStorageService {
                     || header[1] != PDF_MAGIC[1]
                     || header[2] != PDF_MAGIC[2]
                     || header[3] != PDF_MAGIC[3]) {
-                throw new StorageException("Only PDF uploads are supported.");
+                throw new InvalidFileException("Only PDF uploads are supported.");
             }
-        } catch (StorageException ex) {
+        } catch (InvalidFileException ex) {
             throw ex;
         } catch (Exception ex) {
             throw new StorageException("Failed to validate uploaded file.", ex);
         }
     }
 
+    /**
+     * Normalizes and validates a caller-supplied folder path before any MinIO call.
+     * <p>
+     * This is a path-traversal/character-set defense only. It does <b>not</b> and cannot
+     * verify that the path logically belongs to the calling user - callers are required to
+     * always build {@code folderPath} from the authenticated user's own id (or another value
+     * already verified to belong to that user), never directly from raw client input, since a
+     * "technically valid" but logically wrong path (e.g. another user's id due to a bug
+     * elsewhere) would pass this check.
+     */
     private String validateFolderPath(String folderPath) {
         if (!StringUtils.hasText(folderPath)) {
-            throw new StorageException("Storage folder path is required.");
+            throw new InvalidFileException("Storage folder path is required.");
         }
         String normalized = folderPath.replace('\\', '/').trim();
         while (normalized.startsWith("/")) {
@@ -222,9 +233,14 @@ public class FileStorageServiceImpl implements FileStorageService {
         return normalized;
     }
 
+    /**
+     * Normalizes and validates a caller-supplied storage key before any MinIO call. See
+     * {@link #validateFolderPath(String)} for the same "never build this from raw client
+     * input" requirement.
+     */
     private String validateStorageKey(String storageKey) {
         if (!StringUtils.hasText(storageKey)) {
-            throw new StorageException("Storage key is required.");
+            throw new InvalidFileException("Storage key is required.");
         }
         String normalized = storageKey.replace('\\', '/').trim();
         while (normalized.startsWith("/")) {
@@ -236,16 +252,16 @@ public class FileStorageServiceImpl implements FileStorageService {
 
     private void rejectUnsafePath(String path) {
         if (path.contains("..") || path.contains("//")) {
-            throw new StorageException("Invalid storage path.");
+            throw new InvalidFileException("Invalid storage path.");
         }
         for (String segment : path.split("/")) {
             if (!StringUtils.hasText(segment) || ".".equals(segment) || "..".equals(segment)) {
-                throw new StorageException("Invalid storage path.");
+                throw new InvalidFileException("Invalid storage path.");
             }
             for (int i = 0; i < segment.length(); i++) {
                 char c = segment.charAt(i);
                 if (!(Character.isLetterOrDigit(c) || c == '-' || c == '_' || c == '.')) {
-                    throw new StorageException("Invalid storage path.");
+                    throw new InvalidFileException("Invalid storage path.");
                 }
             }
         }

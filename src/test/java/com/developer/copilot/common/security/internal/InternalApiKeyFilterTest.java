@@ -1,6 +1,7 @@
 package com.developer.copilot.common.security.internal;
 
 import com.developer.copilot.common.config.InternalApiProperties;
+import com.developer.copilot.common.config.InternalApiSecurityConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -96,5 +97,45 @@ class InternalApiKeyFilterTest {
         filter.doFilter(request, response, chain);
 
         assertNotNull(chain.getRequest());
+    }
+
+    @Test
+    void comparisonIsSafeForKeysOfDifferentLengths() throws Exception {
+        // MessageDigest.isEqual returns false (never throws) when lengths differ, regardless
+        // of how many leading characters match - proving the comparison doesn't short-circuit
+        // in a way that would leak timing information proportional to a matching prefix.
+        request.addHeader("X-Internal-Api-Key", "super-secret-service-key-but-longer");
+
+        filter.doFilter(request, response, chain);
+
+        assertNull(chain.getRequest());
+        assertEquals(HttpStatus.UNAUTHORIZED.value(), response.getStatus());
+    }
+
+    @Test
+    void differingOnlyInLastCharacterOrFirstCharacter_areBothRejectedIdentically() throws Exception {
+        MockHttpServletRequest diffAtEnd = new MockHttpServletRequest("GET", "/api/v1/internal/resumes/parsed");
+        diffAtEnd.addHeader("X-Internal-Api-Key", "super-secret-service-kex");
+        MockHttpServletResponse diffAtEndResponse = new MockHttpServletResponse();
+        filter.doFilter(diffAtEnd, diffAtEndResponse, new MockFilterChain());
+
+        MockHttpServletRequest diffAtStart = new MockHttpServletRequest("GET", "/api/v1/internal/resumes/parsed");
+        diffAtStart.addHeader("X-Internal-Api-Key", "xuper-secret-service-key");
+        MockHttpServletResponse diffAtStartResponse = new MockHttpServletResponse();
+        filter.doFilter(diffAtStart, diffAtStartResponse, new MockFilterChain());
+
+        assertEquals(HttpStatus.UNAUTHORIZED.value(), diffAtEndResponse.getStatus());
+        assertEquals(HttpStatus.UNAUTHORIZED.value(), diffAtStartResponse.getStatus());
+    }
+
+    @Test
+    void filterRegistration_isScopedOnlyToInternalPathPrefix() {
+        InternalApiSecurityConfig config = new InternalApiSecurityConfig();
+
+        org.springframework.boot.web.servlet.FilterRegistrationBean<InternalApiKeyFilter> registration =
+                config.internalApiKeyFilterRegistration(properties, new ObjectMapper());
+
+        assertTrue(registration.getUrlPatterns().contains("/api/v1/internal/*"));
+        assertEquals(1, registration.getUrlPatterns().size());
     }
 }
