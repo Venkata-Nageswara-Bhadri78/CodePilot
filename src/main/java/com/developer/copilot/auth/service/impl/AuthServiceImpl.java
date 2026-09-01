@@ -8,7 +8,9 @@ import com.developer.copilot.auth.security.CustomUserDetails;
 
 import lombok.RequiredArgsConstructor;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.springframework.security.core.Authentication;
@@ -16,7 +18,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import com.developer.copilot.auth.config.AuthProperties;
 import com.developer.copilot.auth.dto.AuthResponse;
 import com.developer.copilot.auth.dto.ForgotPasswordRequest;
 import com.developer.copilot.auth.dto.LoginRequest;
@@ -35,14 +40,17 @@ import com.developer.copilot.auth.enums.Role;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.auth.jwt.JwtService;
+import com.developer.copilot.auth.mapper.AuthMapper;
 import com.developer.copilot.auth.service.AuthService;
 import com.developer.copilot.auth.service.EmailService;
+import com.developer.copilot.auth.util.CredentialDigests;
 import com.developer.copilot.auth.util.OtpGenerator;
 import com.developer.copilot.auth.exception.InvalidOtpException;
 import com.developer.copilot.auth.exception.InvalidPasswordResetTokenException;
 import com.developer.copilot.auth.exception.InvalidRefreshTokenException;
 import com.developer.copilot.auth.exception.OtpExpiredException;
 import com.developer.copilot.auth.exception.PasswordResetTokenExpiredException;
+import com.developer.copilot.auth.exception.PasswordResetTokenUsedException;
 import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
 
@@ -57,48 +65,58 @@ public class AuthServiceImpl implements AuthService{
     private final EmailService emailService;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final AuthMapper authMapper;
+    private final Clock clock;
+    private final AuthProperties authProperties;
 
     @Override
     @Transactional
     public void register(RegisterRequest registerRequest) {
-        if (userRepository.existsByUsername(registerRequest.getUsername())) {
+        String username = normalizeUsername(registerRequest.getUsername());
+        String email = normalizeEmail(registerRequest.getEmail());
+        String fullName = registerRequest.getFullName() == null ? null : registerRequest.getFullName().trim();
+
+        if (userRepository.existsByUsername(username)) {
             throw new ResourceAlreadyExistsException("Username already exists.");
         }
         
-        if (userRepository.existsByEmail(registerRequest.getEmail())) {
+        if (userRepository.existsByEmail(email)) {
             throw new ResourceAlreadyExistsException("Email already exists.");
         }
         
         User user = new User();
-        user.setUsername(registerRequest.getUsername());
-        user.setEmail(registerRequest.getEmail());
-        user.setFullName(registerRequest.getFullName());
+        user.setUsername(username);
+        user.setEmail(email);
+        user.setFullName(fullName);
         user.setPassword(passwordEncoder.encode(registerRequest.getPassword()));
 
         user.setRole(Role.USER);
         user.setEnabled(false);
         user.setEmailVerified(false);
+        user.setTokenVersion(0);
 
         userRepository.save(user);
 
+        String otp = OtpGenerator.generateOtp();
         emailVerificationRepository.deleteByUserId(user.getId());
         EmailVerification verification = new EmailVerification();
         verification.setUser(user);
-        verification.setOtp(OtpGenerator.generateOtp());
-        verification.setExpiresAt(LocalDateTime.now().plusMinutes(10));
+        verification.setOtp(CredentialDigests.sha256(otp));
+        verification.setExpiresAt(now().plusMinutes(authProperties.getOtpExpiryMinutes()));
         verification.setVerified(false);
+        verification.setFailedAttempts(0);
 
         emailVerificationRepository.save(verification);
-        emailService.sendOtpEmail(
+        afterCommit(() -> emailService.sendOtpEmail(
             user.getEmail(),
             user.getFullName(),
-            verification.getOtp()
-        );
+            otp
+        ));
     }
 
     @Override
     public AuthResponse login(LoginRequest request){
-        User user = userRepository.findByEmail(request.getEmail())
+        User user = userRepository.findByEmail(normalizeEmail(request.getEmail()))
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid Email or Password"));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
@@ -118,31 +136,16 @@ public class AuthServiceImpl implements AuthService{
 
     @Override
     public UserResponse me() {
-
-        Authentication authentication =
-                SecurityContextHolder.getContext().getAuthentication();
-
-        CustomUserDetails userDetails =
-                (CustomUserDetails) authentication.getPrincipal();
-
-        User user = userRepository.findByEmail(userDetails.getUsername())
-                .orElseThrow();
-
-        return UserResponse.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .fullName(user.getFullName())
-                .email(user.getEmail())
-                .role(user.getRole())
-                .build();
+        return authMapper.toUserResponse(currentUser());
     }
 
     @Override
+    @Transactional
     public void verifyOtp(VerifyOtpRequest request) {
 
         EmailVerification verification =
         emailVerificationRepository
-                .findTopByUserEmailOrderByCreatedAtDesc(request.getEmail())
+                .findTopByUserEmailOrderByCreatedAtDesc(normalizeEmail(request.getEmail()))
                 .orElseThrow(() ->
                         new InvalidOtpException("OTP not found."));
 
@@ -152,11 +155,18 @@ public class AuthServiceImpl implements AuthService{
             throw new InvalidOtpException("OTP already used.");
         }
 
-        if (verification.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (verification.getExpiresAt().isBefore(now())) {
             throw new OtpExpiredException("OTP has expired.");
         }
 
-        if (!verification.getOtp().equals(request.getOtp())) {
+        int failedAttempts = verification.getFailedAttempts() == null ? 0 : verification.getFailedAttempts();
+        if (failedAttempts >= authProperties.getMaxOtpAttempts()) {
+            throw new InvalidOtpException("OTP not found.");
+        }
+
+        if (!CredentialDigests.matches(request.getOtp(), verification.getOtp())) {
+            verification.setFailedAttempts(failedAttempts + 1);
+            emailVerificationRepository.save(verification);
             throw new InvalidOtpException("Invalid OTP.");
         }
 
@@ -174,73 +184,75 @@ public class AuthServiceImpl implements AuthService{
     @Transactional
     public void resendOtp(ResendOtpRequest request) {
 
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() ->
-                        new InvalidOtpException("Invalid email."));
+        userRepository.findByEmail(normalizeEmail(request.getEmail())).ifPresent(user -> {
+            if (Boolean.TRUE.equals(user.getEmailVerified())) {
+                return;
+            }
 
-        if (Boolean.TRUE.equals(user.getEmailVerified())) {
-            throw new InvalidOtpException("Email already verified.");
-        }
+            String otp = OtpGenerator.generateOtp();
+            emailVerificationRepository.deleteByUserId(user.getId());
+            EmailVerification verification = new EmailVerification();
 
-        emailVerificationRepository.deleteByUserId(user.getId());
-        EmailVerification verification = new EmailVerification();
+            verification.setUser(user);
+            verification.setOtp(CredentialDigests.sha256(otp));
+            verification.setExpiresAt(now().plusMinutes(authProperties.getOtpExpiryMinutes()));
+            verification.setVerified(false);
+            verification.setFailedAttempts(0);
 
-        verification.setUser(user);
-        verification.setOtp(OtpGenerator.generateOtp());
-        verification.setExpiresAt(LocalDateTime.now().plusMinutes(10));
-        verification.setVerified(false);
+            emailVerificationRepository.save(verification);
 
-        emailVerificationRepository.save(verification);
-
-        emailService.sendOtpEmail(
-                user.getEmail(),
-                user.getFullName(),
-                verification.getOtp());
+            afterCommit(() -> emailService.sendOtpEmail(
+                    user.getEmail(),
+                    user.getFullName(),
+                    otp));
+        });
     }
 
     @Override
     @Transactional
     public void forgotPassword(ForgotPasswordRequest request) {
-        userRepository.findByEmail(request.getEmail()).ifPresent(user -> {
+        userRepository.findByEmail(normalizeEmail(request.getEmail())).ifPresent(user -> {
             passwordResetTokenRepository.deleteByUserIdAndUsedFalse(user.getId());
 
+            String rawToken = UUID.randomUUID().toString();
             PasswordResetToken resetToken = new PasswordResetToken();
             resetToken.setUser(user);
-            resetToken.setToken(UUID.randomUUID().toString());
-            resetToken.setExpiresAt(LocalDateTime.now().plusMinutes(15));
+            resetToken.setToken(CredentialDigests.sha256(rawToken));
+            resetToken.setExpiresAt(now().plusMinutes(authProperties.getResetExpiryMinutes()));
             resetToken.setUsed(false);
             resetToken.setUsedAt(null);
 
             passwordResetTokenRepository.save(resetToken);
 
-            emailService.sendPasswordResetEmail(
+            afterCommit(() -> emailService.sendPasswordResetEmail(
                     user.getEmail(),
                     user.getFullName(),
-                    resetToken.getToken()
-            );
+                    rawToken
+            ));
         });
     }
 
     @Override
     @Transactional
     public void resetPassword(ResetPasswordRequest request) {
-        PasswordResetToken resetToken = passwordResetTokenRepository.findByToken(request.getToken())
+        PasswordResetToken resetToken = passwordResetTokenRepository.findByToken(CredentialDigests.sha256(request.getToken()))
                 .orElseThrow(() -> new InvalidPasswordResetTokenException("Invalid password reset token."));
 
         if (Boolean.TRUE.equals(resetToken.getUsed())) {
-            throw new InvalidPasswordResetTokenException("Password reset token is invalid or already used.");
+            throw new PasswordResetTokenUsedException("Password reset token is invalid or already used.");
         }
 
-        if (resetToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (resetToken.getExpiresAt().isBefore(now())) {
             throw new PasswordResetTokenExpiredException("Password reset token has expired.");
         }
 
         User user = resetToken.getUser();
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        bumpTokenVersion(user);
         userRepository.save(user);
 
         resetToken.setUsed(true);
-        resetToken.setUsedAt(LocalDateTime.now());
+        resetToken.setUsedAt(now());
         passwordResetTokenRepository.save(resetToken);
 
         revokeAllRefreshTokens(user);
@@ -249,45 +261,55 @@ public class AuthServiceImpl implements AuthService{
     @Override
     @Transactional
     public AuthResponse refreshToken(RefreshTokenRequest request) {
-        RefreshToken storedToken = refreshTokenRepository.findByToken(request.getRefreshToken())
+        RefreshToken storedToken = refreshTokenRepository.findByTokenForUpdate(CredentialDigests.sha256(request.getRefreshToken()))
                 .orElseThrow(() ->
                         new InvalidRefreshTokenException("Invalid refresh token."));
 
+        User user = storedToken.getUser();
+
         if (Boolean.TRUE.equals(storedToken.getRevoked())) {
+            if (storedToken.getReplacedByToken() != null) {
+                revokeAllRefreshTokens(user);
+            }
             throw new RefreshTokenRevokedException("Refresh token has been revoked.");
         }
 
-        if (storedToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (storedToken.getExpiresAt().isBefore(now())) {
             throw new RefreshTokenExpiredException("Refresh token has expired.");
         }
 
-        User user = storedToken.getUser();
+        if (!Boolean.TRUE.equals(user.getEnabled()) || !Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new InvalidRefreshTokenException("Invalid refresh token.");
+        }
 
         storedToken.setRevoked(true);
 
-        RefreshToken newRefreshToken = createRefreshToken(user);
-        storedToken.setReplacedByToken(newRefreshToken.getToken());
-
+        String newRefreshTokenValue = persistRefreshToken(user, storedToken);
         refreshTokenRepository.save(storedToken);
 
         String newAccessToken = jwtService.generateToken(user);
-        return new AuthResponse(newAccessToken, "Bearer", newRefreshToken.getToken());
+        return new AuthResponse(newAccessToken, "Bearer", newRefreshTokenValue);
     }
 
-    private RefreshToken createRefreshToken(User user) {
+    private String persistRefreshToken(User user, RefreshToken replaced) {
+        String rawToken = UUID.randomUUID().toString();
         RefreshToken refreshToken = new RefreshToken();
         refreshToken.setUser(user);
-        refreshToken.setToken(UUID.randomUUID().toString());
-        refreshToken.setExpiresAt(LocalDateTime.now().plusDays(30));
+        refreshToken.setToken(CredentialDigests.sha256(rawToken));
+        refreshToken.setExpiresAt(now().plusDays(authProperties.getRefreshExpiryDays()));
         refreshToken.setRevoked(false);
         refreshToken.setReplacedByToken(null);
-        return refreshTokenRepository.save(refreshToken);
+        refreshTokenRepository.save(refreshToken);
+        if (replaced != null) {
+            replaced.setReplacedByToken(refreshToken.getToken());
+        }
+        return rawToken;
     }
     
     private AuthResponse buildAuthResponse(User user) {
-        RefreshToken refreshToken = createRefreshToken(user);
+        String refreshToken = persistRefreshToken(user, null);
         String accessToken = jwtService.generateToken(user);
-        return new AuthResponse(accessToken, "Bearer", refreshToken.getToken());
+        return new AuthResponse(accessToken, "Bearer", refreshToken);
     }
     
     private void revokeAllRefreshTokens(User user) {
@@ -301,8 +323,14 @@ public class AuthServiceImpl implements AuthService{
     @Override
     @Transactional
     public void logout(LogoutRequest request) {
-        RefreshToken refreshToken = refreshTokenRepository.findByTokenAndRevokedFalse(request.getRefreshToken())
+        User user = currentUser();
+        RefreshToken refreshToken = refreshTokenRepository.findByTokenAndRevokedFalse(
+                        CredentialDigests.sha256(request.getRefreshToken()))
                 .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token."));
+
+        if (!refreshToken.getUser().getId().equals(user.getId())) {
+            throw new InvalidRefreshTokenException("Invalid refresh token.");
+        }
 
         refreshToken.setRevoked(true);
         refreshTokenRepository.save(refreshToken);
@@ -311,12 +339,47 @@ public class AuthServiceImpl implements AuthService{
     @Override
     @Transactional
     public void logoutAllDevices() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
-
-        User user = userRepository.findByEmail(userDetails.getUsername())
-                .orElseThrow(() -> new InvalidCredentialsException("User not found."));
-
+        User user = currentUser();
+        bumpTokenVersion(user);
+        userRepository.save(user);
         revokeAllRefreshTokens(user);
+    }
+
+    private User currentUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails userDetails)) {
+            throw new InvalidCredentialsException("User not found.");
+        }
+        return userDetails.getUser();
+    }
+
+    private void bumpTokenVersion(User user) {
+        int current = user.getTokenVersion() == null ? 0 : user.getTokenVersion();
+        user.setTokenVersion(current + 1);
+    }
+
+    private LocalDateTime now() {
+        return LocalDateTime.now(clock);
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeUsername(String username) {
+        return username == null ? null : username.trim();
+    }
+
+    private void afterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
+        }
     }
 }

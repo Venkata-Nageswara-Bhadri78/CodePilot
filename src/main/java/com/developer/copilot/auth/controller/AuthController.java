@@ -43,7 +43,7 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @Operation(summary = "Register a new user", description = "Creates an account and sends an email verification OTP.")
+    @Operation(summary = "Register a new user", description = "Creates an account and sends an email verification OTP.", security = {})
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "User registered successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error", content = @Content),
@@ -62,7 +62,7 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @Operation(summary = "Log in to the system", description = "Authenticates a user and returns JWT access and refresh tokens.")
+    @Operation(summary = "Log in to the system", description = "Authenticates a user and returns JWT access and refresh tokens.", security = {})
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Successful login"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid credentials or unverified email", content = @Content),
@@ -83,7 +83,7 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Verify email via OTP", description = "Validates the OTP sent during registration and activates the account.")
+    @Operation(summary = "Verify email via OTP", description = "Validates the OTP sent during registration and activates the account.", security = {})
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Email verified successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid or expired OTP", content = @Content)
@@ -101,10 +101,9 @@ public class AuthController {
                         .build());
     }
 
-    @Operation(summary = "Resend verification OTP", description = "Deletes the previous OTP and sends a new verification code.")
+    @Operation(summary = "Resend verification OTP", description = "If the account is unverified, sends a new verification code. Always returns a generic success response.", security = {})
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "OTP sent successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Email already verified or invalid email", content = @Content)
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Request accepted")
     })
     @PostMapping("/resend-otp")
     public ResponseEntity<ApiResponse<Void>> resendOtp(@Valid @RequestBody ResendOtpRequest request) {
@@ -114,12 +113,12 @@ public class AuthController {
         return ResponseEntity.ok(
                 ApiResponse.<Void>builder()
                         .success(true)
-                        .message("OTP sent successfully.")
+                        .message("If the account requires verification, an OTP has been sent.")
                         .timestamp(LocalDateTime.now())
                         .build());
     }
 
-    @Operation(summary = "Request password reset", description = "Sends a password reset link if the account exists.")
+    @Operation(summary = "Request password reset", description = "Sends a password reset token by email if the account exists.", security = {})
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Request accepted")
     })
@@ -136,7 +135,7 @@ public class AuthController {
         );
     }
 
-    @Operation(summary = "Reset password", description = "Sets a new password using a valid reset token and revokes active sessions.")
+    @Operation(summary = "Reset password", description = "Sets a new password using a valid reset token and revokes active sessions.", security = {})
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Password reset successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid or expired reset token", content = @Content)
@@ -172,7 +171,7 @@ public class AuthController {
         );
     }
     
-    @Operation(summary = "Refresh access token", description = "Rotates the refresh token and issues a new access token.")
+    @Operation(summary = "Refresh access token", description = "Rotates the refresh token and issues a new access token.", security = {})
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Token refreshed successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Invalid, expired, or revoked refresh token", content = @Content)

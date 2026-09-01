@@ -1,5 +1,6 @@
 package com.developer.copilot.auth.service.impl;
 
+import com.developer.copilot.auth.config.AuthProperties;
 import com.developer.copilot.auth.dto.AuthResponse;
 import com.developer.copilot.auth.dto.ForgotPasswordRequest;
 import com.developer.copilot.auth.dto.LoginRequest;
@@ -20,16 +21,19 @@ import com.developer.copilot.auth.exception.InvalidPasswordResetTokenException;
 import com.developer.copilot.auth.exception.InvalidRefreshTokenException;
 import com.developer.copilot.auth.exception.OtpExpiredException;
 import com.developer.copilot.auth.exception.PasswordResetTokenExpiredException;
+import com.developer.copilot.auth.exception.PasswordResetTokenUsedException;
 import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.auth.jwt.JwtService;
+import com.developer.copilot.auth.mapper.AuthMapper;
 import com.developer.copilot.auth.repository.EmailVerificationRepository;
 import com.developer.copilot.auth.repository.PasswordResetTokenRepository;
 import com.developer.copilot.auth.repository.RefreshTokenRepository;
 import com.developer.copilot.auth.repository.UserRepository;
 import com.developer.copilot.auth.security.CustomUserDetails;
 import com.developer.copilot.auth.service.EmailService;
+import com.developer.copilot.auth.util.CredentialDigests;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,12 +43,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -89,6 +96,11 @@ class AuthServiceImplTest {
         user.setRole(Role.USER);
         user.setEnabled(true);
         user.setEmailVerified(true);
+        user.setTokenVersion(0);
+
+        ReflectionTestUtils.setField(authService, "clock", Clock.systemDefaultZone());
+        ReflectionTestUtils.setField(authService, "authMapper", new AuthMapper());
+        ReflectionTestUtils.setField(authService, "authProperties", new AuthProperties());
     }
 
     @AfterEach
@@ -154,7 +166,7 @@ class AuthServiceImplTest {
 
         EmailVerification verification = new EmailVerification();
         verification.setUser(user);
-        verification.setOtp("123456");
+        verification.setOtp(CredentialDigests.sha256("123456"));
         verification.setExpiresAt(LocalDateTime.now().plusMinutes(5));
         verification.setVerified(false);
 
@@ -177,7 +189,7 @@ class AuthServiceImplTest {
 
         EmailVerification verification = new EmailVerification();
         verification.setUser(user);
-        verification.setOtp("123456");
+        verification.setOtp(CredentialDigests.sha256("123456"));
         verification.setExpiresAt(LocalDateTime.now().plusMinutes(5));
         verification.setVerified(false);
 
@@ -195,7 +207,7 @@ class AuthServiceImplTest {
 
         EmailVerification verification = new EmailVerification();
         verification.setUser(user);
-        verification.setOtp("123456");
+        verification.setOtp(CredentialDigests.sha256("123456"));
         verification.setExpiresAt(LocalDateTime.now().minusMinutes(1));
         verification.setVerified(false);
 
@@ -213,7 +225,7 @@ class AuthServiceImplTest {
 
         EmailVerification verification = new EmailVerification();
         verification.setUser(user);
-        verification.setOtp("123456");
+        verification.setOtp(CredentialDigests.sha256("123456"));
         verification.setExpiresAt(LocalDateTime.now().plusMinutes(5));
         verification.setVerified(true);
 
@@ -239,13 +251,16 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void resendOtp_alreadyVerified_throwsInvalidOtpException() {
+    void resendOtp_alreadyVerified_doesNotSendEmail() {
         ResendOtpRequest request = new ResendOtpRequest();
         request.setEmail("john@example.com");
 
         when(userRepository.findByEmail("john@example.com")).thenReturn(Optional.of(user));
 
-        assertThrows(InvalidOtpException.class, () -> authService.resendOtp(request));
+        authService.resendOtp(request);
+
+        verify(emailVerificationRepository, never()).save(any());
+        verify(emailService, never()).sendOtpEmail(anyString(), anyString(), anyString());
     }
 
     @Test
@@ -260,17 +275,13 @@ class AuthServiceImplTest {
         when(userRepository.findByEmail("john@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("Secure@123", "hashed-password")).thenReturn(true);
         when(jwtService.generateToken(user)).thenReturn("access-token");
-        when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(invocation -> {
-            RefreshToken saved = invocation.getArgument(0);
-            saved.setToken("refresh-token");
-            return saved;
-        });
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AuthResponse response = authService.login(request);
 
         assertEquals("access-token", response.getAccessToken());
         assertEquals("Bearer", response.getTokenType());
-        assertEquals("refresh-token", response.getRefreshToken());
+        assertNotNull(response.getRefreshToken());
     }
 
     @Test
@@ -339,7 +350,7 @@ class AuthServiceImplTest {
         RefreshToken activeToken = new RefreshToken();
         activeToken.setRevoked(false);
 
-        when(passwordResetTokenRepository.findByToken("reset-token")).thenReturn(Optional.of(resetToken));
+        when(passwordResetTokenRepository.findByToken(CredentialDigests.sha256("reset-token"))).thenReturn(Optional.of(resetToken));
         when(passwordEncoder.encode("NewSecure@123")).thenReturn("new-hash");
         when(refreshTokenRepository.findAllByUserIdAndRevokedFalse(1L)).thenReturn(List.of(activeToken));
 
@@ -361,7 +372,7 @@ class AuthServiceImplTest {
         resetToken.setUsed(false);
         resetToken.setExpiresAt(LocalDateTime.now().minusMinutes(1));
 
-        when(passwordResetTokenRepository.findByToken("reset-token")).thenReturn(Optional.of(resetToken));
+        when(passwordResetTokenRepository.findByToken(CredentialDigests.sha256("reset-token"))).thenReturn(Optional.of(resetToken));
 
         assertThrows(PasswordResetTokenExpiredException.class, () -> authService.resetPassword(request));
     }
@@ -376,21 +387,16 @@ class AuthServiceImplTest {
         storedToken.setRevoked(false);
         storedToken.setExpiresAt(LocalDateTime.now().plusDays(1));
 
-        when(refreshTokenRepository.findByToken("old-refresh")).thenReturn(Optional.of(storedToken));
+        when(refreshTokenRepository.findByTokenForUpdate(CredentialDigests.sha256("old-refresh"))).thenReturn(Optional.of(storedToken));
         when(jwtService.generateToken(user)).thenReturn("new-access");
-        when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(invocation -> {
-            RefreshToken saved = invocation.getArgument(0);
-            if (saved.getToken() == null) {
-                saved.setToken("new-refresh");
-            }
-            return saved;
-        });
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AuthResponse response = authService.refreshToken(request);
 
         assertTrue(storedToken.getRevoked());
         assertEquals("new-access", response.getAccessToken());
         assertEquals("Bearer", response.getTokenType());
+        assertNotNull(response.getRefreshToken());
     }
 
     @Test
@@ -403,7 +409,7 @@ class AuthServiceImplTest {
         storedToken.setRevoked(true);
         storedToken.setExpiresAt(LocalDateTime.now().plusDays(1));
 
-        when(refreshTokenRepository.findByToken("old-refresh")).thenReturn(Optional.of(storedToken));
+        when(refreshTokenRepository.findByTokenForUpdate(CredentialDigests.sha256("old-refresh"))).thenReturn(Optional.of(storedToken));
 
         assertThrows(RefreshTokenRevokedException.class, () -> authService.refreshToken(request));
     }
@@ -418,7 +424,7 @@ class AuthServiceImplTest {
         storedToken.setRevoked(false);
         storedToken.setExpiresAt(LocalDateTime.now().minusMinutes(1));
 
-        when(refreshTokenRepository.findByToken("old-refresh")).thenReturn(Optional.of(storedToken));
+        when(refreshTokenRepository.findByTokenForUpdate(CredentialDigests.sha256("old-refresh"))).thenReturn(Optional.of(storedToken));
 
         assertThrows(RefreshTokenExpiredException.class, () -> authService.refreshToken(request));
     }
@@ -428,10 +434,15 @@ class AuthServiceImplTest {
         LogoutRequest request = new LogoutRequest();
         request.setRefreshToken("refresh-token");
 
+        CustomUserDetails userDetails = new CustomUserDetails(user);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
+
         RefreshToken refreshToken = new RefreshToken();
+        refreshToken.setUser(user);
         refreshToken.setRevoked(false);
 
-        when(refreshTokenRepository.findByTokenAndRevokedFalse("refresh-token"))
+        when(refreshTokenRepository.findByTokenAndRevokedFalse(CredentialDigests.sha256("refresh-token")))
                 .thenReturn(Optional.of(refreshToken));
 
         authService.logout(request);
@@ -445,7 +456,11 @@ class AuthServiceImplTest {
         LogoutRequest request = new LogoutRequest();
         request.setRefreshToken("missing");
 
-        when(refreshTokenRepository.findByTokenAndRevokedFalse("missing")).thenReturn(Optional.empty());
+        CustomUserDetails userDetails = new CustomUserDetails(user);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
+
+        when(refreshTokenRepository.findByTokenAndRevokedFalse(CredentialDigests.sha256("missing"))).thenReturn(Optional.empty());
 
         assertThrows(InvalidRefreshTokenException.class, () -> authService.logout(request));
     }
@@ -461,13 +476,14 @@ class AuthServiceImplTest {
         RefreshToken token2 = new RefreshToken();
         token2.setRevoked(false);
 
-        when(userRepository.findByEmail("john@example.com")).thenReturn(Optional.of(user));
         when(refreshTokenRepository.findAllByUserIdAndRevokedFalse(1L)).thenReturn(List.of(token1, token2));
 
         authService.logoutAllDevices();
 
         assertTrue(token1.getRevoked());
         assertTrue(token2.getRevoked());
+        assertEquals(1, user.getTokenVersion());
+        verify(userRepository).save(user);
         verify(refreshTokenRepository).saveAll(List.of(token1, token2));
     }
 
@@ -482,8 +498,46 @@ class AuthServiceImplTest {
         resetToken.setUsed(true);
         resetToken.setExpiresAt(LocalDateTime.now().plusMinutes(10));
 
-        when(passwordResetTokenRepository.findByToken("reset-token")).thenReturn(Optional.of(resetToken));
+        when(passwordResetTokenRepository.findByToken(CredentialDigests.sha256("reset-token"))).thenReturn(Optional.of(resetToken));
 
-        assertThrows(InvalidPasswordResetTokenException.class, () -> authService.resetPassword(request));
+        assertThrows(PasswordResetTokenUsedException.class, () -> authService.resetPassword(request));
+    }
+
+    @Test
+    void logout_otherUsersToken_throwsInvalidRefreshTokenException() {
+        LogoutRequest request = new LogoutRequest();
+        request.setRefreshToken("refresh-token");
+
+        CustomUserDetails userDetails = new CustomUserDetails(user);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
+
+        User other = new User();
+        other.setId(2L);
+        RefreshToken refreshToken = new RefreshToken();
+        refreshToken.setUser(other);
+        refreshToken.setRevoked(false);
+
+        when(refreshTokenRepository.findByTokenAndRevokedFalse(CredentialDigests.sha256("refresh-token")))
+                .thenReturn(Optional.of(refreshToken));
+
+        assertThrows(InvalidRefreshTokenException.class, () -> authService.logout(request));
+    }
+
+    @Test
+    void refreshToken_disabledUser_throwsInvalidRefreshTokenException() {
+        RefreshTokenRequest request = new RefreshTokenRequest();
+        request.setRefreshToken("old-refresh");
+        user.setEnabled(false);
+
+        RefreshToken storedToken = new RefreshToken();
+        storedToken.setUser(user);
+        storedToken.setRevoked(false);
+        storedToken.setExpiresAt(LocalDateTime.now().plusDays(1));
+
+        when(refreshTokenRepository.findByTokenForUpdate(CredentialDigests.sha256("old-refresh")))
+                .thenReturn(Optional.of(storedToken));
+
+        assertThrows(InvalidRefreshTokenException.class, () -> authService.refreshToken(request));
     }
 }

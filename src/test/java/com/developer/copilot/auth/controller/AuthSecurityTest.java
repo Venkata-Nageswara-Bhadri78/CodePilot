@@ -1,5 +1,6 @@
 package com.developer.copilot.auth.controller;
 
+import com.developer.copilot.auth.config.JsonAuthenticationEntryPoint;
 import com.developer.copilot.auth.config.SecurityBeansConfig;
 import com.developer.copilot.auth.config.SecurityConfig;
 import com.developer.copilot.auth.jwt.JwtService;
@@ -19,7 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = AuthController.class)
-@Import({SecurityConfig.class, SecurityBeansConfig.class})
+@Import({SecurityConfig.class, SecurityBeansConfig.class, JsonAuthenticationEntryPoint.class})
 class AuthSecurityTest {
 
     @Autowired

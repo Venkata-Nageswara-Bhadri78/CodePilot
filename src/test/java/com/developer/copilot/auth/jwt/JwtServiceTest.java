@@ -25,6 +25,7 @@ class JwtServiceTest {
         user.setId(42L);
         user.setEmail("john@example.com");
         user.setRole(Role.USER);
+        user.setTokenVersion(0);
     }
 
     @Test
@@ -52,5 +53,14 @@ class JwtServiceTest {
         otherUser.setRole(Role.USER);
 
         assertFalse(jwtService.isTokenValid(token, otherUser));
+    }
+
+    @Test
+    void isTokenValid_returnsFalseWhenTokenVersionChanges() {
+        String token = jwtService.generateToken(user);
+
+        user.setTokenVersion(1);
+
+        assertFalse(jwtService.isTokenValid(token, user));
     }
 }

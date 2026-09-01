@@ -46,6 +46,8 @@ class JwtAuthenticationFilterTest {
         user.setEmail("john@example.com");
         user.setRole(Role.USER);
         user.setEnabled(true);
+        user.setEmailVerified(true);
+        user.setTokenVersion(0);
     }
 
     @AfterEach
@@ -68,6 +70,22 @@ class JwtAuthenticationFilterTest {
         assertNotNull(SecurityContextHolder.getContext().getAuthentication());
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         assertNotNull(((CustomUserDetails) principal).getUser());
+        verify(filterChain).doFilter(request, response);
+    }
+
+    @Test
+    void doFilterInternal_disabledUser_leavesContextEmpty() throws Exception {
+        user.setEnabled(false);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer valid-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        when(jwtService.extractUserId("valid-token")).thenReturn(1L);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
         verify(filterChain).doFilter(request, response);
     }
 

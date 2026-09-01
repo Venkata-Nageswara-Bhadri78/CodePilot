@@ -1,7 +1,8 @@
 package com.developer.copilot.auth.dto;
 
+import com.developer.copilot.auth.validation.ValidPassword;
+
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -12,10 +13,7 @@ public class ResetPasswordRequest {
     @NotBlank
     private String token;
 
-    @NotBlank
-    @Pattern(
-            regexp = "^(?=.*[A-Z])(?=.*[a-z])(?=.*\\d)(?=.*[@#$%^&+=!]).{8,}$",
-            message = "Password must contain uppercase, lowercase, number and special character.")
+    @ValidPassword
     private String newPassword;
 
 }

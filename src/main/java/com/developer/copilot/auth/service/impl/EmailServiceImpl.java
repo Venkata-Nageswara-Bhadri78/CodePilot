@@ -1,18 +1,22 @@
 package com.developer.copilot.auth.service.impl;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
 import com.developer.copilot.auth.config.EmailProperties;
+import com.developer.copilot.auth.exception.EmailDeliveryException;
 import com.developer.copilot.auth.service.EmailService;
 import java.util.Map;
 
 import com.developer.copilot.auth.util.EmailTemplateService;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EmailServiceImpl implements EmailService {
@@ -20,6 +24,14 @@ public class EmailServiceImpl implements EmailService {
     private final JavaMailSender mailSender;
     private final EmailProperties emailProperties;
     private final EmailTemplateService emailTemplateService;
+
+    @PostConstruct
+    void validateMailProperties() {
+        if (emailProperties.getFrom() == null || emailProperties.getFrom().isBlank()
+                || emailProperties.getSenderName() == null || emailProperties.getSenderName().isBlank()) {
+            throw new IllegalStateException("app.mail.from and app.mail.sender-name must be configured.");
+        }
+    }
 
     @Override
     public void sendOtpEmail(String recipientEmail, String recipientName, String otp) {
@@ -45,8 +57,8 @@ public class EmailServiceImpl implements EmailService {
             mailSender.send(message);
 
         } catch (Exception ex) {
-            ex.printStackTrace();
-            throw new RuntimeException("Unable to send verification email.", ex);
+            log.error("Failed to send verification email");
+            throw new EmailDeliveryException("Unable to send verification email.", ex);
         }
     }
 
@@ -73,7 +85,8 @@ public class EmailServiceImpl implements EmailService {
             mailSender.send(message);
 
         } catch (Exception ex) {
-            throw new RuntimeException("Unable to send password reset email.", ex);
+            log.error("Failed to send password reset email");
+            throw new EmailDeliveryException("Unable to send password reset email.", ex);
         }
     }
 }

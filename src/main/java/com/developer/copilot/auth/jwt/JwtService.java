@@ -13,15 +13,29 @@ import com.developer.copilot.auth.entity.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 
 @Service
 public class JwtService {
+
+    private static final int MIN_SECRET_LENGTH = 32;
 
     @Value("${app.jwt.secret}")
     private String secret;
 
     @Value("${app.jwt.expiration}")
     private long expiration;
+
+    @PostConstruct
+    void validateConfiguration() {
+        if (secret == null || secret.isBlank() || secret.length() < MIN_SECRET_LENGTH) {
+            throw new IllegalStateException(
+                    "app.jwt.secret must be at least " + MIN_SECRET_LENGTH + " characters.");
+        }
+        if (expiration <= 0) {
+            throw new IllegalStateException("app.jwt.expiration must be a positive duration in milliseconds.");
+        }
+    }
 
     private SecretKey getSigningKey() {
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
@@ -31,11 +45,12 @@ public class JwtService {
 
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expiration);
-    
+
         return Jwts.builder()
                 .subject(user.getId().toString())
                 .claim("email", user.getEmail())
                 .claim("role", user.getRole().name())
+                .claim("tv", tokenVersion(user))
                 .issuedAt(now)
                 .expiration(expiry)
                 .signWith(getSigningKey())
@@ -51,10 +66,19 @@ public class JwtService {
     }
 
     public boolean isTokenValid(String token, User user) {
+        Claims claims = extractClaims(token);
+        Integer tokenVersion = claims.get("tv", Integer.class);
+        if (tokenVersion == null) {
+            tokenVersion = 0;
+        }
 
         return extractUserId(token).equals(user.getId())
-                && !extractClaims(token).getExpiration().before(new Date());
-    
+                && !claims.getExpiration().before(new Date())
+                && tokenVersion.equals(tokenVersion(user));
+    }
+
+    private int tokenVersion(User user) {
+        return user.getTokenVersion() == null ? 0 : user.getTokenVersion();
     }
 
     private Claims extractClaims(String token) {

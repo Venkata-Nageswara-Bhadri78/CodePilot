@@ -3,10 +3,11 @@ package com.developer.copilot.auth.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+
+import com.developer.copilot.auth.validation.ValidPassword;
 
 @Schema(description = "Request payload for user registration")
 @Getter
@@ -28,11 +29,6 @@ public class RegisterRequest {
     private String email;
 
     @Schema(description = "Strong password", example = "Secure@123")
-    @NotBlank
-    @Size(min = 8, max = 100)
-    @Pattern(
-        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&]).+$",
-        message = "Password must contain uppercase, lowercase, number and special character."
-    )
+    @ValidPassword
     private String password;
 }
