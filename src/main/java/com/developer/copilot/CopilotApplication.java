@@ -6,7 +6,11 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 
 import com.developer.copilot.auth.config.EmailProperties;
 
-@SpringBootApplication
+@SpringBootApplication(excludeName = {
+		"org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration",
+		"org.springframework.boot.data.redis.autoconfigure.DataRedisReactiveAutoConfiguration",
+		"org.springframework.boot.data.redis.autoconfigure.DataRedisRepositoriesAutoConfiguration"
+})
 @EnableConfigurationProperties(EmailProperties.class)
 public class CopilotApplication {
 

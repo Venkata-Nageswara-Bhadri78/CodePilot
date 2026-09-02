@@ -44,4 +44,7 @@ public class User extends BaseEntity {
 
     @Column(name = "email_verified", nullable = false)
     private Boolean emailVerified = false;
+
+    @Column(name = "token_version", nullable = false)
+    private Integer tokenVersion = 0;
 }

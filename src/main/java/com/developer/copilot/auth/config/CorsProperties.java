@@ -20,4 +20,17 @@ public class CorsProperties {
             "http://127.0.0.1:5174",
             "http://127.0.0.1:3000"
     );
+
+    /**
+     * Origins that are safe with {@code allowCredentials=true}. A wildcard is dropped so a
+     * misconfigured {@code cors.allowed-origins=*} cannot pair with credentialed CORS.
+     */
+    public List<String> resolvedAllowedOrigins() {
+        if (allowedOrigins == null) {
+            return List.of();
+        }
+        return allowedOrigins.stream()
+                .filter(origin -> origin != null && !origin.isBlank() && !"*".equals(origin.trim()))
+                .toList();
+    }
 }

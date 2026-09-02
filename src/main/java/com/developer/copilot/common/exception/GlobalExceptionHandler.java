@@ -11,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.developer.copilot.auth.exception.EmailDeliveryException;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
 import com.developer.copilot.auth.exception.InvalidOtpException;
 import com.developer.copilot.auth.exception.InvalidPasswordResetTokenException;
@@ -20,6 +21,7 @@ import com.developer.copilot.auth.exception.PasswordResetTokenExpiredException;
 import com.developer.copilot.auth.exception.PasswordResetTokenUsedException;
 import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
+import com.developer.copilot.auth.ratelimit.exception.RateLimitExceededException;
 import com.developer.copilot.ai.exception.AiResumePendingException;
 import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
@@ -322,7 +324,7 @@ public class GlobalExceptionHandler {
                .timestamp(LocalDateTime.now())
                .build();
 
-       return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
    }
 
    @ExceptionHandler(RefreshTokenExpiredException.class)
@@ -334,7 +336,7 @@ public class GlobalExceptionHandler {
                .timestamp(LocalDateTime.now())
                .build();
 
-       return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
    }
 
    @ExceptionHandler(RefreshTokenRevokedException.class)
@@ -347,6 +349,17 @@ public class GlobalExceptionHandler {
                .build();
 
        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+   }
+
+   @ExceptionHandler(EmailDeliveryException.class)
+   public ResponseEntity<ApiResponse<Void>> handleEmailDelivery(EmailDeliveryException ex) {
+       log.error("Email delivery failed");
+       ApiResponse<Void> response = ApiResponse.<Void>builder()
+               .success(false)
+               .message("Unable to send email. Please try again later.")
+               .timestamp(LocalDateTime.now())
+               .build();
+       return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(response);
    }
 
    @ExceptionHandler(DuplicateResumeException.class)
@@ -537,5 +550,20 @@ public class GlobalExceptionHandler {
                         .timestamp(LocalDateTime.now())
                         .build()
         );
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleRateLimitExceeded(
+                RateLimitExceededException ex) {
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(response);
     }
 }

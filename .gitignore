@@ -47,6 +47,8 @@ logs/
 
 ### Application Properties ###
 src/main/resources/application.properties
+src/main/resources/application-prod.properties
+src/main/resources/application-production.properties
 
 
 ### Extras for debugging, documentation referances for development ###

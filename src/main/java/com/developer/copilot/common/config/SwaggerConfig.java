@@ -3,6 +3,7 @@ package com.developer.copilot.common.config;
 import org.springdoc.core.models.GroupedOpenApi;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 import com.developer.copilot.common.dto.ApiResponse;
 
@@ -18,6 +19,7 @@ import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 
 @Configuration
+@Profile("!prod & !production")
 public class SwaggerConfig {
 
     /** Shared example shown for every documented error response, kept in one place so it
@@ -96,7 +98,7 @@ public class SwaggerConfig {
                 .group("public")
                 .displayName("Public API")
                 .pathsToMatch("/api/v1/**")
-                .pathsToExclude("/api/v1/internal/**")
+                .pathsToExclude("/api/v1/internal/**", "/api/v1/auth/**")
                 .build();
     }
 

@@ -1,0 +1,77 @@
+package com.developer.copilot.auth.ratelimit.filter;
+
+import com.developer.copilot.auth.config.AuthProperties;
+import com.developer.copilot.auth.ratelimit.service.impl.AuthRateLimitServiceImpl;
+import jakarta.servlet.FilterChain;
+import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
+class AuthRateLimitFilterTest {
+
+    @Test
+    void login_isLimitedPerIp() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setLoginRateLimitPerMinute(2);
+        AuthRateLimitFilter filter = new AuthRateLimitFilter(properties, new AuthRateLimitServiceImpl(properties, null));
+        FilterChain chain = mock(FilterChain.class);
+
+        for (int i = 0; i < 2; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/login");
+            request.setRemoteAddr("10.0.0.1");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            filter.doFilterInternal(request, response, chain);
+            assertEquals(200, response.getStatus() == 0 ? 200 : response.getStatus());
+        }
+
+        MockHttpServletRequest blocked = new MockHttpServletRequest("POST", "/api/v1/auth/login");
+        blocked.setRemoteAddr("10.0.0.1");
+        MockHttpServletResponse blockedResponse = new MockHttpServletResponse();
+        filter.doFilterInternal(blocked, blockedResponse, chain);
+
+        assertEquals(429, blockedResponse.getStatus());
+        verify(chain, times(2)).doFilter(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void refreshToken_isLimitedPerIp() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setRefreshRateLimitPerMinute(2);
+        AuthRateLimitFilter filter = new AuthRateLimitFilter(properties, new AuthRateLimitServiceImpl(properties, null));
+        FilterChain chain = mock(FilterChain.class);
+
+        for (int i = 0; i < 2; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/refresh-token");
+            request.setRemoteAddr("10.0.0.1");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            filter.doFilterInternal(request, response, chain);
+            assertEquals(200, response.getStatus() == 0 ? 200 : response.getStatus());
+        }
+
+        MockHttpServletRequest blocked = new MockHttpServletRequest("POST", "/api/v1/auth/refresh-token");
+        blocked.setRemoteAddr("10.0.0.1");
+        MockHttpServletResponse blockedResponse = new MockHttpServletResponse();
+        filter.doFilterInternal(blocked, blockedResponse, chain);
+
+        assertEquals(429, blockedResponse.getStatus());
+        verify(chain, times(2)).doFilter(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void otherPaths_areNotLimited() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        AuthRateLimitFilter filter = new AuthRateLimitFilter(properties, new AuthRateLimitServiceImpl(properties, null));
+        FilterChain chain = mock(FilterChain.class);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/reset-password");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, chain);
+
+        verify(chain).doFilter(request, response);
+    }
+}

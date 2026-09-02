@@ -1,8 +1,10 @@
 package com.developer.copilot.auth.controller;
 
+import com.developer.copilot.auth.config.JsonAuthenticationEntryPoint;
 import com.developer.copilot.auth.config.SecurityBeansConfig;
 import com.developer.copilot.auth.config.SecurityConfig;
 import com.developer.copilot.auth.jwt.JwtService;
+import com.developer.copilot.auth.ratelimit.config.AuthRateLimitConfig;
 import com.developer.copilot.auth.repository.UserRepository;
 import com.developer.copilot.auth.service.AuthService;
 import org.junit.jupiter.api.Test;
@@ -19,7 +21,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = AuthController.class)
-@Import({SecurityConfig.class, SecurityBeansConfig.class})
+@Import({SecurityConfig.class, SecurityBeansConfig.class, JsonAuthenticationEntryPoint.class, AuthRateLimitConfig.class})
 class AuthSecurityTest {
 
     @Autowired
@@ -63,5 +65,29 @@ class AuthSecurityTest {
                                 }
                                 """))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void publicAuthRoutes_withoutAuthorization_areNotUnauthorized() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "johndoe",
+                                  "fullName": "John Doe",
+                                  "email": "john@example.com",
+                                  "password": "Secure@123"
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "john@example.com"
+                                }
+                                """))
+                .andExpect(status().isOk());
     }
 }

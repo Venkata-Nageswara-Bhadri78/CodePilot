@@ -8,7 +8,12 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "password_reset_token")
+@Table(
+        name = "password_reset_token",
+        indexes = {
+                @Index(name = "idx_password_reset_token", columnList = "token"),
+                @Index(name = "idx_password_reset_user_used", columnList = "user_id, used")
+        })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -22,6 +27,7 @@ public class PasswordResetToken extends BaseEntity {
     private String token;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
     @Column(nullable = false)

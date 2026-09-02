@@ -129,4 +129,123 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.email").value("john@example.com"));
     }
+
+    @Test
+    void register_passwordLongerThan72_returns400() throws Exception {
+        String longPassword = "Aa1@" + "x".repeat(70);
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "johndoe",
+                                  "fullName": "John Doe",
+                                  "email": "john@example.com",
+                                  "password": "%s"
+                                }
+                                """.formatted(longPassword)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void register_emailLongerThan255_returns400() throws Exception {
+        String email = "a".repeat(250) + "@x.com";
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "johndoe",
+                                  "fullName": "John Doe",
+                                  "email": "%s",
+                                  "password": "Secure@123"
+                                }
+                                """.formatted(email)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void login_passwordLongerThan72_returns400() throws Exception {
+        String longPassword = "Aa1@" + "x".repeat(70);
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "john@example.com",
+                                  "password": "%s"
+                                }
+                                """.formatted(longPassword)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void login_emailLongerThan255_returns400() throws Exception {
+        String email = "a".repeat(250) + "@x.com";
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "password": "Secure@123"
+                                }
+                                """.formatted(email)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void login_malformedJson_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Request body is missing or malformed JSON."));
+    }
+
+    @Test
+    void verifyEmail_otpNotSixDigits_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/verify-email")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "john@example.com",
+                                  "otp": "12"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void forgotPassword_returnsGenericSuccess() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "john@example.com"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("If the account exists, a password reset email has been sent."));
+    }
+
+    @Test
+    void refreshToken_blank_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "refreshToken": ""
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void refreshToken_oversized_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "refreshToken": "%s"
+                                }
+                                """.formatted("x".repeat(129))))
+                .andExpect(status().isBadRequest());
+    }
 }
