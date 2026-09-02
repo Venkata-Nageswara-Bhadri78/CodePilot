@@ -22,6 +22,10 @@ public class SendChatMessageRequest {
 
     @NotBlank(message = "Prompt cannot be blank.")
     @Size(max = 8000, message = "Prompt cannot exceed 8000 characters.")
-    @Schema(description = "The user's message/question", example = "How well do I match the required experience for this role?")
+    @Schema(
+            description = "The user's message/question. Required. Max 8000 characters (8001 is rejected).",
+            example = "How well do I match the required experience for this role?",
+            requiredMode = Schema.RequiredMode.REQUIRED,
+            maxLength = 8000)
     private String prompt;
 }

@@ -29,9 +29,10 @@ public class ChatMessageResponse {
     @Schema(description = "What the user asked", example = "How well do I match this role?")
     private String userPrompt;
 
-    @Schema(description = "What the AI replied", example = "You match 4 out of 6 required skills...")
+    @Schema(description = "What the AI replied (Markdown). Local-datetime has no offset.",
+            example = "### Match\nYou match **4 of 6** required skills.")
     private String aiResponse;
 
-    @Schema(description = "When this turn was created", example = "2026-08-24T15:30:00")
+    @Schema(description = "When this turn was created (local datetime, no offset)", example = "2026-08-24T15:30:00")
     private LocalDateTime createdAt;
 }

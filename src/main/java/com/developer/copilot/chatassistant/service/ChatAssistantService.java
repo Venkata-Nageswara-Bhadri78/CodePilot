@@ -1,12 +1,10 @@
 package com.developer.copilot.chatassistant.service;
 
-import java.util.List;
-
 import org.springframework.data.domain.Pageable;
 
 import com.developer.copilot.chatassistant.dto.request.SendChatMessageRequest;
+import com.developer.copilot.chatassistant.dto.response.ChatSessionListResponse;
 import com.developer.copilot.chatassistant.dto.response.ChatSessionResponse;
-import com.developer.copilot.chatassistant.dto.response.ChatSessionSummaryResponse;
 import com.developer.copilot.chatassistant.dto.response.SendChatMessageResponse;
 
 public interface ChatAssistantService {
@@ -14,7 +12,7 @@ public interface ChatAssistantService {
     /**
      * Sends a new prompt as part of the chat for the given job, creating the chat session on
      * the very first call for that job. Persists exactly one new {@code ChatMessage} row per
-     * call - no rewriting of prior turns.
+     * call - no rewriting of prior turns. The Gemini call runs outside a database transaction.
      *
      * @param jobId  the job this conversation is about; must be owned by the current user
      * @param request the new prompt
@@ -31,9 +29,9 @@ public interface ChatAssistantService {
     ChatSessionResponse getChatHistory(Long jobId, Pageable pageable);
 
     /**
-     * Lists all chat sessions owned by the current user, most-recently-updated first.
+     * Lists chat sessions owned by the current user, most-recently-updated first.
      */
-    List<ChatSessionSummaryResponse> listMyChats();
+    ChatSessionListResponse listMyChats(Pageable pageable);
 
     /**
      * Deletes the entire chat history for a job so the user can start a fresh conversation.

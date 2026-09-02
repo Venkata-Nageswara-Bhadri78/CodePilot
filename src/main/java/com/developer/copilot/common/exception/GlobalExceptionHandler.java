@@ -11,6 +11,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
 
@@ -273,6 +274,34 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String message = "jobId".equals(ex.getName()) ? "Invalid job id." : "Invalid request parameter.";
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(message)
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
+    @ExceptionHandler(com.developer.copilot.chatassistant.exception.ChatConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> handleChatConflict(
+            com.developer.copilot.chatassistant.exception.ChatConflictException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
                 .body(response);
     }
 
@@ -677,6 +706,22 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(com.developer.copilot.user.ratelimit.exception.RateLimitExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleUserRateLimitExceeded(
                 com.developer.copilot.user.ratelimit.exception.RateLimitExceededException ex) {
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(response);
+    }
+
+    @ExceptionHandler(com.developer.copilot.chatassistant.ratelimit.exception.RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleChatAssistantRateLimitExceeded(
+                com.developer.copilot.chatassistant.ratelimit.exception.RateLimitExceededException ex) {
 
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .success(false)

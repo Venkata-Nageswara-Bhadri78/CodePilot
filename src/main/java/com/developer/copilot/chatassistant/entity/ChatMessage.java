@@ -1,5 +1,8 @@
 package com.developer.copilot.chatassistant.entity;
 
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+
 import com.developer.copilot.auth.entity.BaseEntity;
 
 import jakarta.persistence.Column;
@@ -8,7 +11,6 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
@@ -28,9 +30,6 @@ import lombok.Setter;
 @Entity
 @Table(
         name = "chat_messages",
-        indexes = {
-                @Index(name = "idx_chat_message_session_turn", columnList = "chat_session_id, turn_number")
-        },
         uniqueConstraints = {
                 @UniqueConstraint(name = "uq_chat_message_session_turn", columnNames = {"chat_session_id", "turn_number"})
         }
@@ -47,6 +46,7 @@ public class ChatMessage extends BaseEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     @JoinColumn(name = "chat_session_id", nullable = false)
     private ChatSession chatSession;
 

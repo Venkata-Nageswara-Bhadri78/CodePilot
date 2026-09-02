@@ -14,6 +14,9 @@ import com.developer.copilot.auth.jwt.JwtService;
 import com.developer.copilot.auth.repository.UserRepository;
 import com.developer.copilot.chatassistant.service.ChatAssistantService;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -61,5 +64,17 @@ class ChatAssistantSecurityTest {
     void deleteChat_withoutAuthorization_returns401() throws Exception {
         mockMvc.perform(delete("/api/v1/chat-assistant/jobs/1"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void sendMessage_garbageToken_returns401() throws Exception {
+        mockMvc.perform(post("/api/v1/chat-assistant/jobs/1/messages")
+                        .header("Authorization", "Bearer not-a-jwt")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"prompt":"Hello"}
+                                """))
+                .andExpect(status().isUnauthorized());
+        verify(chatAssistantService, never()).sendMessage(any(), any());
     }
 }
