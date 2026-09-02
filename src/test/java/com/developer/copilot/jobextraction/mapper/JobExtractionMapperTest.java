@@ -52,6 +52,99 @@ class JobExtractionMapperTest {
     }
 
     @Test
+    void toResultResponse_ClipsTitleTo255AndFlagsManualReview() {
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("A".repeat(300))
+                .company("Acme")
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
+
+        assertEquals(255, result.getTitle().length());
+        assertTrue(result.isRequiresManualReview());
+    }
+
+    @Test
+    void toResultResponse_ClipsWorkModeTo50() {
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("Engineer")
+                .company("Acme")
+                .workMode("W".repeat(51))
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
+
+        assertEquals(50, result.getWorkMode().length());
+        assertFalse(result.isRequiresManualReview());
+    }
+
+    @Test
+    void toResultResponse_ClipsSkillTo255AndCapsCountAt50() {
+        java.util.List<String> many = new java.util.ArrayList<>();
+        many.add("S".repeat(256));
+        for (int i = 0; i < 60; i++) {
+            many.add("skill-" + i);
+        }
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("Engineer")
+                .company("Acme")
+                .skills(many)
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
+
+        assertEquals(50, result.getSkills().size());
+        assertEquals(255, result.getSkills().get(0).length());
+    }
+
+    @Test
+    void toResultResponse_StripsControlCharsFromTitle() {
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("Eng\u0001ineer")
+                .company("Acme")
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
+
+        assertEquals("Engineer", result.getTitle());
+        assertFalse(result.isRequiresManualReview());
+    }
+
+    @Test
+    void toResultResponse_MutatingAiSkillsList_DoesNotChangeResponse() {
+        java.util.List<String> aiSkills = new java.util.ArrayList<>(java.util.List.of("Java"));
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("Engineer")
+                .company("Acme")
+                .skills(aiSkills)
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
+
+        aiSkills.add("Hacked");
+        assertEquals(java.util.List.of("Java"), result.getSkills());
+    }
+
+    @Test
+    void toResultResponse_BothTitleAndCompanyPresent_RequiresManualReviewFalse() {
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("Engineer")
+                .company("Acme")
+                .salary("")
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
+
+        assertFalse(result.isRequiresManualReview());
+    }
+
+    @Test
     void toResultResponse_SourceUrlAndOriginalDescription_ComeFromArgsNotAiResponse() {
         JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
                 .title("Engineer")
@@ -104,6 +197,41 @@ class JobExtractionMapperTest {
         JobExtractionResultResponse result =
                 mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
 
+        assertTrue(result.isRequiresManualReview());
+    }
+
+    @Test
+    void toResultResponse_HtmlInTitle_IsKeptAsText() {
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("<img src=x onerror=alert(1)>")
+                .company("Acme")
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
+
+        assertEquals("<img src=x onerror=alert(1)>", result.getTitle());
+        assertFalse(result.isRequiresManualReview());
+    }
+
+    @Test
+    void toResultResponse_JavascriptUriInExtractedField_IsBlanked() {
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("javascript:alert(1)")
+                .company("Acme")
+                .workMode("data:text/html,hi")
+                .description("Apply at the company site")
+                .skills(List.of("javascript:alert(1)", "Java"))
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "javascript: in the paste is fine");
+
+        assertEquals("", result.getTitle());
+        assertEquals("", result.getWorkMode());
+        assertEquals("Apply at the company site", result.getDescription());
+        assertEquals(List.of("Java"), result.getSkills());
+        assertEquals("javascript: in the paste is fine", result.getOriginalDescription());
         assertTrue(result.isRequiresManualReview());
     }
 }

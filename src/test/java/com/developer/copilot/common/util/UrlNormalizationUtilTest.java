@@ -55,6 +55,16 @@ class UrlNormalizationUtilTest {
     }
 
     @Test
+    void normalizeStrict_StripsAccessTokenAuthAndToken_KeepsJobId() {
+        String normalized = urlNormalizationUtil.normalizeStrict(
+                "https://example.com/jobs/123?jobId=abc&access_token=secret&token=t&auth=1");
+
+        assertEquals("https://example.com/jobs/123?jobId=abc", normalized);
+        assertFalse(normalized.contains("secret"));
+        assertFalse(normalized.contains("access_token"));
+    }
+
+    @Test
     void normalizeStrict_SameJobDifferentTrackingLinks_ProduceIdenticalCanonicalUrl() {
         String linkedInLink = "https://www.example.com/careers/job/999?utm_source=linkedin&fbclid=abc123";
         String naukriLink = "http://example.com/careers/job/999/?ref=naukri&utm_campaign=jobboard";
@@ -96,8 +106,27 @@ class UrlNormalizationUtilTest {
 
     @Test
     void normalizeStrict_RejectsNonHttpScheme() {
-        assertThrows(InvalidJobUrlException.class,
+        InvalidJobUrlException ex = assertThrows(InvalidJobUrlException.class,
                 () -> urlNormalizationUtil.normalizeStrict("ftp://example.com/jobs/42"));
+        assertEquals("Job URL must be a valid absolute http or https link.", ex.getMessage());
+        assertFalse(ex.getMessage().contains("ftp://"));
+    }
+
+    @Test
+    void normalizeStrict_JavascriptUrl_DoesNotEchoInputInMessage() {
+        InvalidJobUrlException ex = assertThrows(InvalidJobUrlException.class,
+                () -> urlNormalizationUtil.normalizeStrict("javascript:alert(1)"));
+        assertEquals("Job URL must be a valid absolute http or https link.", ex.getMessage());
+        assertFalse(ex.getMessage().contains("javascript"));
+        assertFalse(ex.getMessage().contains("<script>"));
+    }
+
+    @Test
+    void normalizeStrict_ScriptInHost_DoesNotEchoInputInMessage() {
+        InvalidJobUrlException ex = assertThrows(InvalidJobUrlException.class,
+                () -> urlNormalizationUtil.normalizeStrict("https://example.com/<script>"));
+        assertFalse(ex.getMessage().contains("<script>"));
+        assertEquals("Job URL must be a valid absolute http or https link.", ex.getMessage());
     }
 
     @Test
