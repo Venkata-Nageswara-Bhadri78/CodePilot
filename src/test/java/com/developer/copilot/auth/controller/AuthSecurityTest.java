@@ -65,4 +65,28 @@ class AuthSecurityTest {
                                 """))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void publicAuthRoutes_withoutAuthorization_areNotUnauthorized() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "username": "johndoe",
+                                  "fullName": "John Doe",
+                                  "email": "john@example.com",
+                                  "password": "Secure@123"
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "john@example.com"
+                                }
+                                """))
+                .andExpect(status().isOk());
+    }
 }

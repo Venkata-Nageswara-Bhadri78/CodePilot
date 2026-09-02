@@ -23,7 +23,7 @@ public class JwtService {
     @Value("${app.jwt.secret}")
     private String secret;
 
-    @Value("${app.jwt.expiration}")
+    @Value("${app.auth.access-expiry-ms:900000}")
     private long expiration;
 
     @PostConstruct
@@ -33,7 +33,7 @@ public class JwtService {
                     "app.jwt.secret must be at least " + MIN_SECRET_LENGTH + " characters.");
         }
         if (expiration <= 0) {
-            throw new IllegalStateException("app.jwt.expiration must be a positive duration in milliseconds.");
+            throw new IllegalStateException("app.auth.access-expiry-ms must be a positive duration in milliseconds.");
         }
     }
 

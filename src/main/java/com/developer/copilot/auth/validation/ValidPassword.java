@@ -14,7 +14,7 @@ import jakarta.validation.constraints.Size;
 
 @Documented
 @NotBlank
-@Size(min = 8, max = 100)
+@Size(min = 8, max = 72)
 @Pattern(
         regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&#^+=]).+$",
         message = "Password must contain uppercase, lowercase, number and special character.")

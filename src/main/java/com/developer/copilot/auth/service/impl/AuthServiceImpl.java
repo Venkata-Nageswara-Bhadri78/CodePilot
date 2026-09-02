@@ -4,17 +4,18 @@ import com.developer.copilot.auth.repository.EmailVerificationRepository;
 import com.developer.copilot.auth.repository.PasswordResetTokenRepository;
 import com.developer.copilot.auth.repository.RefreshTokenRepository;
 import com.developer.copilot.auth.repository.UserRepository;
-import com.developer.copilot.auth.security.CustomUserDetails;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,10 +38,11 @@ import com.developer.copilot.auth.entity.PasswordResetToken;
 import com.developer.copilot.auth.entity.RefreshToken;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.enums.Role;
+import com.developer.copilot.auth.exception.EmailDeliveryException;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
-import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.auth.jwt.JwtService;
 import com.developer.copilot.auth.mapper.AuthMapper;
+import com.developer.copilot.auth.security.AuthAbuseGuard;
 import com.developer.copilot.auth.service.AuthService;
 import com.developer.copilot.auth.service.EmailService;
 import com.developer.copilot.auth.util.CredentialDigests;
@@ -53,11 +55,22 @@ import com.developer.copilot.auth.exception.PasswordResetTokenExpiredException;
 import com.developer.copilot.auth.exception.PasswordResetTokenUsedException;
 import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
+import com.developer.copilot.common.security.CurrentUserService;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
-public class AuthServiceImpl implements AuthService{
-    
+public class AuthServiceImpl implements AuthService {
+
+    static final String INVALID_CREDENTIALS = "Invalid email or password.";
+
+    /**
+     * Real BCrypt hash used only so a missing user still pays the same CPU as a wrong password.
+     * Corresponds to the password "invalid-dummy-password".
+     */
+    private static final String DUMMY_PASSWORD_HASH =
+            "$2a$10$7EqJtq98hPqEX7fNZaFWoOahiRIkL5KqXwXz0uV1aYcKq1eN6vW1e";
+
     private final PasswordEncoder passwordEncoder;
     private final UserRepository userRepository;
     private final EmailVerificationRepository emailVerificationRepository;
@@ -68,6 +81,11 @@ public class AuthServiceImpl implements AuthService{
     private final AuthMapper authMapper;
     private final Clock clock;
     private final AuthProperties authProperties;
+    private final CurrentUserService currentUserService;
+    private final AuthAbuseGuard authAbuseGuard;
+
+    @Value("${app.jwt.secret}")
+    private String otpHmacSecret;
 
     @Override
     @Transactional
@@ -76,78 +94,81 @@ public class AuthServiceImpl implements AuthService{
         String email = normalizeEmail(registerRequest.getEmail());
         String fullName = registerRequest.getFullName() == null ? null : registerRequest.getFullName().trim();
 
-        if (userRepository.existsByUsername(username)) {
-            throw new ResourceAlreadyExistsException("Username already exists.");
+        if (username == null || username.length() < 3 || username.length() > 50) {
+            throw new IllegalArgumentException("username: size must be between 3 and 50");
         }
-        
-        if (userRepository.existsByEmail(email)) {
-            throw new ResourceAlreadyExistsException("Email already exists.");
+
+        if (userRepository.existsByUsername(username) || userRepository.existsByEmail(email)) {
+            log.debug("Register ignored for existing username or email");
+            return;
         }
-        
+
         User user = new User();
         user.setUsername(username);
         user.setEmail(email);
         user.setFullName(fullName);
         user.setPassword(passwordEncoder.encode(registerRequest.getPassword()));
-
         user.setRole(Role.USER);
         user.setEnabled(false);
         user.setEmailVerified(false);
         user.setTokenVersion(0);
 
-        userRepository.save(user);
+        try {
+            userRepository.save(user);
+        } catch (DataIntegrityViolationException ex) {
+            log.debug("Register raced on unique username or email");
+            return;
+        }
 
-        String otp = OtpGenerator.generateOtp();
-        emailVerificationRepository.deleteByUserId(user.getId());
-        EmailVerification verification = new EmailVerification();
-        verification.setUser(user);
-        verification.setOtp(CredentialDigests.sha256(otp));
-        verification.setExpiresAt(now().plusMinutes(authProperties.getOtpExpiryMinutes()));
-        verification.setVerified(false);
-        verification.setFailedAttempts(0);
-
-        emailVerificationRepository.save(verification);
-        afterCommit(() -> emailService.sendOtpEmail(
-            user.getEmail(),
-            user.getFullName(),
-            otp
-        ));
+        issueAndMailOtp(user);
     }
 
     @Override
-    public AuthResponse login(LoginRequest request){
-        User user = userRepository.findByEmail(normalizeEmail(request.getEmail()))
-                .orElseThrow(() -> new InvalidCredentialsException("Invalid Email or Password"));
+    @Transactional
+    public AuthResponse login(LoginRequest request) {
+        String email = normalizeEmail(request.getEmail());
+        long windowMs = authProperties.getFailedLoginWindowMinutes() * 60_000L;
+
+        if (authAbuseGuard.isLoginBlocked(email, authProperties.getMaxFailedLogins(), windowMs)) {
+            passwordEncoder.matches(request.getPassword(), DUMMY_PASSWORD_HASH);
+            log.debug("Login blocked by failure window for {}", email);
+            throw new InvalidCredentialsException(INVALID_CREDENTIALS);
+        }
+
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user == null) {
+            passwordEncoder.matches(request.getPassword(), DUMMY_PASSWORD_HASH);
+            authAbuseGuard.recordLoginFailure(email, windowMs);
+            log.debug("Login failed: unknown email");
+            throw new InvalidCredentialsException(INVALID_CREDENTIALS);
+        }
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new InvalidCredentialsException("Invalid email or password.");
-        }
-        
-        if (!user.getEmailVerified()) {
-            throw new InvalidCredentialsException("Please verify your email before logging in.");
-        }
-        
-        if (!user.getEnabled()) {
-            throw new InvalidCredentialsException("Account is disabled.");
+            authAbuseGuard.recordLoginFailure(email, windowMs);
+            log.debug("Login failed: bad password");
+            throw new InvalidCredentialsException(INVALID_CREDENTIALS);
         }
 
+        if (!Boolean.TRUE.equals(user.getEmailVerified()) || !Boolean.TRUE.equals(user.getEnabled())) {
+            log.debug("Login failed: unverified or disabled account");
+            throw new InvalidCredentialsException(INVALID_CREDENTIALS);
+        }
+
+        authAbuseGuard.recordLoginSuccess(email);
         return buildAuthResponse(user);
     }
 
     @Override
     public UserResponse me() {
-        return authMapper.toUserResponse(currentUser());
+        return authMapper.toUserResponse(currentUserService.getCurrentUser());
     }
 
     @Override
     @Transactional
     public void verifyOtp(VerifyOtpRequest request) {
-
-        EmailVerification verification =
-        emailVerificationRepository
+        EmailVerification verification = emailVerificationRepository
                 .findTopByUserEmailOrderByCreatedAtDesc(normalizeEmail(request.getEmail()))
-                .orElseThrow(() ->
-                        new InvalidOtpException("OTP not found."));
+                .orElseThrow(() -> new InvalidOtpException("OTP not found."));
 
         User user = verification.getUser();
 
@@ -164,14 +185,13 @@ public class AuthServiceImpl implements AuthService{
             throw new InvalidOtpException("OTP not found.");
         }
 
-        if (!CredentialDigests.matches(request.getOtp(), verification.getOtp())) {
+        if (!CredentialDigests.hmacMatches(request.getOtp(), verification.getOtp(), otpHmacSecret)) {
             verification.setFailedAttempts(failedAttempts + 1);
             emailVerificationRepository.save(verification);
             throw new InvalidOtpException("Invalid OTP.");
         }
 
         verification.setVerified(true);
-
         user.setEnabled(true);
         user.setEmailVerified(true);
 
@@ -179,32 +199,18 @@ public class AuthServiceImpl implements AuthService{
         userRepository.save(user);
     }
 
-
     @Override
     @Transactional
     public void resendOtp(ResendOtpRequest request) {
-
         userRepository.findByEmail(normalizeEmail(request.getEmail())).ifPresent(user -> {
             if (Boolean.TRUE.equals(user.getEmailVerified())) {
                 return;
             }
-
-            String otp = OtpGenerator.generateOtp();
-            emailVerificationRepository.deleteByUserId(user.getId());
-            EmailVerification verification = new EmailVerification();
-
-            verification.setUser(user);
-            verification.setOtp(CredentialDigests.sha256(otp));
-            verification.setExpiresAt(now().plusMinutes(authProperties.getOtpExpiryMinutes()));
-            verification.setVerified(false);
-            verification.setFailedAttempts(0);
-
-            emailVerificationRepository.save(verification);
-
-            afterCommit(() -> emailService.sendOtpEmail(
-                    user.getEmail(),
-                    user.getFullName(),
-                    otp));
+            if (!authAbuseGuard.tryAcquireMail(user.getEmail(), mailCooldownMs())) {
+                log.debug("Resend OTP skipped by cooldown");
+                return;
+            }
+            issueAndMailOtp(user);
         });
     }
 
@@ -212,6 +218,10 @@ public class AuthServiceImpl implements AuthService{
     @Transactional
     public void forgotPassword(ForgotPasswordRequest request) {
         userRepository.findByEmail(normalizeEmail(request.getEmail())).ifPresent(user -> {
+            if (!authAbuseGuard.tryAcquireMail("reset:" + user.getEmail(), mailCooldownMs())) {
+                log.debug("Forgot password skipped by cooldown");
+                return;
+            }
             passwordResetTokenRepository.deleteByUserIdAndUsedFalse(user.getId());
 
             String rawToken = UUID.randomUUID().toString();
@@ -224,11 +234,10 @@ public class AuthServiceImpl implements AuthService{
 
             passwordResetTokenRepository.save(resetToken);
 
-            afterCommit(() -> emailService.sendPasswordResetEmail(
+            afterCommit(() -> sendMailSafely(() -> emailService.sendPasswordResetEmail(
                     user.getEmail(),
                     user.getFullName(),
-                    rawToken
-            ));
+                    rawToken)));
         });
     }
 
@@ -262,8 +271,7 @@ public class AuthServiceImpl implements AuthService{
     @Transactional
     public AuthResponse refreshToken(RefreshTokenRequest request) {
         RefreshToken storedToken = refreshTokenRepository.findByTokenForUpdate(CredentialDigests.sha256(request.getRefreshToken()))
-                .orElseThrow(() ->
-                        new InvalidRefreshTokenException("Invalid refresh token."));
+                .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token."));
 
         User user = storedToken.getUser();
 
@@ -291,7 +299,27 @@ public class AuthServiceImpl implements AuthService{
         return new AuthResponse(newAccessToken, "Bearer", newRefreshTokenValue);
     }
 
+    private void issueAndMailOtp(User user) {
+        String otp = OtpGenerator.generateOtp();
+        emailVerificationRepository.deleteByUserId(user.getId());
+        EmailVerification verification = new EmailVerification();
+        verification.setUser(user);
+        verification.setOtp(CredentialDigests.hmacSha256(otp, otpHmacSecret));
+        verification.setExpiresAt(now().plusMinutes(authProperties.getOtpExpiryMinutes()));
+        verification.setVerified(false);
+        verification.setFailedAttempts(0);
+        emailVerificationRepository.save(verification);
+
+        afterCommit(() -> sendMailSafely(() -> emailService.sendOtpEmail(
+                user.getEmail(),
+                user.getFullName(),
+                otp)));
+    }
+
     private String persistRefreshToken(User user, RefreshToken replaced) {
+        if (replaced == null) {
+            capActiveRefreshTokens(user);
+        }
         String rawToken = UUID.randomUUID().toString();
         RefreshToken refreshToken = new RefreshToken();
         refreshToken.setUser(user);
@@ -305,13 +333,29 @@ public class AuthServiceImpl implements AuthService{
         }
         return rawToken;
     }
-    
+
+    private void capActiveRefreshTokens(User user) {
+        int max = authProperties.getMaxActiveRefreshTokens();
+        if (max <= 0) {
+            return;
+        }
+        List<RefreshToken> active = refreshTokenRepository.findAllByUserIdAndRevokedFalseOrderByCreatedAtAsc(user.getId());
+        int overflow = active.size() - max + 1;
+        if (overflow <= 0) {
+            return;
+        }
+        for (int i = 0; i < overflow; i++) {
+            active.get(i).setRevoked(true);
+        }
+        refreshTokenRepository.saveAll(active.subList(0, overflow));
+    }
+
     private AuthResponse buildAuthResponse(User user) {
         String refreshToken = persistRefreshToken(user, null);
         String accessToken = jwtService.generateToken(user);
         return new AuthResponse(accessToken, "Bearer", refreshToken);
     }
-    
+
     private void revokeAllRefreshTokens(User user) {
         var activeTokens = refreshTokenRepository.findAllByUserIdAndRevokedFalse(user.getId());
         for (RefreshToken token : activeTokens) {
@@ -323,7 +367,7 @@ public class AuthServiceImpl implements AuthService{
     @Override
     @Transactional
     public void logout(LogoutRequest request) {
-        User user = currentUser();
+        User user = currentUserService.getCurrentUser();
         RefreshToken refreshToken = refreshTokenRepository.findByTokenAndRevokedFalse(
                         CredentialDigests.sha256(request.getRefreshToken()))
                 .orElseThrow(() -> new InvalidRefreshTokenException("Invalid refresh token."));
@@ -339,18 +383,10 @@ public class AuthServiceImpl implements AuthService{
     @Override
     @Transactional
     public void logoutAllDevices() {
-        User user = currentUser();
+        User user = currentUserService.getCurrentUser();
         bumpTokenVersion(user);
         userRepository.save(user);
         revokeAllRefreshTokens(user);
-    }
-
-    private User currentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !(authentication.getPrincipal() instanceof CustomUserDetails userDetails)) {
-            throw new InvalidCredentialsException("User not found.");
-        }
-        return userDetails.getUser();
     }
 
     private void bumpTokenVersion(User user) {
@@ -367,7 +403,19 @@ public class AuthServiceImpl implements AuthService{
     }
 
     private String normalizeUsername(String username) {
-        return username == null ? null : username.trim();
+        return username == null ? null : username.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private long mailCooldownMs() {
+        return authProperties.getMailCooldownSeconds() * 1000L;
+    }
+
+    private void sendMailSafely(Runnable send) {
+        try {
+            send.run();
+        } catch (EmailDeliveryException ex) {
+            log.error("Email delivery failed after the account change was saved. Use resend-otp or forgot-password.");
+        }
     }
 
     private void afterCommit(Runnable action) {

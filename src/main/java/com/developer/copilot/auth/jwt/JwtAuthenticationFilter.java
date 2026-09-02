@@ -2,6 +2,7 @@ package com.developer.copilot.auth.jwt;
 
 import java.io.IOException;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -13,6 +14,7 @@ import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.repository.UserRepository;
 import com.developer.copilot.auth.security.CustomUserDetails;
 
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,7 +45,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         String jwt = authHeader.substring(7);
-        
+
         try {
             Long userId = jwtService.extractUserId(jwt);
 
@@ -66,12 +68,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authToken);
                 }
             }
-        } catch (Exception ex) {
+        } catch (DataAccessException ex) {
+            throw ex;
+        } catch (JwtException | IllegalArgumentException ex) {
             log.debug("JWT validation failed: {}", ex.getMessage());
         }
 
         filterChain.doFilter(request, response);
-
     }
-
 }

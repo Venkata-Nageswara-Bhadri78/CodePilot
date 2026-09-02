@@ -1,10 +1,13 @@
 package com.developer.copilot.auth.config;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -14,17 +17,29 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.developer.copilot.auth.jwt.JwtAuthenticationFilter;
+import com.developer.copilot.auth.security.AuthRateLimitFilter;
 
 import lombok.RequiredArgsConstructor;
 
 @Configuration
-@EnableConfigurationProperties(CorsProperties.class)
+@EnableConfigurationProperties({CorsProperties.class, AuthProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
+
+    private static final String[] SWAGGER_PATHS = {
+            "/swagger-ui/**",
+            "/swagger-ui.html",
+            "/v3/api-docs",
+            "/v3/api-docs/**",
+            "/swagger-resources/**",
+            "/webjars/**"
+    };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final CorsProperties corsProperties;
     private final JsonAuthenticationEntryPoint jsonAuthenticationEntryPoint;
+    private final AuthProperties authProperties;
+    private final Environment environment;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -35,16 +50,11 @@ public class SecurityConfig {
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .exceptionHandling(ex -> ex
                 .authenticationEntryPoint(jsonAuthenticationEntryPoint))
-        .authorizeHttpRequests(auth -> auth
-            .requestMatchers(
-                "/swagger-ui/**",
-                "/swagger-ui.html",
-                "/v3/api-docs",
-                "/v3/api-docs/**",
-                "/swagger-resources/**",
-                "/webjars/**"
-            ).permitAll()
-            .requestMatchers(
+        .authorizeHttpRequests(auth -> {
+            if (!isProductionProfile()) {
+                auth.requestMatchers(SWAGGER_PATHS).permitAll();
+            }
+            auth.requestMatchers(
                 "/api/v1/auth/register",
                 "/api/v1/auth/login",
                 "/api/v1/auth/verify-email",
@@ -54,16 +64,13 @@ public class SecurityConfig {
                 "/api/v1/auth/refresh-token",
                 "/error"
             ).permitAll()
-        
-            .anyRequest().authenticated()
-        )
-        .addFilterBefore(
-                jwtAuthenticationFilter,
-                UsernamePasswordAuthenticationFilter.class); 
+            .anyRequest().authenticated();
+        })
+        .addFilterBefore(new AuthRateLimitFilter(authProperties), UsernamePasswordAuthenticationFilter.class)
+        .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
-
 
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
@@ -71,7 +78,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         configuration.setAllowedOrigins(corsProperties.getAllowedOrigins());
-        
+
         configuration.setAllowedMethods(
                 List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
         );
@@ -79,7 +86,7 @@ public class SecurityConfig {
                 List.of("*")
         );
         configuration.setExposedHeaders(
-                List.of("Authorization", "Content-Type")
+                List.of("Authorization", "Content-Type", "Retry-After")
         );
         configuration.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -88,5 +95,11 @@ public class SecurityConfig {
                 configuration
         );
         return source;
+    }
+
+    private boolean isProductionProfile() {
+        return Arrays.stream(environment.getActiveProfiles())
+                .map(profile -> profile.toLowerCase(Locale.ROOT))
+                .anyMatch(profile -> profile.equals("prod") || profile.equals("production"));
     }
 }

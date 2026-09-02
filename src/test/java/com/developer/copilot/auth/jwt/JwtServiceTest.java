@@ -8,6 +8,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JwtServiceTest {
@@ -62,5 +63,23 @@ class JwtServiceTest {
         user.setTokenVersion(1);
 
         assertFalse(jwtService.isTokenValid(token, user));
+    }
+
+    @Test
+    void isTokenValid_returnsFalseWhenExpired() {
+        ReflectionTestUtils.setField(jwtService, "expiration", -1L);
+
+        String token = jwtService.generateToken(user);
+
+        assertThrows(io.jsonwebtoken.JwtException.class, () -> jwtService.isTokenValid(token, user));
+    }
+
+    @Test
+    void validateConfiguration_rejectsShortSecret() {
+        JwtService service = new JwtService();
+        ReflectionTestUtils.setField(service, "secret", "short");
+        ReflectionTestUtils.setField(service, "expiration", 1000L);
+
+        assertThrows(IllegalStateException.class, service::validateConfiguration);
     }
 }

@@ -24,16 +24,16 @@ import com.developer.copilot.auth.exception.PasswordResetTokenExpiredException;
 import com.developer.copilot.auth.exception.PasswordResetTokenUsedException;
 import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
-import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.auth.jwt.JwtService;
 import com.developer.copilot.auth.mapper.AuthMapper;
 import com.developer.copilot.auth.repository.EmailVerificationRepository;
 import com.developer.copilot.auth.repository.PasswordResetTokenRepository;
 import com.developer.copilot.auth.repository.RefreshTokenRepository;
 import com.developer.copilot.auth.repository.UserRepository;
-import com.developer.copilot.auth.security.CustomUserDetails;
+import com.developer.copilot.auth.security.AuthAbuseGuard;
 import com.developer.copilot.auth.service.EmailService;
 import com.developer.copilot.auth.util.CredentialDigests;
+import com.developer.copilot.common.security.CurrentUserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,7 +41,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -51,8 +50,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -79,11 +79,14 @@ class AuthServiceImplTest {
     private PasswordResetTokenRepository passwordResetTokenRepository;
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
+    @Mock
+    private CurrentUserService currentUserService;
 
     @InjectMocks
     private AuthServiceImpl authService;
 
     private User user;
+    private static final String HMAC_SECRET = "test-secret-key-that-is-long-enough-for-hmac-sha256";
 
     @BeforeEach
     void setUp() {
@@ -101,6 +104,8 @@ class AuthServiceImplTest {
         ReflectionTestUtils.setField(authService, "clock", Clock.systemDefaultZone());
         ReflectionTestUtils.setField(authService, "authMapper", new AuthMapper());
         ReflectionTestUtils.setField(authService, "authProperties", new AuthProperties());
+        ReflectionTestUtils.setField(authService, "otpHmacSecret", HMAC_SECRET);
+        ReflectionTestUtils.setField(authService, "authAbuseGuard", new AuthAbuseGuard());
     }
 
     @AfterEach
@@ -133,28 +138,33 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void register_existingEmail_throwsResourceAlreadyExistsException() {
+    void register_existingEmail_returnsQuietlyWithoutSaving() {
         RegisterRequest request = new RegisterRequest();
         request.setUsername("johndoe");
+        request.setFullName("John Doe");
         request.setEmail("john@example.com");
         request.setPassword("Secure@123");
 
         when(userRepository.existsByUsername("johndoe")).thenReturn(false);
         when(userRepository.existsByEmail("john@example.com")).thenReturn(true);
 
-        assertThrows(ResourceAlreadyExistsException.class, () -> authService.register(request));
+        authService.register(request);
+
         verify(userRepository, never()).save(any());
+        verify(emailService, never()).sendOtpEmail(anyString(), anyString(), anyString());
     }
 
     @Test
-    void register_existingUsername_throwsResourceAlreadyExistsException() {
+    void register_existingUsername_returnsQuietlyWithoutSaving() {
         RegisterRequest request = new RegisterRequest();
         request.setUsername("johndoe");
+        request.setFullName("John Doe");
         request.setEmail("john@example.com");
 
         when(userRepository.existsByUsername("johndoe")).thenReturn(true);
 
-        assertThrows(ResourceAlreadyExistsException.class, () -> authService.register(request));
+        authService.register(request);
+
         verify(userRepository, never()).save(any());
     }
 
@@ -166,7 +176,7 @@ class AuthServiceImplTest {
 
         EmailVerification verification = new EmailVerification();
         verification.setUser(user);
-        verification.setOtp(CredentialDigests.sha256("123456"));
+        verification.setOtp(CredentialDigests.hmacSha256("123456", HMAC_SECRET));
         verification.setExpiresAt(LocalDateTime.now().plusMinutes(5));
         verification.setVerified(false);
 
@@ -189,7 +199,7 @@ class AuthServiceImplTest {
 
         EmailVerification verification = new EmailVerification();
         verification.setUser(user);
-        verification.setOtp(CredentialDigests.sha256("123456"));
+        verification.setOtp(CredentialDigests.hmacSha256("123456", HMAC_SECRET));
         verification.setExpiresAt(LocalDateTime.now().plusMinutes(5));
         verification.setVerified(false);
 
@@ -207,7 +217,7 @@ class AuthServiceImplTest {
 
         EmailVerification verification = new EmailVerification();
         verification.setUser(user);
-        verification.setOtp(CredentialDigests.sha256("123456"));
+        verification.setOtp(CredentialDigests.hmacSha256("123456", HMAC_SECRET));
         verification.setExpiresAt(LocalDateTime.now().minusMinutes(1));
         verification.setVerified(false);
 
@@ -225,7 +235,7 @@ class AuthServiceImplTest {
 
         EmailVerification verification = new EmailVerification();
         verification.setUser(user);
-        verification.setOtp(CredentialDigests.sha256("123456"));
+        verification.setOtp(CredentialDigests.hmacSha256("123456", HMAC_SECRET));
         verification.setExpiresAt(LocalDateTime.now().plusMinutes(5));
         verification.setVerified(true);
 
@@ -275,6 +285,7 @@ class AuthServiceImplTest {
         when(userRepository.findByEmail("john@example.com")).thenReturn(Optional.of(user));
         when(passwordEncoder.matches("Secure@123", "hashed-password")).thenReturn(true);
         when(jwtService.generateToken(user)).thenReturn("access-token");
+        when(refreshTokenRepository.findAllByUserIdAndRevokedFalseOrderByCreatedAtAsc(1L)).thenReturn(List.of());
         when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AuthResponse response = authService.login(request);
@@ -434,9 +445,7 @@ class AuthServiceImplTest {
         LogoutRequest request = new LogoutRequest();
         request.setRefreshToken("refresh-token");
 
-        CustomUserDetails userDetails = new CustomUserDetails(user);
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
+        when(currentUserService.getCurrentUser()).thenReturn(user);
 
         RefreshToken refreshToken = new RefreshToken();
         refreshToken.setUser(user);
@@ -456,9 +465,7 @@ class AuthServiceImplTest {
         LogoutRequest request = new LogoutRequest();
         request.setRefreshToken("missing");
 
-        CustomUserDetails userDetails = new CustomUserDetails(user);
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
+        when(currentUserService.getCurrentUser()).thenReturn(user);
 
         when(refreshTokenRepository.findByTokenAndRevokedFalse(CredentialDigests.sha256("missing"))).thenReturn(Optional.empty());
 
@@ -467,9 +474,7 @@ class AuthServiceImplTest {
 
     @Test
     void logoutAllDevices_success_revokesAllActiveTokens() {
-        CustomUserDetails userDetails = new CustomUserDetails(user);
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
+        when(currentUserService.getCurrentUser()).thenReturn(user);
 
         RefreshToken token1 = new RefreshToken();
         token1.setRevoked(false);
@@ -508,9 +513,7 @@ class AuthServiceImplTest {
         LogoutRequest request = new LogoutRequest();
         request.setRefreshToken("refresh-token");
 
-        CustomUserDetails userDetails = new CustomUserDetails(user);
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities()));
+        when(currentUserService.getCurrentUser()).thenReturn(user);
 
         User other = new User();
         other.setId(2L);
@@ -539,5 +542,78 @@ class AuthServiceImplTest {
                 .thenReturn(Optional.of(storedToken));
 
         assertThrows(InvalidRefreshTokenException.class, () -> authService.refreshToken(request));
+    }
+
+    @Test
+    void login_unknownEmail_throwsSameInvalidCredentialsMessage() {
+        LoginRequest request = new LoginRequest();
+        request.setEmail("missing@example.com");
+        request.setPassword("Secure@123");
+
+        when(userRepository.findByEmail("missing@example.com")).thenReturn(Optional.empty());
+
+        InvalidCredentialsException ex = assertThrows(InvalidCredentialsException.class, () -> authService.login(request));
+        assertEquals(AuthServiceImpl.INVALID_CREDENTIALS, ex.getMessage());
+    }
+
+    @Test
+    void login_unverifiedAndDisabled_useSameMessageAsBadPassword() {
+        LoginRequest request = new LoginRequest();
+        request.setEmail("john@example.com");
+        request.setPassword("Secure@123");
+        user.setEmailVerified(false);
+
+        when(userRepository.findByEmail("john@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Secure@123", "hashed-password")).thenReturn(true);
+
+        InvalidCredentialsException unverified = assertThrows(InvalidCredentialsException.class, () -> authService.login(request));
+        assertEquals(AuthServiceImpl.INVALID_CREDENTIALS, unverified.getMessage());
+
+        user.setEmailVerified(true);
+        user.setEnabled(false);
+        InvalidCredentialsException disabled = assertThrows(InvalidCredentialsException.class, () -> authService.login(request));
+        assertEquals(AuthServiceImpl.INVALID_CREDENTIALS, disabled.getMessage());
+    }
+
+    @Test
+    void register_normalizesUsernameAndEmail() {
+        RegisterRequest request = new RegisterRequest();
+        request.setUsername("JohnDoe");
+        request.setFullName("John Doe");
+        request.setEmail("  John@Example.COM ");
+        request.setPassword("Secure@123");
+
+        when(userRepository.existsByUsername("johndoe")).thenReturn(false);
+        when(userRepository.existsByEmail("john@example.com")).thenReturn(false);
+        when(passwordEncoder.encode("Secure@123")).thenReturn("hashed");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User saved = invocation.getArgument(0);
+            saved.setId(1L);
+            return saved;
+        });
+
+        authService.register(request);
+
+        verify(userRepository).save(org.mockito.ArgumentMatchers.argThat(saved ->
+                "johndoe".equals(saved.getUsername()) && "john@example.com".equals(saved.getEmail())));
+    }
+
+    @Test
+    void me_returnsMappedUser() {
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+
+        var response = authService.me();
+
+        assertEquals(1L, response.getId());
+        assertEquals("johndoe", response.getUsername());
+        assertEquals("john@example.com", response.getEmail());
+    }
+
+    @Test
+    void otpIsNotPlainSha256() {
+        String otp = "123456";
+        String hmac = CredentialDigests.hmacSha256(otp, HMAC_SECRET);
+        assertNotEquals(CredentialDigests.sha256(otp), hmac);
+        assertTrue(CredentialDigests.hmacMatches(otp, hmac, HMAC_SECRET));
     }
 }

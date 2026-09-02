@@ -9,6 +9,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
+import com.developer.copilot.auth.config.AuthProperties;
 import com.developer.copilot.auth.config.EmailProperties;
 import com.developer.copilot.auth.exception.EmailDeliveryException;
 import com.developer.copilot.auth.service.EmailService;
@@ -24,6 +25,7 @@ public class EmailServiceImpl implements EmailService {
     private final JavaMailSender mailSender;
     private final EmailProperties emailProperties;
     private final EmailTemplateService emailTemplateService;
+    private final AuthProperties authProperties;
 
     @PostConstruct
     void validateMailProperties() {
@@ -49,8 +51,9 @@ public class EmailServiceImpl implements EmailService {
             String html = emailTemplateService.process(
                 "otp-email",
                 Map.of(
-                        "name", recipientName,
-                        "otp", otp));
+                        "name", recipientName == null ? "" : recipientName,
+                        "otp", otp,
+                        "expiryMinutes", authProperties.getOtpExpiryMinutes()));
         
             helper.setText(html, true);
 
@@ -75,9 +78,9 @@ public class EmailServiceImpl implements EmailService {
             String html = emailTemplateService.process(
                     "password-reset",
                     Map.of(
-                            "name", recipientName,
+                            "name", recipientName == null ? "" : recipientName,
                             "token", resetToken,
-                            "expiryMinutes", 15
+                            "expiryMinutes", authProperties.getResetExpiryMinutes()
                     )
             );
 

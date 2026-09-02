@@ -6,8 +6,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.developer.copilot.common.dto.ApiResponse;
 
+import io.swagger.v3.oas.annotations.Hidden;
+
 import java.time.LocalDateTime;
 
+@Hidden
 @Profile("dev")
 @RestController
 public class TestController {
