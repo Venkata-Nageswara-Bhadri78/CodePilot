@@ -1,0 +1,58 @@
+package com.developer.copilot.jobextraction.controller;
+
+import com.developer.copilot.auth.config.JsonAuthenticationEntryPoint;
+import com.developer.copilot.auth.config.SecurityBeansConfig;
+import com.developer.copilot.auth.config.SecurityConfig;
+import com.developer.copilot.auth.jwt.JwtService;
+import com.developer.copilot.auth.ratelimit.config.AuthRateLimitConfig;
+import com.developer.copilot.auth.repository.UserRepository;
+import com.developer.copilot.jobextraction.service.JobExtractionService;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+
+@WebMvcTest(controllers = JobExtractionController.class)
+@ActiveProfiles("prod")
+@TestPropertySource(properties = "APP_JWT_SECRET=test-secret-key-that-is-long-enough-for-hmac-sha256")
+@Import({SecurityConfig.class, SecurityBeansConfig.class, JsonAuthenticationEntryPoint.class, AuthRateLimitConfig.class})
+class JobExtractionProductionSecurityTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private JobExtractionService jobExtractionService;
+
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private UserRepository userRepository;
+
+    @Test
+    void swaggerJobExtractionDocs_onProduction_areNotPublic() throws Exception {
+        MvcResult result = mockMvc.perform(get("/v3/api-docs/job-extraction")).andReturn();
+        assertNotEquals(200, result.getResponse().getStatus());
+    }
+
+    @Test
+    void swaggerApiDocs_onProduction_areNotPublic() throws Exception {
+        MvcResult result = mockMvc.perform(get("/v3/api-docs")).andReturn();
+        assertNotEquals(200, result.getResponse().getStatus());
+    }
+
+    @Test
+    void swaggerUi_onProduction_isNotPublic() throws Exception {
+        MvcResult result = mockMvc.perform(get("/swagger-ui/index.html")).andReturn();
+        assertNotEquals(200, result.getResponse().getStatus());
+    }
+}

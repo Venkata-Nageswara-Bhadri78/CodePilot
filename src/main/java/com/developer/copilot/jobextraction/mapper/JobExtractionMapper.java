@@ -1,16 +1,19 @@
 package com.developer.copilot.jobextraction.mapper;
 
 import java.util.ArrayList;
+import java.util.List;
 
 import org.springframework.stereotype.Component;
 
 import com.developer.copilot.ai.dto.response.JobExtractionAiResponse;
 import com.developer.copilot.jobextraction.dto.response.JobExtractionResultResponse;
+import com.developer.copilot.jobextraction.util.JobExtractionLimits;
 
 /**
  * Combines the AI's extracted fields with the two values the backend already knows with
  * certainty (the canonicalized URL and the raw pasted text) into the outward-facing preview
- * response.
+ * response. AI strings are clipped to {@link JobExtractionLimits} so save via
+ * {@code POST /api/v1/jobs} does not fail on {@code @Size}.
  */
 @Component
 public class JobExtractionMapper {
@@ -20,32 +23,84 @@ public class JobExtractionMapper {
             String normalizedSourceUrl,
             String rawJobText
     ) {
-        String title = aiResponse.getTitle();
-        String company = aiResponse.getCompany();
+        Clip title = clip(aiResponse.getTitle(), JobExtractionLimits.MAX_TITLE_LENGTH);
+        Clip company = clip(aiResponse.getCompany(), JobExtractionLimits.MAX_COMPANY_LENGTH);
 
         return JobExtractionResultResponse.builder()
                 .sourceUrl(normalizedSourceUrl)
                 .originalDescription(rawJobText)
-                .description(aiResponse.getDescription())
-                .title(title)
-                .company(company)
-                .location(aiResponse.getLocation())
-                .employmentType(aiResponse.getEmploymentType())
-                .workMode(aiResponse.getWorkMode())
-                .experience(aiResponse.getExperience())
-                .salary(aiResponse.getSalary())
-                .education(aiResponse.getEducation())
-                .department(aiResponse.getDepartment())
-                .industry(aiResponse.getIndustry())
-                .sourcePlatform(aiResponse.getSourcePlatform())
-                .skills(aiResponse.getSkills() != null
-                        ? new ArrayList<>(aiResponse.getSkills())
-                        : new ArrayList<>())
-                .requiresManualReview(isBlank(title) || isBlank(company))
+                .description(clip(aiResponse.getDescription(), JobExtractionLimits.MAX_DESCRIPTION_LENGTH).value())
+                .title(title.value())
+                .company(company.value())
+                .location(clip(aiResponse.getLocation(), JobExtractionLimits.MAX_LOCATION_LENGTH).value())
+                .employmentType(clip(aiResponse.getEmploymentType(), JobExtractionLimits.MAX_EMPLOYMENT_TYPE_LENGTH).value())
+                .workMode(clip(aiResponse.getWorkMode(), JobExtractionLimits.MAX_WORK_MODE_LENGTH).value())
+                .experience(clip(aiResponse.getExperience(), JobExtractionLimits.MAX_EXPERIENCE_LENGTH).value())
+                .salary(clip(aiResponse.getSalary(), JobExtractionLimits.MAX_SALARY_LENGTH).value())
+                .education(clip(aiResponse.getEducation(), JobExtractionLimits.MAX_EDUCATION_LENGTH).value())
+                .department(clip(aiResponse.getDepartment(), JobExtractionLimits.MAX_DEPARTMENT_LENGTH).value())
+                .industry(clip(aiResponse.getIndustry(), JobExtractionLimits.MAX_INDUSTRY_LENGTH).value())
+                .sourcePlatform(clip(aiResponse.getSourcePlatform(), JobExtractionLimits.MAX_SOURCE_PLATFORM_LENGTH).value())
+                .skills(clipSkills(aiResponse.getSkills()))
+                .requiresManualReview(isBlank(title.value()) || isBlank(company.value())
+                        || title.truncated() || company.truncated())
                 .build();
+    }
+
+    private List<String> clipSkills(List<String> skills) {
+        List<String> clipped = new ArrayList<>();
+        if (skills == null) {
+            return clipped;
+        }
+        for (String skill : skills) {
+            if (clipped.size() >= JobExtractionLimits.MAX_SKILL_COUNT) {
+                break;
+            }
+            Clip item = clip(skill, JobExtractionLimits.MAX_SKILL_LENGTH);
+            if (!isBlank(item.value())) {
+                clipped.add(item.value());
+            }
+        }
+        return clipped;
+    }
+
+    private Clip clip(String value, int maxLength) {
+        if (value == null) {
+            return Clip.unchanged(null);
+        }
+        String cleaned = stripControls(value);
+        if (cleaned.length() <= maxLength) {
+            return Clip.unchanged(cleaned);
+        }
+        return Clip.truncated(cleaned.substring(0, maxLength));
+    }
+
+    /**
+     * Drops C0 control characters except tab/newline/carriage-return so extracted fields
+     * cannot smuggle log/HTML surprises. Does not strip markup — the API is JSON text.
+     */
+    private String stripControls(String value) {
+        StringBuilder cleaned = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '\t' || c == '\n' || c == '\r' || c >= 32) {
+                cleaned.append(c);
+            }
+        }
+        return cleaned.toString();
     }
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private record Clip(String value, boolean truncated) {
+        static Clip unchanged(String value) {
+            return new Clip(value, false);
+        }
+
+        static Clip truncated(String value) {
+            return new Clip(value, true);
+        }
     }
 }

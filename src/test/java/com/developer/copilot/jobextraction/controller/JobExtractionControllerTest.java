@@ -137,15 +137,110 @@ class JobExtractionControllerTest {
     }
 
     @Test
-    void parseJobInfo_InvalidJobUrlException_Returns400() throws Exception {
+    void parseJobInfo_BlankSourceUrl_Returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "   ",
+                                  "rawJobText": "Full pasted job posting text."
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    void parseJobInfo_BlankRawJobText_Returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/jobs/123",
+                                  "rawJobText": "   "
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void parseJobInfo_EmptyBody_Returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(""))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void parseJobInfo_UnknownJsonFields_IgnoredAndReturns200() throws Exception {
+        JobExtractionResultResponse result = JobExtractionResultResponse.builder()
+                .sourceUrl("https://example.com/jobs/123")
+                .title("Software Engineer")
+                .company("Acme Corp")
+                .skills(Collections.emptyList())
+                .build();
+        when(jobExtractionService.extractJobInfo(any())).thenReturn(result);
+
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/jobs/123",
+                                  "rawJobText": "Full pasted job posting text describing the role.",
+                                  "requiresManualReview": true,
+                                  "hack": 1
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void parseJobInfo_RawJobTextAtMaxLength_Returns200() throws Exception {
+        JobExtractionResultResponse result = JobExtractionResultResponse.builder()
+                .sourceUrl("https://example.com/jobs/123")
+                .title("T")
+                .company("C")
+                .skills(Collections.emptyList())
+                .build();
+        when(jobExtractionService.extractJobInfo(any())).thenReturn(result);
+
+        String maxText = "a".repeat(50000);
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/jobs/123",
+                                  "rawJobText": "%s"
+                                }
+                                """.formatted(maxText)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void parseJobInfo_UnexpectedRuntimeException_Returns500() throws Exception {
         when(jobExtractionService.extractJobInfo(any()))
-                .thenThrow(new InvalidJobUrlException("Job URL must be a valid absolute http/https URL."));
+                .thenThrow(new RuntimeException("boom"));
+
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validRequestBody()))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Something went wrong."));
+    }
+
+    @Test
+    void parseJobInfo_InvalidJobUrlException_Returns400WithoutEchoingUrl() throws Exception {
+        when(jobExtractionService.extractJobInfo(any()))
+                .thenThrow(new InvalidJobUrlException("Job URL must be a valid absolute http or https link."));
 
         mockMvc.perform(post("/api/v1/job-extraction/parse")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequestBody()))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false));
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Job URL must be a valid absolute http or https link."));
     }
 
     @Test

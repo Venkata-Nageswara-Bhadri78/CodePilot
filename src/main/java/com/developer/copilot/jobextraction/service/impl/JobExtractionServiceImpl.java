@@ -1,7 +1,6 @@
 package com.developer.copilot.jobextraction.service.impl;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.developer.copilot.ai.dto.request.JobExtractionAiRequest;
 import com.developer.copilot.ai.dto.response.JobExtractionAiResponse;
@@ -24,6 +23,10 @@ import lombok.extern.slf4j.Slf4j;
  * Production implementation of {@link JobExtractionService}. Depends directly on the
  * {@code jobs} module's repository (read-only duplicate pre-check) and the {@code ai}
  * module's service (structured extraction) - this module owns no persistent state of its own.
+ * <p>
+ * The duplicate exists query is a single Spring Data call (short-lived transaction). The
+ * AI invocation is intentionally <strong>not</strong> wrapped in {@code @Transactional}
+ * so a JDBC connection is not held for the model timeout.
  */
 @Slf4j
 @Service
@@ -37,7 +40,6 @@ public class JobExtractionServiceImpl implements JobExtractionService {
     private final CurrentUserService currentUserService;
 
     @Override
-    @Transactional(readOnly = true)
     public JobExtractionResultResponse extractJobInfo(JobExtractionRequest request) {
         User currentUser = currentUserService.getCurrentUser();
 

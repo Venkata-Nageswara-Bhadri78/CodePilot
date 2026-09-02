@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 
 import com.developer.copilot.common.exception.InvalidJobUrlException;
 
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * Produces a single, stable canonical form for a job posting URL regardless of which
  * source (LinkedIn, Naukri, a company career site, a job board, etc.) it was copied from.
@@ -23,8 +25,12 @@ import com.developer.copilot.common.exception.InvalidJobUrlException;
  * an identical string so that duplicate-detection and future "who else added this job"
  * style lookups can rely on simple equality/hash comparisons against {@code source_url}.
  */
+@Slf4j
 @Component
 public class UrlNormalizationUtil {
+
+    static final String INVALID_ABSOLUTE_HTTP_URL =
+            "Job URL must be a valid absolute http or https link.";
 
     /**
      * Exact-match query parameter names (case-insensitive) that only carry tracking /
@@ -104,7 +110,7 @@ public class UrlNormalizationUtil {
         try {
             uri = new URI(trimmedUrl);
         } catch (URISyntaxException ex) {
-            throw new InvalidJobUrlException("Job URL is not a valid URL: " + trimmedUrl);
+            throw invalidUrl(trimmedUrl);
         }
 
         String scheme = uri.getScheme();
@@ -112,8 +118,7 @@ public class UrlNormalizationUtil {
 
         if (scheme == null || host == null || host.isBlank()
                 || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))) {
-            throw new InvalidJobUrlException(
-                    "Job URL must be a valid absolute http/https URL with a host: " + trimmedUrl);
+            throw invalidUrl(trimmedUrl);
         }
 
         String normalizedScheme = scheme.toLowerCase(Locale.ROOT);
@@ -148,6 +153,16 @@ public class UrlNormalizationUtil {
         }
 
         return result.toString();
+    }
+
+    private InvalidJobUrlException invalidUrl(String trimmedUrl) {
+        if (log.isDebugEnabled()) {
+            String preview = trimmedUrl.length() <= 80
+                    ? trimmedUrl
+                    : trimmedUrl.substring(0, 80) + "...";
+            log.debug("Rejected job URL: {}", preview);
+        }
+        return new InvalidJobUrlException(INVALID_ABSOLUTE_HTTP_URL);
     }
 
     /**

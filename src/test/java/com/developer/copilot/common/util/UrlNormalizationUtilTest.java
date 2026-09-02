@@ -96,8 +96,27 @@ class UrlNormalizationUtilTest {
 
     @Test
     void normalizeStrict_RejectsNonHttpScheme() {
-        assertThrows(InvalidJobUrlException.class,
+        InvalidJobUrlException ex = assertThrows(InvalidJobUrlException.class,
                 () -> urlNormalizationUtil.normalizeStrict("ftp://example.com/jobs/42"));
+        assertEquals("Job URL must be a valid absolute http or https link.", ex.getMessage());
+        assertFalse(ex.getMessage().contains("ftp://"));
+    }
+
+    @Test
+    void normalizeStrict_JavascriptUrl_DoesNotEchoInputInMessage() {
+        InvalidJobUrlException ex = assertThrows(InvalidJobUrlException.class,
+                () -> urlNormalizationUtil.normalizeStrict("javascript:alert(1)"));
+        assertEquals("Job URL must be a valid absolute http or https link.", ex.getMessage());
+        assertFalse(ex.getMessage().contains("javascript"));
+        assertFalse(ex.getMessage().contains("<script>"));
+    }
+
+    @Test
+    void normalizeStrict_ScriptInHost_DoesNotEchoInputInMessage() {
+        InvalidJobUrlException ex = assertThrows(InvalidJobUrlException.class,
+                () -> urlNormalizationUtil.normalizeStrict("https://example.com/<script>"));
+        assertFalse(ex.getMessage().contains("<script>"));
+        assertEquals("Job URL must be a valid absolute http or https link.", ex.getMessage());
     }
 
     @Test
