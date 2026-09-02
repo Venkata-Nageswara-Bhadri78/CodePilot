@@ -1,6 +1,7 @@
 package com.developer.copilot.jobs.dto.request;
 
-import jakarta.validation.constraints.NotBlank;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
@@ -9,9 +10,11 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Schema(description = "Updates employment type. Empty string clears the field.")
 public class UpdateEmploymentTypeRequest {
 
-    @NotBlank(message = "Employment type cannot be blank.")
+    @NotNull(message = "Employment type is required.")
     @Size(max = 100, message = "Employment type cannot exceed 100 characters.")
+    @Schema(example = "Full Time")
     private String employmentType;
 }

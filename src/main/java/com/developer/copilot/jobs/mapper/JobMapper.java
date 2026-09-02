@@ -10,8 +10,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.List;
-import java.util.stream.Collectors;
 
 @Component
 public class JobMapper {
@@ -62,8 +60,8 @@ public class JobMapper {
         entity.setIndustry(request.getIndustry());
         entity.setSourcePlatform(request.getSourcePlatform());
 
+        entity.getSkills().clear();
         if (request.getSkills() != null) {
-            entity.getSkills().clear();
             entity.getSkills().addAll(request.getSkills());
         }
     }
@@ -140,17 +138,4 @@ public class JobMapper {
                 .build();
     }
 
-    public List<JobResponse> toJobResponseList(List<JobEntity> entities) {
-        if (entities == null) {
-            return Collections.emptyList();
-        }
-        return entities.stream().map(this::toJobResponse).collect(Collectors.toList());
-    }
-
-    public List<JobSummaryResponse> toJobSummaryResponseList(List<JobEntity> entities) {
-        if (entities == null) {
-            return Collections.emptyList();
-        }
-        return entities.stream().map(this::toJobSummaryResponse).collect(Collectors.toList());
-    }
 }

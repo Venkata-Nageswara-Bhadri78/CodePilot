@@ -7,9 +7,14 @@ import com.developer.copilot.jobs.dto.JobResponse;
 import com.developer.copilot.jobs.dto.JobSummaryResponse;
 import com.developer.copilot.jobs.dto.request.*;
 import com.developer.copilot.jobs.service.JobService;
+import com.developer.copilot.jobs.util.JobLimits;
+import com.developer.copilot.jobs.util.JobQuerySupport;
 import com.developer.copilot.jobs.util.JobSortSupport;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -26,7 +31,13 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 
-@Tag(name = "Jobs", description = "Operations for managing saved job postings")
+@Tag(
+        name = "Jobs",
+        description = "Personal job-posting notebook for the signed-in user. "
+                + "Obtain a JWT from POST /api/v1/auth/login, then use the Authorize button. "
+                + "PUT = full form; omitting skills clears them. PATCH = dirty fields only. "
+                + "PATCH /{id}/skills with [] clears skills. Optional field routes accept empty string to clear. "
+                + "Someone else's job id looks like 404.")
 @RestController
 @RequestMapping("/api/v1/jobs")
 @RequiredArgsConstructor
@@ -34,12 +45,25 @@ import java.time.LocalDateTime;
 @SecurityRequirement(name = "Bearer Authentication")
 public class JobController {
 
+    private static final String JOB_ID_DESCRIPTION =
+            "Job id owned by the current user; foreign ids look like 404";
+
     private final JobService jobService;
 
-    @Operation(summary = "Create a new job", description = "Normalizes the source URL and prevents duplicate job postings for the current user.")
+    @Operation(summary = "Create a new job",
+            description = "Normalizes the source URL (http/https only, tracking params stripped) "
+                    + "and rejects duplicates for the current user.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Job created successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error or duplicate job URL", content = @Content)
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error or invalid URL",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Duplicate source URL",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class),
+                            examples = @ExampleObject(value = "{\"success\":false,\"message\":\"This post was already added to your records.\",\"data\":null,\"timestamp\":\"2026-01-15T10:30:00\"}"))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Unexpected error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
     })
     @PostMapping
     public ResponseEntity<ApiResponse<JobResponse>> createJob(@Valid @RequestBody JobRequest request) {
@@ -55,18 +79,34 @@ public class JobController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @Operation(summary = "List jobs", description = "Returns a paginated list of the current user's jobs. Supports optional text search and sorting.")
+    @Operation(summary = "List jobs",
+            description = "Paginated list for the current user. Search is a case-insensitive contains-match "
+                    + "on title, company, location, industry, and sourcePlatform. LIKE wildcards in search are escaped.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Jobs retrieved successfully"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid sort parameter", content = @Content)
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Jobs retrieved successfully. "
+                    + "data is a Spring Page: content, totalElements, totalPages, number, size, sort."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid sort, page, size, or search length",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
     })
     @GetMapping
     public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> getAllJobs(
+            @Parameter(description = "Contains-match on title, company, location, industry, sourcePlatform. Max 100 chars. % and _ are treated as literals.")
             @RequestParam(required = false) String search,
+            @Parameter(description = "Zero-based page index", example = "0")
             @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size, default 10, max " + JobLimits.MAX_PAGE_SIZE, example = "10")
             @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Sort field. Allowed: createdAt, updatedAt, title, company, location, "
+                    + "employmentType, workMode, experience, department, education, industry, sourcePlatform, sourceUrl. "
+                    + "salary is not sortable (it is free text).")
             @RequestParam(defaultValue = "createdAt") String sortBy,
+            @Parameter(description = "Sort direction: asc or desc (any non-asc value is desc)", example = "desc")
             @RequestParam(defaultValue = "desc") String sortDir) {
+
+        JobQuerySupport.validatePaging(page, size);
+        JobQuerySupport.validateSearchLength(search);
 
         Sort sort = JobSortSupport.resolveSort(sortBy, sortDir);
         Pageable pageable = PageRequest.of(page, size, sort);
@@ -84,8 +124,17 @@ public class JobController {
     }
 
     @Operation(summary = "Get job by ID", description = "Returns full job details for a job owned by the current user.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Job details retrieved successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class),
+                            examples = @ExampleObject(value = "{\"success\":false,\"message\":\"Job not found with id: 42\",\"data\":null,\"timestamp\":\"2026-01-15T10:30:00\"}")))
+    })
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<JobResponse>> getJobById(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<JobResponse>> getJobById(
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id) {
         JobResponse job = jobService.getJobById(id);
 
         ApiResponse<JobResponse> response = ApiResponse.<JobResponse>builder()
@@ -98,10 +147,23 @@ public class JobController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Replace a job", description = "Fully replaces an existing job. Recalculates the URL hash when the source URL changes.")
+    @Operation(summary = "Replace a job",
+            description = "Fully replaces an existing job. Recalculates the URL hash when the source URL changes. "
+                    + "Omitting skills clears the list.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Job updated successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error or invalid URL",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Duplicate source URL",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<JobResponse>> updateJob(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody JobRequest request) {
 
         JobResponse updatedJob = jobService.updateJob(id, request);
@@ -116,10 +178,22 @@ public class JobController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Partially update a job", description = "Updates only the fields provided in the request body.")
+    @Operation(summary = "Partially update a job",
+            description = "Updates only the fields provided in the request body. Blank title, company, or originalDescription is rejected.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Job updated successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error, blank mandatory field, or invalid URL",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Duplicate source URL",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}")
     public ResponseEntity<ApiResponse<JobResponse>> patchJob(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody JobPatchRequest request) {
 
         JobResponse patchedJob = jobService.patchJob(id, request);
@@ -135,8 +209,16 @@ public class JobController {
     }
 
     @Operation(summary = "Delete a job", description = "Permanently deletes a job and its associated skills.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Job deleted successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteJob(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> deleteJob(
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id) {
         jobService.deleteJob(id);
 
         ApiResponse<Void> response = ApiResponse.<Void>builder()
@@ -149,9 +231,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update job location")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/location")
     public ResponseEntity<ApiResponse<JobResponse>> updateLocation(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateLocationRequest request) {
 
         JobResponse job = jobService.updateLocation(id, request);
@@ -165,9 +256,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update job title")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/title")
     public ResponseEntity<ApiResponse<JobResponse>> updateTitle(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateTitleRequest request) {
 
         JobResponse job = jobService.updateTitle(id, request);
@@ -181,9 +281,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update job company")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/company")
     public ResponseEntity<ApiResponse<JobResponse>> updateCompany(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateCompanyRequest request) {
 
         JobResponse job = jobService.updateCompany(id, request);
@@ -197,9 +306,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update employment type")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/employment-type")
     public ResponseEntity<ApiResponse<JobResponse>> updateEmploymentType(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateEmploymentTypeRequest request) {
 
         JobResponse job = jobService.updateEmploymentType(id, request);
@@ -213,9 +331,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update work mode")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/work-mode")
     public ResponseEntity<ApiResponse<JobResponse>> updateWorkMode(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateWorkModeRequest request) {
 
         JobResponse job = jobService.updateWorkMode(id, request);
@@ -229,9 +356,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update experience requirement")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/experience")
     public ResponseEntity<ApiResponse<JobResponse>> updateExperience(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateExperienceRequest request) {
 
         JobResponse job = jobService.updateExperience(id, request);
@@ -245,9 +381,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update salary")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/salary")
     public ResponseEntity<ApiResponse<JobResponse>> updateSalary(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateSalaryRequest request) {
 
         JobResponse job = jobService.updateSalary(id, request);
@@ -261,9 +406,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update education requirement")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/education")
     public ResponseEntity<ApiResponse<JobResponse>> updateEducation(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateEducationRequest request) {
 
         JobResponse job = jobService.updateEducation(id, request);
@@ -277,9 +431,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update department")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/department")
     public ResponseEntity<ApiResponse<JobResponse>> updateDepartment(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateDepartmentRequest request) {
 
         JobResponse job = jobService.updateDepartment(id, request);
@@ -293,9 +456,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update industry")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/industry")
     public ResponseEntity<ApiResponse<JobResponse>> updateIndustry(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateIndustryRequest request) {
 
         JobResponse job = jobService.updateIndustry(id, request);
@@ -309,9 +481,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update source platform")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/source-platform")
     public ResponseEntity<ApiResponse<JobResponse>> updateSourcePlatform(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateSourcePlatformRequest request) {
 
         JobResponse job = jobService.updateSourcePlatform(id, request);
@@ -324,10 +505,21 @@ public class JobController {
                 .build());
     }
 
-    @Operation(summary = "Update source URL", description = "Normalizes the URL and enforces duplicate detection.")
+    @Operation(summary = "Update source URL", description = "Normalizes the URL (http/https only) and enforces duplicate detection.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error or invalid URL",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Duplicate source URL",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/source-url")
     public ResponseEntity<ApiResponse<JobResponse>> updateSourceUrl(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateSourceUrlRequest request) {
 
         JobResponse job = jobService.updateSourceUrl(id, request);
@@ -340,10 +532,19 @@ public class JobController {
                 .build());
     }
 
-    @Operation(summary = "Replace job skills")
+    @Operation(summary = "Replace job skills", description = "Replaces the full skills list. Send an empty array to clear.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/skills")
     public ResponseEntity<ApiResponse<JobResponse>> updateSkills(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateSkillsRequest request) {
 
         JobResponse job = jobService.updateSkills(id, request);
@@ -357,9 +558,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update cleaned description")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/description")
     public ResponseEntity<ApiResponse<JobResponse>> updateDescription(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateDescriptionRequest request) {
 
         JobResponse job = jobService.updateDescription(id, request);
@@ -373,9 +583,18 @@ public class JobController {
     }
 
     @Operation(summary = "Update original description")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PatchMapping("/{id}/original-description")
     public ResponseEntity<ApiResponse<JobResponse>> updateOriginalDescription(
-            @PathVariable Long id,
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
             @Valid @RequestBody UpdateOriginalDescriptionRequest request) {
 
         JobResponse job = jobService.updateOriginalDescription(id, request);

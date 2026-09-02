@@ -1,5 +1,7 @@
 package com.developer.copilot.jobs.dto;
 
+import com.developer.copilot.jobs.util.JobLimits;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -12,20 +14,27 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Schema(description = "Request body for creating or fully replacing a saved job posting")
+@Schema(description = "Request body for creating or fully replacing a saved job posting. "
+        + "On PUT, omitted skills are treated as an empty list (full replace).")
 public class JobRequest {
 
-    @Schema(description = "The job posting URL (tracking parameters are stripped on save)",
-            example = "https://linkedin.com/jobs/view/1234")
+    @Schema(description = "The job posting URL. Tracking parameters are stripped on save; "
+                    + "only absolute http/https URLs are accepted.",
+            example = "https://www.linkedin.com/jobs/view/1234?utm_source=linkedin")
     @NotBlank(message = "Source URL cannot be blank.")
     @Size(max = 2000, message = "Source URL cannot exceed 2000 characters.")
     private String sourceUrl;
 
-    @Schema(description = "Raw job posting text pasted by the user", example = "We are hiring a Software Engineer...")
+    @Schema(description = "Raw job posting text pasted by the user",
+            example = "We are hiring a Software Engineer...")
     @NotBlank(message = "Original description cannot be blank.")
+    @Size(max = JobLimits.MAX_DESCRIPTION_LENGTH,
+            message = "Original description cannot exceed " + JobLimits.MAX_DESCRIPTION_LENGTH + " characters.")
     private String originalDescription;
 
     @Schema(description = "Cleaned or extracted job description")
+    @Size(max = JobLimits.MAX_DESCRIPTION_LENGTH,
+            message = "Description cannot exceed " + JobLimits.MAX_DESCRIPTION_LENGTH + " characters.")
     private String description;
 
     @Schema(description = "Job title", example = "Software Engineer")
@@ -65,6 +74,9 @@ public class JobRequest {
     @Size(max = 50, message = "Source platform cannot exceed 50 characters.")
     private String sourcePlatform;
 
-    @Schema(description = "Required skills for the role", example = "[\"Java\", \"Spring Boot\"]")
+    @ArraySchema(
+            arraySchema = @Schema(description = "Required skills for the role. On PUT, omitting this field clears skills."),
+            schema = @Schema(example = "Java", maxLength = 255))
+    @Schema(example = "[\"Java\", \"Spring Boot\"]")
     private List<@Size(max = 255, message = "Each skill cannot exceed 255 characters.") String> skills;
 }
