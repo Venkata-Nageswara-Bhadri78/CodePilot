@@ -47,7 +47,7 @@ public class JobEntity extends BaseEntity {
      * SHA-256 hex digest of {@link #sourceUrl}, used as a fixed-length uniqueness key
      * (MySQL/InnoDB cannot place a unique index directly on a VARCHAR(2000) column).
      */
-    @Column(name = "source_url_hash", length = 64)
+    @Column(name = "source_url_hash", length = 64, nullable = false)
     private String sourceUrlHash;
 
     /**

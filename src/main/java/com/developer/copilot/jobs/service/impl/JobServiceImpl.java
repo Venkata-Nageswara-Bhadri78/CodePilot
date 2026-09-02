@@ -1,8 +1,7 @@
 package com.developer.copilot.jobs.service.impl;
 
 import com.developer.copilot.auth.entity.User;
-import com.developer.copilot.auth.exception.InvalidCredentialsException;
-import com.developer.copilot.auth.repository.UserRepository;
+import com.developer.copilot.common.security.CurrentUserService;
 import com.developer.copilot.common.util.UrlNormalizationUtil;
 import com.developer.copilot.jobs.dto.JobPatchRequest;
 import com.developer.copilot.jobs.dto.JobRequest;
@@ -16,40 +15,46 @@ import com.developer.copilot.jobs.exception.JobValidationException;
 import com.developer.copilot.jobs.mapper.JobMapper;
 import com.developer.copilot.jobs.repository.JobRepository;
 import com.developer.copilot.jobs.service.JobService;
+import com.developer.copilot.jobs.util.JobQuerySupport;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
 public class JobServiceImpl implements JobService {
 
+    private static final String DUPLICATE_JOB_MESSAGE = "This post was already added to your records.";
+    private static final String DUPLICATE_CONSTRAINT = "uk_job_user_source_url_hash";
+
     private final JobRepository jobRepository;
-    private final UserRepository userRepository;
+    private final CurrentUserService currentUserService;
     private final JobMapper jobMapper;
     private final UrlNormalizationUtil urlNormalizationUtil;
 
     @Override
     @Transactional
     public JobResponse createJob(JobRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity jobEntity = jobMapper.toEntity(request, currentUser);
         applySourceUrl(jobEntity, request.getSourceUrl(), currentUser.getId(), null);
-        JobEntity savedJob = jobRepository.save(jobEntity);
+        JobEntity savedJob = saveJob(jobEntity);
         return jobMapper.toJobResponse(savedJob);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<JobSummaryResponse> getAllJobs(String search, Pageable pageable) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
+        String preparedSearch = JobQuerySupport.prepareSearch(search);
         Page<JobEntity> jobPage;
-        if (search != null && !search.trim().isEmpty()) {
-            jobPage = jobRepository.searchJobsByUserId(currentUser.getId(), search.trim(), pageable);
+        if (preparedSearch != null) {
+            jobPage = jobRepository.searchJobsByUserId(currentUser.getId(), preparedSearch, pageable);
         } else {
             jobPage = jobRepository.findAllByUserId(currentUser.getId(), pageable);
         }
@@ -59,7 +64,7 @@ public class JobServiceImpl implements JobService {
     @Override
     @Transactional(readOnly = true)
     public JobResponse getJobById(Long id) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         return jobMapper.toJobResponse(job);
     }
@@ -67,18 +72,18 @@ public class JobServiceImpl implements JobService {
     @Override
     @Transactional
     public JobResponse updateJob(Long id, JobRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         jobMapper.updateEntityFromRequest(job, request);
         applySourceUrl(job, request.getSourceUrl(), currentUser.getId(), job.getId());
-        JobEntity updatedJob = jobRepository.save(job);
+        JobEntity updatedJob = saveJob(job);
         return jobMapper.toJobResponse(updatedJob);
     }
 
     @Override
     @Transactional
     public JobResponse patchJob(Long id, JobPatchRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
 
         // Mandatory fields are optional-by-absence in a patch, but never optional-by-blank
@@ -93,168 +98,154 @@ public class JobServiceImpl implements JobService {
             applySourceUrl(job, request.getSourceUrl(), currentUser.getId(), job.getId());
         }
 
-        JobEntity updatedJob = jobRepository.save(job);
+        JobEntity updatedJob = saveJob(job);
         return jobMapper.toJobResponse(updatedJob);
     }
 
     @Override
     @Transactional
     public void deleteJob(Long id) {
-        User currentUser = getCurrentUser();
-        int deletedRows = jobRepository.deleteByIdAndUserId(id, currentUser.getId());
-        if (deletedRows == 0) {
-            throw new JobNotFoundException("Job not found with id: " + id);
-        }
+        User currentUser = currentUserService.getCurrentUser();
+        JobEntity job = getJobEntityForCurrentUser(id, currentUser);
+        jobRepository.delete(job);
     }
 
     @Override
     @Transactional
     public JobResponse updateLocation(Long id, UpdateLocationRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setLocation(request.getLocation());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateTitle(Long id, UpdateTitleRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setTitle(request.getTitle());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateCompany(Long id, UpdateCompanyRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setCompany(request.getCompany());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateEmploymentType(Long id, UpdateEmploymentTypeRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setEmploymentType(request.getEmploymentType());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateWorkMode(Long id, UpdateWorkModeRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setWorkMode(request.getWorkMode());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateExperience(Long id, UpdateExperienceRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setExperience(request.getExperience());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateSalary(Long id, UpdateSalaryRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setSalary(request.getSalary());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateEducation(Long id, UpdateEducationRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setEducation(request.getEducation());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateDepartment(Long id, UpdateDepartmentRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setDepartment(request.getDepartment());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateIndustry(Long id, UpdateIndustryRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setIndustry(request.getIndustry());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateSourcePlatform(Long id, UpdateSourcePlatformRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setSourcePlatform(request.getSourcePlatform());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateSourceUrl(Long id, UpdateSourceUrlRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         applySourceUrl(job, request.getSourceUrl(), currentUser.getId(), job.getId());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateSkills(Long id, UpdateSkillsRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
+        job.getSkills().clear();
         if (request.getSkills() != null) {
-            job.getSkills().clear();
             job.getSkills().addAll(request.getSkills());
-        } else {
-            job.getSkills().clear();
         }
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateDescription(Long id, UpdateDescriptionRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setDescription(request.getDescription());
-        return jobMapper.toJobResponse(jobRepository.save(job));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     @Override
     @Transactional
     public JobResponse updateOriginalDescription(Long id, UpdateOriginalDescriptionRequest request) {
-        User currentUser = getCurrentUser();
+        User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         job.setOriginalDescription(request.getOriginalDescription());
-        return jobMapper.toJobResponse(jobRepository.save(job));
-    }
-
-    private User getCurrentUser() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || !authentication.isAuthenticated()) {
-            throw new InvalidCredentialsException("User is not authenticated.");
-        }
-        String email = authentication.getName();
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> new InvalidCredentialsException("User account not found."));
+        return jobMapper.toJobResponse(saveJob(job));
     }
 
     private JobEntity getJobEntityForCurrentUser(Long id, User currentUser) {
@@ -276,7 +267,7 @@ public class JobServiceImpl implements JobService {
             throw new JobValidationException("Source URL cannot be blank.");
         }
 
-        String normalizedUrl = urlNormalizationUtil.normalizeLenient(rawSourceUrl);
+        String normalizedUrl = urlNormalizationUtil.normalizeStrict(rawSourceUrl);
         String urlHash = urlNormalizationUtil.sha256Hex(normalizedUrl);
 
         boolean duplicateExists = (excludeJobId == null)
@@ -284,11 +275,30 @@ public class JobServiceImpl implements JobService {
                 : jobRepository.existsByUserIdAndSourceUrlHashAndIdNot(currentUserId, urlHash, excludeJobId);
 
         if (duplicateExists) {
-            throw new DuplicateJobException("This post was already added to your records.");
+            throw new DuplicateJobException(DUPLICATE_JOB_MESSAGE);
         }
 
         entity.setSourceUrl(normalizedUrl);
         entity.setSourceUrlHash(urlHash);
+    }
+
+    private JobEntity saveJob(JobEntity job) {
+        try {
+            return jobRepository.save(job);
+        } catch (DataIntegrityViolationException ex) {
+            if (isDuplicateSourceUrlConstraint(ex)) {
+                throw new DuplicateJobException(DUPLICATE_JOB_MESSAGE);
+            }
+            throw ex;
+        }
+    }
+
+    private boolean isDuplicateSourceUrlConstraint(DataIntegrityViolationException ex) {
+        Throwable cause = ex.getMostSpecificCause();
+        String causeMessage = cause.getMessage() != null ? cause.getMessage() : "";
+        String topMessage = ex.getMessage() != null ? ex.getMessage() : "";
+        String combined = (causeMessage + " " + topMessage).toLowerCase(Locale.ROOT);
+        return combined.contains(DUPLICATE_CONSTRAINT);
     }
 
     private void rejectIfBlank(String fieldName, String value) {

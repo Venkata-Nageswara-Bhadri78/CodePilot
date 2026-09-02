@@ -16,7 +16,6 @@ public final class JobSortSupport {
             "employmentType",
             "workMode",
             "experience",
-            "salary",
             "department",
             "education",
             "industry",
@@ -25,6 +24,10 @@ public final class JobSortSupport {
     );
 
     private JobSortSupport() {
+    }
+
+    public static Set<String> allowedSortFields() {
+        return ALLOWED_SORT_FIELDS;
     }
 
     public static Sort resolveSort(String sortBy, String sortDir) {
