@@ -45,6 +45,11 @@ class JobQuerySupportTest {
     }
 
     @Test
+    void prepareSearch_lonePercent_isLiteral() {
+        assertEquals("\\%", JobQuerySupport.prepareSearch("%"));
+    }
+
+    @Test
     void prepareSearch_tooLong_rejected() {
         assertThrows(JobValidationException.class,
                 () -> JobQuerySupport.prepareSearch("x".repeat(JobLimits.MAX_SEARCH_LENGTH + 1)));

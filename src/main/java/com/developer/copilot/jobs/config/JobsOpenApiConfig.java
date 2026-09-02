@@ -40,6 +40,7 @@ public class JobsOpenApiConfig {
                         + "Foreign or missing ids return 404. Duplicate source URLs return 409 "
                         + "\"This post was already added to your records.\" "
                         + "List search is a contains-match on title, company, location, industry, and sourcePlatform. "
-                        + "Page size max is 50. salary is not a sort field."));
+                        + "Page size max is 50. salary is not a sort field. "
+                        + "POST, list/search GET, and writes return 429 with Retry-After when the per-user or per-IP budget is spent."));
     }
 }

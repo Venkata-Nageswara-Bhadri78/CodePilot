@@ -35,6 +35,15 @@ class JobsExceptionMappingTest {
     }
 
     @Test
+    void jobsRateLimit_is429WithRetryAfter() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleJobsRateLimitExceeded(
+                new com.developer.copilot.jobs.ratelimit.exception.RateLimitExceededException(12));
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+        assertEquals("12", response.getHeaders().getFirst("Retry-After"));
+    }
+
+    @Test
     void jobValidation_is400() {
         ResponseEntity<ApiResponse<Void>> response =
                 handler.handleJobValidation(new JobValidationException("size must be between 1 and 50."));

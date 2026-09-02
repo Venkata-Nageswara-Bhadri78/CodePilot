@@ -43,4 +43,16 @@ class JobProductionSecurityTest {
         MvcResult result = mockMvc.perform(get("/v3/api-docs/jobs")).andReturn();
         assertNotEquals(200, result.getResponse().getStatus());
     }
+
+    @Test
+    void swaggerApiDocs_onProduction_areNotPublic() throws Exception {
+        MvcResult result = mockMvc.perform(get("/v3/api-docs")).andReturn();
+        assertNotEquals(200, result.getResponse().getStatus());
+    }
+
+    @Test
+    void swaggerUi_onProduction_isNotPublic() throws Exception {
+        MvcResult result = mockMvc.perform(get("/swagger-ui/index.html")).andReturn();
+        assertNotEquals(200, result.getResponse().getStatus());
+    }
 }

@@ -40,6 +40,16 @@ class JobSortSupportTest {
     }
 
     @Test
+    void resolveSort_nestedUserAndHash_areNotAllowed() {
+        assertThrows(JobValidationException.class, () -> JobSortSupport.resolveSort("user.password", "asc"));
+        assertThrows(JobValidationException.class, () -> JobSortSupport.resolveSort("user.email", "desc"));
+        assertThrows(JobValidationException.class, () -> JobSortSupport.resolveSort("sourceUrlHash", "asc"));
+        assertThrows(JobValidationException.class, () -> JobSortSupport.resolveSort("id; drop", "asc"));
+        assertFalse(JobSortSupport.allowedSortFields().contains("sourceUrlHash"));
+        assertFalse(JobSortSupport.allowedSortFields().contains("user"));
+    }
+
+    @Test
     void allowedSortFields_includeCoreColumns() {
         assertTrue(JobSortSupport.allowedSortFields().contains("createdAt"));
         assertTrue(JobSortSupport.allowedSortFields().contains("title"));
