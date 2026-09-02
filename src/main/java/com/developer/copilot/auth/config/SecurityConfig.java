@@ -7,6 +7,7 @@ import java.util.Locale;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -17,11 +18,13 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.developer.copilot.auth.jwt.JwtAuthenticationFilter;
+import com.developer.copilot.auth.ratelimit.config.AuthRateLimitConfig;
 import com.developer.copilot.auth.ratelimit.filter.AuthRateLimitFilter;
 
 import lombok.RequiredArgsConstructor;
 
 @Configuration
+@Import({JsonAuthenticationEntryPoint.class, AuthRateLimitConfig.class})
 @EnableConfigurationProperties({CorsProperties.class, AuthProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
