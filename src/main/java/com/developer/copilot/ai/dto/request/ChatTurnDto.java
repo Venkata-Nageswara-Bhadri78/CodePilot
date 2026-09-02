@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "One historical prompt/response pair from a prior chat turn (internal contract)")
+@Schema(hidden = true, description = "One historical prompt/response pair from a prior chat turn (internal contract)")
 public class ChatTurnDto {
 
     @NotBlank(message = "Prior user prompt cannot be blank.")

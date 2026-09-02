@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 
 import com.developer.copilot.ai.exception.AiResumePendingException;
 import com.developer.copilot.ai.exception.AiServiceException;
+import com.developer.copilot.ai.exception.AiUnavailableException;
 import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.common.storage.exception.StorageException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
@@ -56,6 +57,43 @@ class GlobalExceptionHandlerAiTest {
                 new ResumeParsingException("Your resume could not be parsed."));
 
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, response.getStatusCode());
+    }
+
+    @Test
+    void aiUnavailable_mapsTo503() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleAiUnavailable(
+                new AiUnavailableException("The AI service is temporarily unavailable. Please try again shortly."));
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.getStatusCode());
+        assertEquals("The AI service is temporarily unavailable. Please try again shortly.",
+                response.getBody().getMessage());
+    }
+
+    @Test
+    void aiRateLimit_mapsTo429WithRetryAfter() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleAiRateLimitExceeded(
+                new com.developer.copilot.ai.ratelimit.exception.RateLimitExceededException(9));
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+        assertEquals("9", response.getHeaders().getFirst("Retry-After"));
+    }
+
+    @Test
+    void illegalArgument_mapsTo400() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleIllegalArgument(
+                new IllegalArgumentException("Prior turns cannot exceed 40 entries."));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("Prior turns cannot exceed 40 entries.", response.getBody().getMessage());
+    }
+
+    @Test
+    void unexpectedException_mapsTo500WithoutInternals() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleException(new RuntimeException("secret internals"));
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        assertEquals("Something went wrong.", response.getBody().getMessage());
+        assertFalse(response.getBody().getMessage().contains("secret"));
     }
 
     @Test

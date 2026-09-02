@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.developer.copilot.ai.exception.AiResumePendingException;
+import com.developer.copilot.ai.metrics.AiMetrics;
 import com.developer.copilot.user.dto.parsing.ResumeParsedDataResponse;
 import com.developer.copilot.user.exception.ResumeNotFoundException;
 import com.developer.copilot.user.exception.ResumeParsingException;
@@ -24,6 +25,9 @@ class DefaultResumeContextServiceImplTest {
 
     @Mock
     private ResumeParsingService resumeParsingService;
+
+    @Mock
+    private AiMetrics aiMetrics;
 
     @InjectMocks
     private DefaultResumeContextServiceImpl resumeContextService;
@@ -85,6 +89,31 @@ class DefaultResumeContextServiceImplTest {
                         .build());
 
         assertThrows(AiResumePendingException.class, () -> resumeContextService.getResumeContext(null));
+    }
+
+    @Test
+    void getResumeContext_inProgressParseException_throwsAiResumePendingException() {
+        when(resumeParsingService.getParsedResume(null)).thenThrow(
+                new ResumeParsingException("Resume parsing is still in progress. Please retry shortly."));
+
+        assertThrows(AiResumePendingException.class, () -> resumeContextService.getResumeContext(null));
+    }
+
+    @Test
+    void getResumeContext_completedEmptyText_throwsResumeParsingException() {
+        when(resumeParsingService.getParsedResume(null)).thenReturn(completedResponse(""));
+
+        ResumeParsingException ex = assertThrows(ResumeParsingException.class,
+                () -> resumeContextService.getResumeContext(null));
+
+        assertTrue(ex.getMessage().contains("empty"));
+    }
+
+    @Test
+    void getResumeContext_completedWhitespaceText_throwsResumeParsingException() {
+        when(resumeParsingService.getParsedResume(null)).thenReturn(completedResponse("   "));
+
+        assertThrows(ResumeParsingException.class, () -> resumeContextService.getResumeContext(null));
     }
 
     @Test

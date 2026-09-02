@@ -19,7 +19,9 @@ public class AiConfig {
     @Bean
     public ChatClient chatClient(ChatClient.Builder chatClientBuilder, AiProperties aiProperties) {
         return chatClientBuilder
-                .defaultOptions(OpenAiChatOptions.builder().model(aiProperties.getDefaultModel()))
+                .defaultOptions(OpenAiChatOptions.builder()
+                        .model(aiProperties.getDefaultModel())
+                        .maxTokens(aiProperties.getMaxCompletionTokens()))
                 .build();
     }
 }

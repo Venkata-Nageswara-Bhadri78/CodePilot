@@ -3,30 +3,40 @@ package com.developer.copilot.ai.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import com.developer.copilot.ai.dto.request.AiMode;
+
 import lombok.Data;
 
 /**
  * Configuration properties for Copilot AI Service.
+ * ChatClient uses {@link #defaultModel} as the single model source of truth.
  */
 @Data
 @Component
 @ConfigurationProperties(prefix = "app.ai")
 public class AiProperties {
 
-    /**
-     * Active AI provider label used in health/metadata responses (e.g. gemini, openai).
-     */
     private String provider = "gemini";
 
-    /**
-     * Default model identifier applied to ChatClient invocations and response metadata.
-     */
     private String defaultModel = "gemini-flash-latest";
 
-    /**
-     * Timeout in seconds for all AI provider calls (synchronous and streaming).
-     */
     private int timeoutSeconds = 60;
+
+    /** Hard cap on completion tokens for most modes. */
+    private int maxCompletionTokens = 2048;
+
+    /** Cover letters may be longer than a match-score blurb. */
+    private int coverLetterMaxCompletionTokens = 4096;
+
+    /** Oldest turns are dropped before the provider call. Validation still allows 40 inbound. */
+    private int maxPriorTurnsSent = 16;
+
+    public int maxTokensFor(AiMode mode) {
+        if (mode == AiMode.COVER_LETTER) {
+            return Math.max(1, coverLetterMaxCompletionTokens);
+        }
+        return Math.max(1, maxCompletionTokens);
+    }
 
     /**
      * @deprecated Prefer {@link #timeoutSeconds}. Kept for backward-compatible property binding.

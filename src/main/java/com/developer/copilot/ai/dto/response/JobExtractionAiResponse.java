@@ -25,7 +25,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Strictly parsed job information extracted from a pasted job posting")
+@Schema(hidden = true, description = "Strictly parsed job information extracted from a pasted job posting")
 public class JobExtractionAiResponse {
 
     @JsonPropertyDescription("The exact job title as stated in the posting (e.g. 'Senior Full Stack Engineer'). "

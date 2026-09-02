@@ -16,7 +16,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Internal request to extract structured job information from pasted job posting text")
+@Schema(hidden = true, description = "Internal request to extract structured job information from pasted job posting text")
 public class JobExtractionAiRequest {
 
     @NotBlank(message = "Job URL cannot be blank.")

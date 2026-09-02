@@ -28,6 +28,9 @@ import com.developer.copilot.ai.dto.response.AiStreamChunk;
 import com.developer.copilot.ai.dto.response.JobExtractionAiResponse;
 import com.developer.copilot.ai.exception.AiResumePendingException;
 import com.developer.copilot.ai.exception.AiServiceException;
+import com.developer.copilot.ai.exception.AiUnavailableException;
+import com.developer.copilot.ai.metrics.AiMetrics;
+import com.developer.copilot.ai.resilience.AiChatGuard;
 import com.developer.copilot.ai.service.AiService;
 import com.developer.copilot.ai.service.context.PromptTemplateService;
 import com.developer.copilot.ai.service.context.ResumeContextService;
@@ -40,15 +43,14 @@ import com.developer.copilot.user.exception.ResumeNotFoundException;
 import com.developer.copilot.user.exception.ResumeParsingException;
 import com.developer.copilot.user.exception.UserProfileNotFoundException;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-/**
- * Production implementation of {@link AiService} utilizing Spring AI {@link ChatClient}.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -63,30 +65,34 @@ public class AiServiceImpl implements AiService {
     private final AiProperties aiProperties;
     private final JobRepository jobRepository;
     private final UserRepository userRepository;
+    private final AiChatGuard aiChatGuard;
+    private final AiMetrics aiMetrics;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Override
-    public Flux<AiStreamChunk> streamChat(AiChatRequest request, String userEmail) {
-        log.info("Initiating AI streamChat request for user={}, mode={}", userEmail, request.getMode());
+    public Flux<AiStreamChunk> streamChat(AiChatRequest request, Long userId) {
+        log.info("Initiating AI streamChat request for userId={}, mode={}", userId, request.getMode());
 
-        // Resolve context first so domain failures (404/409/422) propagate as HTTP errors
-        // instead of being hidden inside an SSE ERROR chunk with HTTP 200.
-        String resumeText = resolveResumeText(request, userEmail);
-        String jobDescription = resolveJobDescription(request, userEmail);
+        String resumeText = resolveResumeText(request.getCustomResumeText(), request.getResumeId());
+        String jobDescription = resolveJobDescription(request, userId);
+        detachPersistenceContext();
 
+        String systemPrompt = promptTemplateService.buildSystemPrompt(request.getMode());
+        String userMessage = promptTemplateService.buildUserMessage(
+                request.getPrompt(),
+                resumeText,
+                jobDescription,
+                request.getMode()
+        );
+
+        return aiChatGuard.guardStream(() -> startStream(systemPrompt, userMessage, request));
+    }
+
+    private Flux<AiStreamChunk> startStream(String systemPrompt, String userMessage, AiChatRequest request) {
         try {
-            String systemPrompt = promptTemplateService.buildSystemPrompt(request.getMode());
-            String userMessage = promptTemplateService.buildUserMessage(
-                    request.getPrompt(),
-                    resumeText,
-                    jobDescription,
-                    request.getMode()
-            );
-
-            OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
-                    .model(aiProperties.getDefaultModel());
-            if (request.getTemperature() != null) {
-                optionsBuilder.temperature(request.getTemperature());
-            }
+            OpenAiChatOptions.Builder optionsBuilder = chatOptions(request.getMode(), request.getTemperature());
 
             Flux<AiStreamChunk> contentChunks = chatClient.prompt()
                     .system(systemPrompt)
@@ -113,28 +119,32 @@ public class AiServiceImpl implements AiService {
             return contentChunks
                     .concatWith(Flux.just(completionChunk))
                     .timeout(Duration.ofSeconds(aiProperties.getTimeoutSeconds()))
+                    .doOnNext(this::recordStreamOutcome)
                     .onErrorResume(throwable -> {
-                        log.error("AI Streaming error for user {}: {}", userEmail, throwable.getMessage(), throwable);
+                        log.error("AI Streaming error: {}", throwable.getMessage(), throwable);
+                        recordStreamProviderFailure(throwable);
                         return Flux.just(buildErrorChunk(formatFriendlyErrorMessage(throwable)));
                     });
-
         } catch (Exception ex) {
-            if (isDomainException(ex)) {
+            if (shouldPropagate(ex)) {
                 throw ex instanceof RuntimeException runtime ? runtime
                         : new AiServiceException(formatFriendlyErrorMessage(ex), ex);
             }
-            log.error("Failed to initialize AI stream for user {}: {}", userEmail, ex.getMessage(), ex);
+            log.error("Failed to initialize AI stream: {}", ex.getMessage(), ex);
+            aiMetrics.recordProviderFailure();
             return Flux.just(buildErrorChunk(formatFriendlyErrorMessage(ex)));
         }
     }
 
     @Override
-    public AiChatResponse chat(AiChatRequest request, String userEmail) {
-        log.info("Executing synchronous AI chat request for user={}, mode={}", userEmail, request.getMode());
+    public AiChatResponse chat(AiChatRequest request, Long userId) {
+        log.info("Executing synchronous AI chat request for userId={}, mode={}", userId, request.getMode());
+        long started = System.nanoTime();
 
         try {
-            String resumeText = resolveResumeText(request, userEmail);
-            String jobDescription = resolveJobDescription(request, userEmail);
+            String resumeText = resolveResumeText(request.getCustomResumeText(), request.getResumeId());
+            String jobDescription = resolveJobDescription(request, userId);
+            detachPersistenceContext();
 
             String systemPrompt = promptTemplateService.buildSystemPrompt(request.getMode());
             String userMessage = promptTemplateService.buildUserMessage(
@@ -144,64 +154,33 @@ public class AiServiceImpl implements AiService {
                     request.getMode()
             );
 
-            OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
-                    .model(aiProperties.getDefaultModel());
-            if (request.getTemperature() != null) {
-                optionsBuilder.temperature(request.getTemperature());
-            }
+            OpenAiChatOptions.Builder optionsBuilder = chatOptions(request.getMode(), request.getTemperature());
 
-            ChatResponse response = callWithTimeout(() -> chatClient.prompt()
+            ChatResponse response = aiChatGuard.call(() -> callWithTimeout(() -> chatClient.prompt()
                     .system(systemPrompt)
                     .user(userMessage)
                     .options(optionsBuilder)
                     .call()
-                    .chatResponse());
+                    .chatResponse()));
 
-            return mapToAiChatResponse(response, request.getMode());
+            AiChatResponse mapped = mapToAiChatResponse(response, request.getMode());
+            aiMetrics.recordChatSuccess(Duration.ofNanos(System.nanoTime() - started), mapped.getTotalTokens());
+            return mapped;
 
         } catch (Exception ex) {
-            if (isDomainException(ex)) {
+            if (shouldPropagate(ex)) {
                 throw ex instanceof RuntimeException runtime ? runtime
                         : new AiServiceException(formatFriendlyErrorMessage(ex), ex);
             }
-            log.error("AI synchronous generation failed for user {}: {}", userEmail, ex.getMessage(), ex);
+            log.error("AI synchronous generation failed for userId {}: {}", userId, ex.getMessage(), ex);
+            aiMetrics.recordProviderFailure();
             throw new AiServiceException(formatFriendlyErrorMessage(ex), ex);
         }
     }
 
     @Override
-    public String getResumeContext(String userEmail) {
-        log.debug("Loading high-priority resume context for user={}", userEmail);
-        // ResumeParsingService resolves ownership via the authenticated security context.
-        // userEmail is retained for audit/logging and API contract clarity.
+    public String getResumeContext() {
         return resumeContextService.getResumeContext(null);
-    }
-
-    /**
-     * Translates technical upstream LLM exceptions into clean, actionable messages for the frontend.
-     * Unknown failures return a generic message; technical details stay in server logs.
-     */
-    private String formatFriendlyErrorMessage(Throwable throwable) {
-        if (throwable == null || throwable.getMessage() == null) {
-            return GENERIC_PROVIDER_ERROR;
-        }
-        String msg = throwable.getMessage();
-        if (msg.contains("429") || msg.contains("RESOURCE_EXHAUSTED") || msg.contains("quota") || msg.contains("Quota exceeded")) {
-            return "Google Gemini API rate limit or quota exceeded for the current tier. Please wait a few moments and try again.";
-        }
-        if (msg.contains("404") || msg.contains("NOT_FOUND")) {
-            return "The requested AI model was not found or is deprecated. Please verify 'app.ai.default-model' in application.properties.";
-        }
-        if (msg.contains("401") || msg.contains("UNAUTHENTICATED") || msg.contains("invalid authentication")) {
-            return "AI provider authentication failed. Please verify your GEMINI_API_KEY in application.properties.";
-        }
-        if (msg.contains("503") || msg.contains("UNAVAILABLE") || msg.contains("high demand")) {
-            return "The AI model is currently experiencing high demand. Please try again in a few seconds.";
-        }
-        if (msg.contains("TimeoutException") || msg.contains("timed out") || msg.contains("Timeout")) {
-            return "The AI service response timed out. Please try a more specific or shorter prompt.";
-        }
-        return GENERIC_PROVIDER_ERROR;
     }
 
     @Override
@@ -226,6 +205,7 @@ public class AiServiceImpl implements AiService {
                     .user(userMessage)
                     .options(OpenAiChatOptions.builder()
                             .model(aiProperties.getDefaultModel())
+                            .maxTokens(aiProperties.getMaxCompletionTokens())
                             .temperature(0.0))
                     .call()
                     .entity(JobExtractionAiResponse.class));
@@ -250,43 +230,82 @@ public class AiServiceImpl implements AiService {
 
     @Override
     public AiChatResponse continueJobChat(JobChatAiRequest request, String userEmail) {
-        int turnNumber = (request.getPriorTurns() != null ? request.getPriorTurns().size() : 0) + 1;
-        log.info("Continuing job chat for user={}, jobId={}, turn={}", userEmail, request.getJobId(), turnNumber);
+        int inboundTurns = request.getPriorTurns() != null ? request.getPriorTurns().size() : 0;
+        log.info("Continuing job chat for userIdLookup={}, jobId={}, inboundTurns={}",
+                userEmail != null ? "email" : "none", request.getJobId(), inboundTurns);
 
         try {
             validatePriorTurns(request.getPriorTurns());
+            List<ChatTurnDto> turnsForModel = trimPriorTurns(request.getPriorTurns());
 
             String resumeText = resolveResumeText(request.getCustomResumeText(), request.getResumeId());
-            String jobDescription = resolveJobDescriptionByJobId(request.getJobId(), userEmail, true);
+            String jobDescription = resolveJobDescriptionByEmail(request.getJobId(), userEmail, true);
+            detachPersistenceContext();
 
             String systemPrompt = promptTemplateService.buildJobChatSystemPrompt(resumeText, jobDescription);
 
             List<Message> conversation = new ArrayList<>();
-            if (request.getPriorTurns() != null) {
-                for (ChatTurnDto turn : request.getPriorTurns()) {
-                    conversation.add(new UserMessage(turn.getUserPrompt()));
-                    conversation.add(new AssistantMessage(turn.getAiResponse()));
-                }
+            for (ChatTurnDto turn : turnsForModel) {
+                conversation.add(new UserMessage(turn.getUserPrompt()));
+                conversation.add(new AssistantMessage(turn.getAiResponse()));
             }
             conversation.add(new UserMessage(request.getNewPrompt()));
 
-            ChatResponse response = callWithTimeout(() -> chatClient.prompt()
+            ChatResponse response = aiChatGuard.call(() -> callWithTimeout(() -> chatClient.prompt()
                     .system(systemPrompt)
                     .messages(conversation)
-                    .options(OpenAiChatOptions.builder().model(aiProperties.getDefaultModel()))
+                    .options(chatOptions(AiMode.GENERAL_CHAT, null))
                     .call()
-                    .chatResponse());
+                    .chatResponse()));
 
             return mapToAiChatResponse(response, AiMode.GENERAL_CHAT);
 
         } catch (Exception ex) {
-            if (isDomainException(ex)) {
+            if (shouldPropagate(ex)) {
                 throw ex instanceof RuntimeException runtime ? runtime
                         : new AiServiceException(formatFriendlyErrorMessage(ex), ex);
             }
-            log.error("AI job chat failed for user {} jobId {}: {}", userEmail, request.getJobId(), ex.getMessage(), ex);
+            log.error("AI job chat failed for jobId {}: {}", request.getJobId(), ex.getMessage(), ex);
+            aiMetrics.recordProviderFailure();
             throw new AiServiceException(formatFriendlyErrorMessage(ex), ex);
         }
+    }
+
+    private OpenAiChatOptions.Builder chatOptions(AiMode mode, Double temperature) {
+        OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
+                .model(aiProperties.getDefaultModel())
+                .maxTokens(aiProperties.maxTokensFor(mode));
+        if (temperature != null) {
+            optionsBuilder.temperature(temperature);
+        }
+        return optionsBuilder;
+    }
+
+    private String formatFriendlyErrorMessage(Throwable throwable) {
+        if (throwable == null || throwable.getMessage() == null) {
+            return GENERIC_PROVIDER_ERROR;
+        }
+        String msg = throwable.getMessage();
+        if (msg.contains("429") || msg.contains("RESOURCE_EXHAUSTED") || msg.contains("quota")
+                || msg.contains("Quota exceeded")) {
+            return "Google Gemini API rate limit or quota exceeded for the current tier. Please wait a few moments and try again.";
+        }
+        if (msg.contains("404") || msg.contains("NOT_FOUND")) {
+            log.error("AI model was not found. Operators: verify app.ai.default-model.");
+            return "The configured AI model is unavailable.";
+        }
+        if (msg.contains("401") || msg.contains("UNAUTHENTICATED") || msg.contains("invalid authentication")) {
+            log.error("AI provider authentication failed. Operators: verify the provider API key.");
+            return "AI provider authentication failed. Please try again later.";
+        }
+        if (msg.contains("503") || msg.contains("UNAVAILABLE") || msg.contains("high demand")) {
+            return "The AI model is currently experiencing high demand. Please try again in a few seconds.";
+        }
+        if (msg.contains("TimeoutException") || msg.contains("timed out") || msg.contains("Timeout")) {
+            aiMetrics.recordTimeout();
+            return "The AI service response timed out. Please try a more specific or shorter prompt.";
+        }
+        return GENERIC_PROVIDER_ERROR;
     }
 
     private void validatePriorTurns(List<ChatTurnDto> priorTurns) {
@@ -306,9 +325,20 @@ public class AiServiceImpl implements AiService {
         }
     }
 
+    private List<ChatTurnDto> trimPriorTurns(List<ChatTurnDto> priorTurns) {
+        if (priorTurns == null || priorTurns.isEmpty()) {
+            return List.of();
+        }
+        int keep = Math.max(1, aiProperties.getMaxPriorTurnsSent());
+        if (priorTurns.size() <= keep) {
+            return priorTurns;
+        }
+        return new ArrayList<>(priorTurns.subList(priorTurns.size() - keep, priorTurns.size()));
+    }
+
     private AiStreamChunk buildErrorChunk(String friendlyError) {
         return AiStreamChunk.builder()
-                .content("\n\n⚠️ **AI Service Error:** " + friendlyError)
+                .content("\n\nAI Service Error: " + friendlyError)
                 .isCompleted(true)
                 .finishReason("ERROR")
                 .model(aiProperties.getDefaultModel())
@@ -316,23 +346,45 @@ public class AiServiceImpl implements AiService {
                 .build();
     }
 
+    private void recordStreamOutcome(AiStreamChunk chunk) {
+        if (chunk == null || !chunk.isCompleted()) {
+            return;
+        }
+        if ("ERROR".equalsIgnoreCase(chunk.getFinishReason())) {
+            aiMetrics.recordStreamError();
+        } else {
+            aiMetrics.recordStreamStop();
+        }
+    }
+
+    private void recordStreamProviderFailure(Throwable throwable) {
+        aiMetrics.recordProviderFailure();
+        if (throwable != null && throwable.getMessage() != null
+                && (throwable.getMessage().contains("Timeout") || throwable.getMessage().contains("timed out"))) {
+            aiMetrics.recordTimeout();
+        }
+    }
+
     private <T> T callWithTimeout(Callable<T> callable) {
         try {
-            T result = Mono.fromCallable(callable)
+            return Mono.fromCallable(callable)
                     .subscribeOn(Schedulers.boundedElastic())
                     .timeout(Duration.ofSeconds(aiProperties.getTimeoutSeconds()))
                     .block();
-            return result;
         } catch (Exception ex) {
             Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-            if (isDomainException(cause)) {
-                if (cause instanceof RuntimeException runtime) {
-                    throw runtime;
-                }
+            if (isDomainException(cause) && cause instanceof RuntimeException runtime) {
+                throw runtime;
             }
             log.error("AI provider call failed or timed out: {}", cause.getMessage(), cause);
             throw new AiServiceException(formatFriendlyErrorMessage(cause), cause);
         }
+    }
+
+    private boolean shouldPropagate(Throwable throwable) {
+        return isDomainException(throwable)
+                || throwable instanceof AiUnavailableException
+                || throwable instanceof AiServiceException;
     }
 
     private boolean isDomainException(Throwable throwable) {
@@ -344,17 +396,14 @@ public class AiServiceImpl implements AiService {
                 || throwable instanceof IllegalArgumentException;
     }
 
-    /**
-     * Maps a raw Spring AI {@link ChatResponse} into the project's {@link AiChatResponse}
-     * contract - shared between {@link #chat} and {@link #continueJobChat}.
-     */
     private AiChatResponse mapToAiChatResponse(ChatResponse response, AiMode mode) {
         String generatedContent = "";
         String finishReason = "STOP";
 
         if (response != null && response.getResult() != null && response.getResult().getOutput() != null) {
             generatedContent = response.getResult().getOutput().getText();
-            if (response.getResult().getMetadata() != null && response.getResult().getMetadata().getFinishReason() != null) {
+            if (response.getResult().getMetadata() != null
+                    && response.getResult().getMetadata().getFinishReason() != null) {
                 finishReason = response.getResult().getMetadata().getFinishReason();
             }
         }
@@ -382,34 +431,46 @@ public class AiServiceImpl implements AiService {
                 .build();
     }
 
-    private String resolveResumeText(AiChatRequest request, String userEmail) {
-        return resolveResumeText(request.getCustomResumeText(), request.getResumeId());
-    }
-
     private String resolveResumeText(String customResumeText, Long resumeId) {
         if (customResumeText != null && !customResumeText.isBlank()) {
             return customResumeText.trim();
         }
-        return resumeContextService.getResumeContext(resumeId);
+        try {
+            return resumeContextService.getResumeContext(resumeId);
+        } catch (ResumeNotFoundException | UserProfileNotFoundException ex) {
+            if (resumeId != null) {
+                throw ex;
+            }
+            aiMetrics.recordMissingResume();
+            return "";
+        }
     }
 
-    private String resolveJobDescription(AiChatRequest request, String userEmail) {
+    private String resolveJobDescription(AiChatRequest request, Long userId) {
         if (request.getJobDescription() != null && !request.getJobDescription().isBlank()) {
             return request.getJobDescription().trim();
         }
         if (request.getJobId() == null) {
             return "";
         }
-        return resolveJobDescriptionByJobId(request.getJobId(), userEmail, true);
+        return resolveJobDescriptionByUserId(request.getJobId(), userId, true);
     }
 
-    /**
-     * Looks up a saved job owned by the given user and returns its cleaned description,
-     * falling back to the original pasted description.
-     *
-     * @param required when true, missing/foreign jobs throw {@link JobNotFoundException}
-     */
-    private String resolveJobDescriptionByJobId(Long jobId, String userEmail, boolean required) {
+    private String resolveJobDescriptionByUserId(Long jobId, Long userId, boolean required) {
+        if (jobId == null || userId == null) {
+            if (required) {
+                throw new JobNotFoundException("Job not found.");
+            }
+            return "";
+        }
+        Optional<JobEntity> jobOptional = jobRepository.findByIdAndUserId(jobId, userId);
+        if (jobOptional.isEmpty()) {
+            throw new JobNotFoundException("Job not found.");
+        }
+        return jobText(jobOptional.get());
+    }
+
+    private String resolveJobDescriptionByEmail(Long jobId, String userEmail, boolean required) {
         if (jobId == null) {
             if (required) {
                 throw new JobNotFoundException("Job not found.");
@@ -419,18 +480,14 @@ public class AiServiceImpl implements AiService {
         if (userEmail == null || userEmail.isBlank()) {
             throw new JobNotFoundException("Job not found.");
         }
-
         Optional<User> userOptional = userRepository.findByEmail(userEmail);
         if (userOptional.isEmpty()) {
             throw new JobNotFoundException("Job not found.");
         }
+        return resolveJobDescriptionByUserId(jobId, userOptional.get().getId(), required);
+    }
 
-        Optional<JobEntity> jobOptional = jobRepository.findByIdAndUserId(jobId, userOptional.get().getId());
-        if (jobOptional.isEmpty()) {
-            throw new JobNotFoundException("Job not found.");
-        }
-
-        JobEntity job = jobOptional.get();
+    private static String jobText(JobEntity job) {
         if (job.getDescription() != null && !job.getDescription().isBlank()) {
             return job.getDescription();
         }
@@ -438,5 +495,11 @@ public class AiServiceImpl implements AiService {
             return job.getOriginalDescription();
         }
         return "";
+    }
+
+    private void detachPersistenceContext() {
+        if (entityManager != null && entityManager.isOpen()) {
+            entityManager.clear();
+        }
     }
 }

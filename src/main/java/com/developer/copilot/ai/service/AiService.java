@@ -15,58 +15,19 @@ import reactor.core.publisher.Flux;
  */
 public interface AiService {
 
-    /**
-     * Streams real-time tokens for a user request via reactive Flux (Server-Sent Events).
-     *
-     * @param request the chat prompt and context
-     * @param userEmail the authenticated user's email
-     * @return a Flux stream of incremental {@link AiStreamChunk} tokens
-     */
-    Flux<AiStreamChunk> streamChat(AiChatRequest request, String userEmail);
+    Flux<AiStreamChunk> streamChat(AiChatRequest request, Long userId);
 
-    /**
-     * Executes a synchronous AI completion call.
-     *
-     * @param request the chat prompt and context
-     * @param userEmail the authenticated user's email
-     * @return the complete {@link AiChatResponse}
-     */
-    AiChatResponse chat(AiChatRequest request, String userEmail);
+    AiChatResponse chat(AiChatRequest request, Long userId);
 
-    /**
-     * Retrieves the current candidate resume context.
-     *
-     * @param userEmail the authenticated user's email
-     * @return formatted resume text
-     */
-    String getResumeContext(String userEmail);
+    String getResumeContext();
 
-    /**
-     * Returns the active model identifier and provider info.
-     *
-     * @return model identifier string
-     */
     String getActiveModel();
 
-    /**
-     * Parses a pasted job posting into strict structured JSON with zero hallucination -
-     * any field not clearly present in the source text is returned empty rather than guessed.
-     * Used exclusively by the {@code jobextraction} module's "Extract Job Info" flow.
-     *
-     * @param request the canonicalized job URL and raw pasted posting text
-     * @return the strictly parsed job fields
-     */
     JobExtractionAiResponse extractJobInfo(JobExtractionAiRequest request);
 
     /**
-     * Continues a multi-turn, job-grounded chat conversation: rebuilds the conversation from
-     * the supplied prior turns and answers the new prompt in that context. Stateless from the
-     * AI module's point of view - all persistence/history-loading is the caller's
-     * ({@code chatassistant} module's) responsibility.
-     *
-     * @param request the job to ground the conversation in, prior turns, and the new prompt
-     * @param userEmail the authenticated user's email
-     * @return the AI's response to the new prompt
+     * Job-scoped multi-turn chat. {@code userEmail} remains the in-process contract used by
+     * chat-assistant; HTTP chat/stream pass {@code userId} instead.
      */
     AiChatResponse continueJobChat(JobChatAiRequest request, String userEmail);
 }

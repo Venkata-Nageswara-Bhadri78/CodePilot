@@ -27,6 +27,7 @@ import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
 import com.developer.copilot.auth.ratelimit.exception.RateLimitExceededException;
 import com.developer.copilot.ai.exception.AiResumePendingException;
 import com.developer.copilot.ai.exception.AiServiceException;
+import com.developer.copilot.ai.exception.AiUnavailableException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
@@ -78,6 +79,19 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_GATEWAY)
+                .body(response);
+    }
+
+    @ExceptionHandler(AiUnavailableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAiUnavailable(AiUnavailableException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(response);
     }
 
@@ -615,6 +629,22 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(com.developer.copilot.jobs.ratelimit.exception.RateLimitExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleJobsRateLimitExceeded(
                 com.developer.copilot.jobs.ratelimit.exception.RateLimitExceededException ex) {
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(response);
+    }
+
+    @ExceptionHandler(com.developer.copilot.ai.ratelimit.exception.RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAiRateLimitExceeded(
+                com.developer.copilot.ai.ratelimit.exception.RateLimitExceededException ex) {
 
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .success(false)
