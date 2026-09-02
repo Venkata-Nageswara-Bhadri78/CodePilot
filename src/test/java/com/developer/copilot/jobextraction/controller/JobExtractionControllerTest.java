@@ -5,6 +5,8 @@ import com.developer.copilot.auth.exception.InvalidCredentialsException;
 import com.developer.copilot.common.exception.GlobalExceptionHandler;
 import com.developer.copilot.common.exception.InvalidJobUrlException;
 import com.developer.copilot.jobextraction.dto.response.JobExtractionResultResponse;
+import com.developer.copilot.jobextraction.exception.EmailNotVerifiedException;
+import com.developer.copilot.jobextraction.exception.JobExtractionAiUnavailableException;
 import com.developer.copilot.jobextraction.service.JobExtractionService;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import org.junit.jupiter.api.BeforeEach;
@@ -276,6 +278,32 @@ class JobExtractionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validRequestBody()))
                 .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    void parseJobInfo_EmailNotVerifiedException_Returns403() throws Exception {
+        when(jobExtractionService.extractJobInfo(any()))
+                .thenThrow(new EmailNotVerifiedException());
+
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validRequestBody()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Please verify your email before using this feature."));
+    }
+
+    @Test
+    void parseJobInfo_AiUnavailable_Returns503() throws Exception {
+        when(jobExtractionService.extractJobInfo(any()))
+                .thenThrow(new JobExtractionAiUnavailableException(
+                        "The AI service is temporarily unavailable. Please try again shortly."));
+
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validRequestBody()))
+                .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.success").value(false));
     }
 }

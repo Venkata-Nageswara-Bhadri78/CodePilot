@@ -88,3 +88,11 @@ app.auth.redis.port=6379
 app.auth.redis.database=0
 app.auth.redis.timeout-ms=2000
 app.auth.redis.key-prefix=auth
+
+# Job-extraction Redis (distributed parse rate limits + short preview cache). Off by default.
+app.jobextraction.redis.enabled=false
+app.jobextraction.redis.host=localhost
+app.jobextraction.redis.port=6379
+app.jobextraction.redis.database=0
+app.jobextraction.redis.timeout-ms=2000
+app.jobextraction.redis.key-prefix=jobextraction

@@ -10,9 +10,14 @@ import com.developer.copilot.auth.exception.InvalidCredentialsException;
 import com.developer.copilot.common.exception.InvalidJobUrlException;
 import com.developer.copilot.common.security.CurrentUserService;
 import com.developer.copilot.common.util.UrlNormalizationUtil;
+import com.developer.copilot.jobextraction.cache.JobExtractionPreviewCache;
 import com.developer.copilot.jobextraction.dto.request.JobExtractionRequest;
 import com.developer.copilot.jobextraction.dto.response.JobExtractionResultResponse;
+import com.developer.copilot.jobextraction.exception.EmailNotVerifiedException;
+import com.developer.copilot.jobextraction.exception.JobExtractionAiUnavailableException;
 import com.developer.copilot.jobextraction.mapper.JobExtractionMapper;
+import com.developer.copilot.jobextraction.metrics.JobExtractionMetrics;
+import com.developer.copilot.jobextraction.resilience.JobExtractionAiGuard;
 import com.developer.copilot.jobextraction.service.impl.JobExtractionServiceImpl;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.repository.JobRepository;
@@ -20,7 +25,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -50,7 +54,6 @@ class JobExtractionServiceImplTest {
     @Mock
     private CurrentUserService currentUserService;
 
-    @InjectMocks
     private JobExtractionServiceImpl jobExtractionService;
 
     private User testUser;
@@ -63,6 +66,15 @@ class JobExtractionServiceImplTest {
         testUser.setEmailVerified(true);
         testUser.setEnabled(true);
         testUser.setRole(Role.USER);
+        jobExtractionService = new JobExtractionServiceImpl(
+                urlNormalizationUtil,
+                jobRepository,
+                aiService,
+                jobExtractionMapper,
+                currentUserService,
+                new JobExtractionPreviewCache(null),
+                new JobExtractionAiGuard(),
+                new JobExtractionMetrics());
     }
 
     private void mockAuthenticatedUser() {
@@ -224,7 +236,7 @@ class JobExtractionServiceImplTest {
                 .rawJobText("Full pasted job posting text.")
                 .build();
 
-        assertThrows(InvalidCredentialsException.class, () -> jobExtractionService.extractJobInfo(request));
+        assertThrows(EmailNotVerifiedException.class, () -> jobExtractionService.extractJobInfo(request));
         verify(aiService, never()).extractJobInfo(any());
         verify(jobRepository, never()).existsByUserIdAndSourceUrlHash(any(), any());
     }
@@ -239,7 +251,7 @@ class JobExtractionServiceImplTest {
                 .rawJobText("Full pasted job posting text.")
                 .build();
 
-        assertThrows(InvalidCredentialsException.class, () -> jobExtractionService.extractJobInfo(request));
+        assertThrows(EmailNotVerifiedException.class, () -> jobExtractionService.extractJobInfo(request));
         verify(aiService, never()).extractJobInfo(any());
     }
 
@@ -432,5 +444,64 @@ class JobExtractionServiceImplTest {
 
         assertEquals(255, result.getTitle().length());
         assertTrue(result.isRequiresManualReview());
+    }
+
+    @Test
+    void extractJobInfo_SecondParseSameUserAndUrl_UsesCacheAndSkipsAi() {
+        mockAuthenticatedUser();
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(aiService.extractJobInfo(any(JobExtractionAiRequest.class)))
+                .thenReturn(JobExtractionAiResponse.builder().title("T").company("C").build());
+
+        JobExtractionRequest request = JobExtractionRequest.builder()
+                .sourceUrl("https://example.com/jobs/1")
+                .rawJobText("Full pasted job posting text.")
+                .build();
+
+        JobExtractionResultResponse first = jobExtractionService.extractJobInfo(request);
+        JobExtractionResultResponse second = jobExtractionService.extractJobInfo(request);
+
+        assertEquals(first.getTitle(), second.getTitle());
+        assertEquals(first.getSourceUrl(), second.getSourceUrl());
+        verify(aiService, times(1)).extractJobInfo(any(JobExtractionAiRequest.class));
+    }
+
+    @Test
+    void extractJobInfo_CacheIsPerUser() {
+        mockAuthenticatedUser();
+        when(jobRepository.existsByUserIdAndSourceUrlHash(any(), any())).thenReturn(false);
+        when(aiService.extractJobInfo(any(JobExtractionAiRequest.class)))
+                .thenReturn(JobExtractionAiResponse.builder().title("T").company("C").build());
+
+        JobExtractionRequest request = JobExtractionRequest.builder()
+                .sourceUrl("https://example.com/jobs/1")
+                .rawJobText("Full pasted job posting text.")
+                .build();
+        jobExtractionService.extractJobInfo(request);
+
+        testUser.setId(99L);
+        jobExtractionService.extractJobInfo(request);
+
+        verify(aiService, times(2)).extractJobInfo(any(JobExtractionAiRequest.class));
+    }
+
+    @Test
+    void extractJobInfo_ThreeAiFailures_FourthIsUnavailableWithoutCallingAi() {
+        mockAuthenticatedUser();
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(aiService.extractJobInfo(any(JobExtractionAiRequest.class)))
+                .thenThrow(new AiServiceException("AI provider unavailable."));
+
+        JobExtractionRequest request = JobExtractionRequest.builder()
+                .sourceUrl("https://example.com/jobs/1")
+                .rawJobText("Full pasted job posting text.")
+                .build();
+
+        for (int i = 0; i < 3; i++) {
+            assertThrows(AiServiceException.class, () -> jobExtractionService.extractJobInfo(request));
+        }
+        assertThrows(JobExtractionAiUnavailableException.class,
+                () -> jobExtractionService.extractJobInfo(request));
+        verify(aiService, times(3)).extractJobInfo(any(JobExtractionAiRequest.class));
     }
 }

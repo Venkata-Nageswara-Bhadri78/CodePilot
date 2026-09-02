@@ -41,7 +41,8 @@ public class JobExtractionOpenApiConfig {
                         + "3) Edit data in your UI. 4) Save with POST /api/v1/jobs; omit requiresManualReview; "
                         + "use data.sourceUrl (canonical) not the raw request URL. "
                         + "Parse never writes rows. 200 is a preview. 409 = already in this user's notebook. "
-                        + "502 = model/provider. 429 = parse budget spent (Retry-After). "
+                        + "403 = email not verified (service). 502 = model/provider. "
+                        + "503 = circuit open or bulkhead full. 429 = parse budget spent (Retry-After). "
                         + "Try-it-out against a live model can take up to ~60 seconds."));
     }
 }

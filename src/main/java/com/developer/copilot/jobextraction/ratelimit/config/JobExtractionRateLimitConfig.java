@@ -1,5 +1,6 @@
 package com.developer.copilot.jobextraction.ratelimit.config;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -8,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 import com.developer.copilot.jobextraction.ratelimit.filter.JobExtractionRateLimitFilter;
 import com.developer.copilot.jobextraction.ratelimit.service.JobExtractionRateLimitService;
 import com.developer.copilot.jobextraction.ratelimit.service.impl.JobExtractionRateLimitServiceImpl;
+import com.developer.copilot.jobextraction.redis.service.JobExtractionRedisService;
 
 @Configuration
 @EnableConfigurationProperties(JobExtractionRateLimitProperties.class)
@@ -20,8 +22,9 @@ public class JobExtractionRateLimitConfig {
     private static final int AFTER_SPRING_SECURITY = -80;
 
     @Bean
-    public JobExtractionRateLimitService jobExtractionRateLimitService() {
-        return new JobExtractionRateLimitServiceImpl();
+    public JobExtractionRateLimitService jobExtractionRateLimitService(
+            ObjectProvider<JobExtractionRedisService> redisService) {
+        return new JobExtractionRateLimitServiceImpl(redisService.getIfAvailable());
     }
 
     @Bean

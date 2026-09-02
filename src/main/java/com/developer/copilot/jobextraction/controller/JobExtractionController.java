@@ -72,8 +72,13 @@ public class JobExtractionController {
                             examples = @ExampleObject(value = "{\"success\":false,\"message\":\"Job URL must be a valid absolute http or https link.\",\"data\":null,\"timestamp\":\"2026-01-15T10:30:00\"}"))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
-                    description = "Missing/invalid JWT, or unverified/disabled account (filter returns Unauthorized.)",
+                    description = "Missing/invalid JWT, or disabled account (filter returns Unauthorized.)",
                     content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "403",
+                    description = "Email not verified (service path). JWT filter still 401s unverified accounts.",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class),
+                            examples = @ExampleObject(value = "{\"success\":false,\"message\":\"Please verify your email before using this feature.\",\"data\":null,\"timestamp\":\"2026-01-15T10:30:00\"}"))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
                     description = "This user already saved this canonical URL",
@@ -87,6 +92,10 @@ public class JobExtractionController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "502",
                     description = "AI provider error, timeout, or unparseable structured output",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "503",
+                    description = "AI circuit open or bulkhead full — retry shortly",
                     content = @Content(schema = @Schema(implementation = ApiResponse.class))),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",

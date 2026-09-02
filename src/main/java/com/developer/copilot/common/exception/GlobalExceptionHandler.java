@@ -29,6 +29,8 @@ import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
 import com.developer.copilot.jobs.exception.JobValidationException;
+import com.developer.copilot.jobextraction.exception.EmailNotVerifiedException;
+import com.developer.copilot.jobextraction.exception.JobExtractionAiUnavailableException;
 
 import lombok.extern.slf4j.Slf4j;
 import com.developer.copilot.common.storage.exception.InvalidFileException;
@@ -60,6 +62,33 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_GATEWAY)
+                .body(response);
+    }
+
+    @ExceptionHandler(JobExtractionAiUnavailableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleJobExtractionAiUnavailable(
+            JobExtractionAiUnavailableException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(response);
+    }
+
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleEmailNotVerified(EmailNotVerifiedException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
                 .body(response);
     }
 
@@ -570,6 +599,22 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(com.developer.copilot.jobs.ratelimit.exception.RateLimitExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleJobsRateLimitExceeded(
                 com.developer.copilot.jobs.ratelimit.exception.RateLimitExceededException ex) {
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(response);
+    }
+
+    @ExceptionHandler(com.developer.copilot.jobextraction.ratelimit.exception.RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleJobExtractionRateLimitExceeded(
+                com.developer.copilot.jobextraction.ratelimit.exception.RateLimitExceededException ex) {
 
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .success(false)

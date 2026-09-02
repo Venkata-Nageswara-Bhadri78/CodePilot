@@ -97,7 +97,7 @@ class JobExtractionRateLimitFilterTest {
     }
 
     private static JobExtractionRateLimitFilter newFilter(JobExtractionRateLimitProperties properties) {
-        return new JobExtractionRateLimitFilter(properties, new JobExtractionRateLimitServiceImpl());
+        return new JobExtractionRateLimitFilter(properties, new JobExtractionRateLimitServiceImpl(null));
     }
 
     private static JobExtractionRateLimitProperties tightLimit() {
