@@ -13,4 +13,6 @@ public interface WorkExperienceRepository extends JpaRepository<WorkExperience, 
 
     Optional<WorkExperience> findByIdAndUserProfile(Long id, UserProfile userProfile);
 
+    long countByUserProfile(UserProfile userProfile);
+
 }

@@ -26,11 +26,14 @@ import com.developer.copilot.user.entity.Resume;
 import com.developer.copilot.user.repository.ResumeRepository;
 import com.developer.copilot.user.exception.DuplicateUserProfileException;
 import com.developer.copilot.user.exception.EducationNotFoundException;
+import com.developer.copilot.user.exception.ProfileItemLimitExceededException;
 import com.developer.copilot.user.exception.ProfileLinkNotFoundException;
 import com.developer.copilot.user.exception.ProjectNotFoundException;
 import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.exception.WorkExperienceNotFoundException;
+import com.developer.copilot.user.config.UserProfileProperties;
 import com.developer.copilot.user.mapper.UserProfileMapper;
+import com.developer.copilot.user.metrics.UserMetrics;
 import com.developer.copilot.user.repository.AdditionalProfileInformationRepository;
 import com.developer.copilot.user.repository.EducationRepository;
 import com.developer.copilot.user.repository.ProfileLinkRepository;
@@ -39,12 +42,15 @@ import com.developer.copilot.user.repository.UserProfileRepository;
 import com.developer.copilot.user.repository.WorkExperienceRepository;
 import com.developer.copilot.user.service.ResumeParsingService;
 import com.developer.copilot.user.service.UserProfileService;
+import com.developer.copilot.user.util.AfterCommitActions;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserProfileServiceImpl implements UserProfileService {
@@ -60,6 +66,8 @@ public class UserProfileServiceImpl implements UserProfileService {
     private final FileStorageService fileStorageService;
     private final ResumeParsingService resumeParsingService;
     private final UserProfileMapper userProfileMapper;
+    private final UserProfileProperties userProfileProperties;
+    private final UserMetrics userMetrics;
 
     // ─── Profile ─────────────────────────────────────────────────────────────
 
@@ -94,17 +102,11 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional
     public UserProfileResponse updateProfile(UserProfileRequest request) {
-        UserProfile profile = resolveProfile();
+        UserProfile profile = resolveProfileForUpdate();
 
-        if (request.getHeadline() != null) {
-            profile.setHeadline(request.getHeadline());
-        }
-        if (request.getSummary() != null) {
-            profile.setSummary(request.getSummary());
-        }
-        if (request.getTechnicalSkills() != null) {
-            profile.setTechnicalSkills(request.getTechnicalSkills());
-        }
+        profile.setHeadline(request.getHeadline());
+        profile.setSummary(request.getSummary());
+        profile.setTechnicalSkills(request.getTechnicalSkills());
 
         userProfileRepository.save(profile);
 
@@ -114,7 +116,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional
     public void deleteProfile() {
-        UserProfile profile = resolveProfile();
+        UserProfile profile = resolveProfileForUpdate();
 
         deleteResumesForProfile(profile);
 
@@ -132,7 +134,8 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional
     public WorkExperienceResponse addWorkExperience(WorkExperienceRequest request) {
-        UserProfile profile = resolveProfile();
+        UserProfile profile = resolveProfileForUpdate();
+        enforceChildLimit("work experience", workExperienceRepository.countByUserProfile(profile));
 
         WorkExperience experience = WorkExperience.builder()
                 .userProfile(profile)
@@ -181,7 +184,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional
     public void deleteWorkExperience(Long id) {
-        UserProfile profile = resolveProfile();
+        UserProfile profile = resolveProfileForUpdate();
 
         WorkExperience experience = workExperienceRepository
                 .findByIdAndUserProfile(id, profile)
@@ -195,7 +198,8 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional
     public EducationResponse addEducation(EducationRequest request) {
-        UserProfile profile = resolveProfile();
+        UserProfile profile = resolveProfileForUpdate();
+        enforceChildLimit("education", educationRepository.countByUserProfile(profile));
 
         Education education = Education.builder()
                 .userProfile(profile)
@@ -258,7 +262,8 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional
     public ProjectResponse addProject(ProjectRequest request) {
-        UserProfile profile = resolveProfile();
+        UserProfile profile = resolveProfileForUpdate();
+        enforceChildLimit("project", projectRepository.countByUserProfile(profile));
 
         Project project = Project.builder()
                 .userProfile(profile)
@@ -317,7 +322,8 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional
     public AdditionalProfileInformationResponse addAdditionalInformation(AdditionalProfileInformationRequest request) {
-        UserProfile profile = resolveProfile();
+        UserProfile profile = resolveProfileForUpdate();
+        enforceChildLimit("additional information", additionalProfileInformationRepository.countByUserProfile(profile));
 
         AdditionalProfileInformation info = AdditionalProfileInformation.builder()
                 .userProfile(profile)
@@ -376,7 +382,8 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     @Transactional
     public ProfileLinkResponse addProfileLink(ProfileLinkRequest request) {
-        UserProfile profile = resolveProfile();
+        UserProfile profile = resolveProfileForUpdate();
+        enforceChildLimit("profile link", profileLinkRepository.countByUserProfile(profile));
 
         ProfileLink link = ProfileLink.builder()
                 .userProfile(profile)
@@ -434,16 +441,41 @@ public class UserProfileServiceImpl implements UserProfileService {
                 .orElseThrow(UserProfileNotFoundException::new);
     }
 
+    private UserProfile resolveProfileForUpdate() {
+        User user = currentUserService.getCurrentUser();
+        return userProfileRepository.findByUserForUpdate(user)
+                .orElseThrow(UserProfileNotFoundException::new);
+    }
+
+    private void enforceChildLimit(String itemName, long currentCount) {
+        int max = userProfileProperties.getMaxChildItems();
+        if (currentCount >= max) {
+            throw new ProfileItemLimitExceededException(itemName, max);
+        }
+    }
+
     private void deleteResumesForProfile(UserProfile profile) {
         List<Resume> resumes = resumeRepository.findByUserProfile(profile);
 
-        // Parsed data references the resume rows, so it has to go first.
         resumeParsingService.deleteParsedDataFor(resumes);
 
-        for (Resume resume : resumes) {
-            fileStorageService.delete(resume.getStorageKey());
-            resumeRepository.delete(resume);
-        }
+        List<String> storageKeys = resumes.stream()
+                .map(Resume::getStorageKey)
+                .filter(key -> key != null && !key.isBlank())
+                .toList();
+
+        resumeRepository.deleteAll(resumes);
+
+        AfterCommitActions.run(() -> {
+            for (String storageKey : storageKeys) {
+                try {
+                    fileStorageService.delete(storageKey);
+                } catch (RuntimeException ex) {
+                    log.error("Failed to delete stored resume after profile delete: {}", ex.getMessage());
+                    userMetrics.recordMinioDeleteFailure();
+                }
+            }
+        });
     }
 
     private UserProfileResponse buildFullProfileResponse(UserProfile profile) {

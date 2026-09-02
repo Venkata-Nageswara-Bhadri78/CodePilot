@@ -15,8 +15,8 @@ public class InternalApiProperties {
     private String key;
 
     /**
-     * When disabled, internal endpoints are reachable without the shared secret.
-     * Intended for local development only.
+     * When disabled, the shared-secret check is skipped only on {@code local}/{@code dev}.
+     * Any other profile still rejects the request (fail closed).
      */
     private boolean enabled = true;
 

@@ -5,6 +5,7 @@ import com.developer.copilot.user.config.ResumeProperties;
 import com.developer.copilot.user.entity.Resume;
 import com.developer.copilot.user.entity.ResumeParsedData;
 import com.developer.copilot.user.entity.ResumeParsingStatus;
+import com.developer.copilot.user.metrics.UserMetrics;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
@@ -33,6 +34,7 @@ public class ResumeParser {
     private final ResumeSectionParser resumeSectionParser;
     private final ResumeSectionsCodec resumeSectionsCodec;
     private final ResumeProperties resumeProperties;
+    private final UserMetrics userMetrics;
 
     /**
      * @param existing record to update in place, or {@code null} to start a fresh one
@@ -59,6 +61,7 @@ public class ResumeParser {
                 log.info("Parsed resume {} on attempt {}/{} ({} chars, {} sections)",
                         resume.getId(), attempt, maxAttempts,
                         extracted.text().length(), content.getSections().size());
+                userMetrics.recordParseCompleted();
 
                 return target;
 
@@ -75,6 +78,7 @@ public class ResumeParser {
 
         log.error("Resume {} marked as FAILED after {} attempts: {}",
                 resume.getId(), maxAttempts, lastError);
+        userMetrics.recordParseFailed();
 
         return target;
     }
@@ -96,6 +100,7 @@ public class ResumeParser {
         target.setRawText(extracted.text());
         target.setPageCount(extracted.pageCount());
         target.setCharacterCount(extracted.text().length());
+        target.setTruncated(extracted.truncated());
         target.setSectionsJson(resumeSectionsCodec.toJson(content.getSections()));
         target.setCandidateName(content.getCandidateName());
         target.setEmail(content.getEmail());

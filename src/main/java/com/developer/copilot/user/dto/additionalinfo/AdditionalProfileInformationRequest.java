@@ -2,10 +2,10 @@ package com.developer.copilot.user.dto.additionalinfo;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import com.developer.copilot.user.validation.HttpOrHttpsUrl;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.validator.constraints.URL;
 
 @Getter
 @Setter
@@ -19,7 +19,7 @@ public class AdditionalProfileInformationRequest {
     @Size(max = 5000, message = "Description must not exceed 5000 characters.")
     private String description;
 
-    @URL(message = "Link must be a valid URL.")
+    @HttpOrHttpsUrl
     @Size(max = 500, message = "Link must not exceed 500 characters.")
     private String link;
 

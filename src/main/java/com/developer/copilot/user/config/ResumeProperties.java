@@ -39,9 +39,18 @@ public class ResumeProperties {
         private int maxTextLength = 200_000;
 
         /**
-         * Stamped onto every parsed record so results produced by an older parser
-         * can be identified and re-parsed after the extraction logic changes.
+         * Stamped onto every parsed record. Reads re-parse when this does not match.
          */
         private String parserVersion = "v1";
+
+        /**
+         * PDFs with more pages than this are rejected during extraction.
+         */
+        private int maxPages = 30;
+
+        /**
+         * On-demand parse (internal GET) waits at most this long for PDFBox.
+         */
+        private int timeoutSeconds = 15;
     }
 }

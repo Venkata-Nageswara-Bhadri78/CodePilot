@@ -13,4 +13,6 @@ public interface ProjectRepository extends JpaRepository<Project, Long> {
 
     Optional<Project> findByIdAndUserProfile(Long id, UserProfile userProfile);
 
+    long countByUserProfile(UserProfile userProfile);
+
 }

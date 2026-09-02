@@ -6,6 +6,7 @@ import com.developer.copilot.user.entity.Resume;
 import com.developer.copilot.user.entity.ResumeParsedData;
 import com.developer.copilot.user.entity.ResumeParsingStatus;
 import com.developer.copilot.user.exception.ResumeParsingException;
+import com.developer.copilot.user.metrics.UserMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,7 +52,8 @@ class ResumeParserTest {
                 resumeTextExtractor,
                 resumeSectionParser,
                 new ResumeSectionsCodec(new ObjectMapper()),
-                resumeProperties);
+                resumeProperties,
+                new UserMetrics());
 
         resume = Resume.builder()
                 .id(7L)

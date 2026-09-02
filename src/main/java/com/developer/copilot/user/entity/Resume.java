@@ -5,7 +5,14 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "resumes")
+@Table(
+        name = "resumes",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_resume_profile_checksum",
+                        columnNames = {"user_profile_id", "checksum"})
+        }
+)
 @Getter
 @Setter
 @Builder
@@ -27,7 +34,7 @@ public class Resume extends BaseEntity {
     /**
      * Original uploaded filename.
      */
-    @Column(nullable = false)
+    @Column(nullable = false, length = 255)
     private String originalFilename;
 
     /**
@@ -62,8 +69,8 @@ public class Resume extends BaseEntity {
     private Boolean highPriority = false;
 
     /**
-     * Indicates whether the resume is active.
-     * Reserved for future use (soft delete, archive, versioning).
+     * Soft-delete flag. User delete currently hard-deletes the row so the unique
+     * checksum can be reused on re-upload; kept for queries that still filter active.
      */
     @Column(nullable = false)
     @Builder.Default

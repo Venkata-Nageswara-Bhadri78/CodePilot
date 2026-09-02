@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -17,6 +18,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Locale;
 
 /**
  * Requires a shared service key on internal service-to-service endpoints.
@@ -24,6 +27,9 @@ import java.time.LocalDateTime;
  * Runs after the Spring Security chain, so the caller's JWT has already been
  * validated by the time this executes. The key identifies the calling service; the
  * JWT identifies the user whose data is being requested.
+ * <p>
+ * {@code internal.api.enabled=false} skips the key only on {@code local}/{@code dev}
+ * profiles (laptop). Anywhere else a disabled flag still rejects the request.
  */
 @Slf4j
 @RequiredArgsConstructor
@@ -31,6 +37,7 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
 
     private final InternalApiProperties internalApiProperties;
     private final ObjectMapper objectMapper;
+    private final Environment environment;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -38,7 +45,13 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
 
         if (!internalApiProperties.isEnabled()) {
-            filterChain.doFilter(request, response);
+            if (isLaptopProfile()) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+            log.error("Internal API is disabled outside local/dev; rejecting {} {}",
+                    request.getMethod(), request.getRequestURI());
+            reject(response, "Internal API is not configured.");
             return;
         }
 
@@ -59,6 +72,15 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isLaptopProfile() {
+        if (environment == null) {
+            return false;
+        }
+        return Arrays.stream(environment.getActiveProfiles())
+                .map(profile -> profile.toLowerCase(Locale.ROOT))
+                .anyMatch(profile -> profile.equals("local") || profile.equals("dev"));
     }
 
     private boolean matches(String configuredKey, String providedKey) {

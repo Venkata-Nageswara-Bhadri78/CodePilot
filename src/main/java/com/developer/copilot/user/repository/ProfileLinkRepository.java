@@ -13,4 +13,6 @@ public interface ProfileLinkRepository extends JpaRepository<ProfileLink, Long> 
 
     Optional<ProfileLink> findByIdAndUserProfile(Long id, UserProfile userProfile);
 
+    long countByUserProfile(UserProfile userProfile);
+
 }
