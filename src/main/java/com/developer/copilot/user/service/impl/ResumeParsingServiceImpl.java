@@ -13,6 +13,7 @@ import com.developer.copilot.user.exception.ResumeNotFoundException;
 import com.developer.copilot.user.exception.ResumeParsingException;
 import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.mapper.ResumeParsedDataMapper;
+import com.developer.copilot.user.metrics.UserMetrics;
 import com.developer.copilot.user.repository.ResumeParsedDataRepository;
 import com.developer.copilot.user.repository.ResumeRepository;
 import com.developer.copilot.user.repository.UserProfileRepository;
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -49,6 +51,7 @@ public class ResumeParsingServiceImpl implements ResumeParsingService {
     private final CurrentUserService currentUserService;
     private final ResumeProperties resumeProperties;
     private final Executor resumeParsingExecutor;
+    private final UserMetrics userMetrics;
 
     public ResumeParsingServiceImpl(
             UserProfileRepository userProfileRepository,
@@ -60,7 +63,8 @@ public class ResumeParsingServiceImpl implements ResumeParsingService {
             FileStorageService fileStorageService,
             CurrentUserService currentUserService,
             ResumeProperties resumeProperties,
-            @Qualifier(ResumeParsingAsyncConfig.RESUME_PARSING_EXECUTOR) Executor resumeParsingExecutor) {
+            @Qualifier(ResumeParsingAsyncConfig.RESUME_PARSING_EXECUTOR) Executor resumeParsingExecutor,
+            UserMetrics userMetrics) {
         this.userProfileRepository = userProfileRepository;
         this.resumeRepository = resumeRepository;
         this.resumeParsedDataRepository = resumeParsedDataRepository;
@@ -71,6 +75,7 @@ public class ResumeParsingServiceImpl implements ResumeParsingService {
         this.currentUserService = currentUserService;
         this.resumeProperties = resumeProperties;
         this.resumeParsingExecutor = resumeParsingExecutor;
+        this.userMetrics = userMetrics;
     }
 
     /**
@@ -110,7 +115,13 @@ public class ResumeParsingServiceImpl implements ResumeParsingService {
             throw new ResumeNotFoundException();
         }
 
-        ResumeParsedData parsed = parseOnDemand(resume, existing);
+        ResumeParsedData parsed;
+        long started = System.nanoTime();
+        try {
+            parsed = parseOnDemand(resume, existing);
+        } finally {
+            userMetrics.recordOnDemandParse(Duration.ofNanos(System.nanoTime() - started));
+        }
 
         if (parsed.isFailed()) {
             persistQuietly(resume.getId(), parsed);

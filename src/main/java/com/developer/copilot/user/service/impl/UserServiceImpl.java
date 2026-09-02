@@ -16,6 +16,7 @@ import com.developer.copilot.user.exception.ResumeLimitExceededException;
 import com.developer.copilot.user.exception.ResumeNotFoundException;
 import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.mapper.ResumeMapper;
+import com.developer.copilot.user.metrics.UserMetrics;
 import com.developer.copilot.user.repository.ResumeRepository;
 import com.developer.copilot.user.repository.UserProfileRepository;
 import com.developer.copilot.user.service.ResumeParsingService;
@@ -45,6 +46,7 @@ public class UserServiceImpl implements UserService {
     private final ResumeMapper resumeMapper;
     private final CurrentUserService currentUserService;
     private final ResumeParsingService resumeParsingService;
+    private final UserMetrics userMetrics;
 
     @Override
     @Transactional
@@ -59,20 +61,24 @@ public class UserServiceImpl implements UserService {
         if (resumeRepository.countByUserProfileAndActiveTrue(profile)
                 >= resumeProperties.getMaxResumeCount()) {
 
+            userMetrics.recordUploadCap();
             throw new ResumeLimitExceededException(
                     resumeProperties.getMaxResumeCount());
         }
 
         if (file.isEmpty()) {
+            userMetrics.recordUploadInvalid();
             throw new InvalidResumeException("Resume cannot be empty.");
         }
 
         if (!"application/pdf".equalsIgnoreCase(file.getContentType())
                 || !PdfValidationUtil.hasPdfMagicBytes(file)) {
+            userMetrics.recordUploadInvalid();
             throw new InvalidResumeException("Only PDF files are allowed.");
         }
 
         if (file.getSize() > resumeProperties.getMaxFileSizeMb() * 1024L * 1024L) {
+            userMetrics.recordUploadInvalid();
             throw new InvalidResumeException(
                     "Maximum file size is "
                             + resumeProperties.getMaxFileSizeMb()
@@ -80,6 +86,7 @@ public class UserServiceImpl implements UserService {
         }
 
         if (ResumeFilenameUtil.isTooLong(file.getOriginalFilename())) {
+            userMetrics.recordUploadInvalid();
             throw new InvalidResumeException(
                     "Original filename must not exceed "
                             + ResumeFilenameUtil.MAX_FILENAME_LENGTH
@@ -97,6 +104,7 @@ public class UserServiceImpl implements UserService {
         ).isPresent()) {
 
             fileStorageService.delete(storedFile.getStorageKey());
+            userMetrics.recordUploadDuplicate();
             throw new DuplicateResumeException();
         }
 
@@ -117,6 +125,7 @@ public class UserServiceImpl implements UserService {
             resumeParsingService.initializeAndScheduleParsing(resume);
         } catch (DataIntegrityViolationException ex) {
             fileStorageService.delete(storedFile.getStorageKey());
+            userMetrics.recordUploadDuplicate();
             throw new DuplicateResumeException();
         } catch (RuntimeException ex) {
             fileStorageService.delete(storedFile.getStorageKey());
@@ -124,6 +133,7 @@ public class UserServiceImpl implements UserService {
         }
 
         log.info("User {} uploaded resume {}", user.getId(), resume.getId());
+        userMetrics.recordUploadSuccess();
 
         return ResumeUploadResponse.builder()
                 .resumeId(resume.getId())
@@ -196,6 +206,7 @@ public class UserServiceImpl implements UserService {
                 fileStorageService.delete(storageKey);
             } catch (RuntimeException ex) {
                 log.error("Failed to delete stored resume {} after commit: {}", resumeId, ex.getMessage());
+                userMetrics.recordMinioDeleteFailure();
             }
         });
 

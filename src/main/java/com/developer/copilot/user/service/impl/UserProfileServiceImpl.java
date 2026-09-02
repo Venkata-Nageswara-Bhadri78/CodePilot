@@ -33,6 +33,7 @@ import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.exception.WorkExperienceNotFoundException;
 import com.developer.copilot.user.config.UserProfileProperties;
 import com.developer.copilot.user.mapper.UserProfileMapper;
+import com.developer.copilot.user.metrics.UserMetrics;
 import com.developer.copilot.user.repository.AdditionalProfileInformationRepository;
 import com.developer.copilot.user.repository.EducationRepository;
 import com.developer.copilot.user.repository.ProfileLinkRepository;
@@ -66,6 +67,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     private final ResumeParsingService resumeParsingService;
     private final UserProfileMapper userProfileMapper;
     private final UserProfileProperties userProfileProperties;
+    private final UserMetrics userMetrics;
 
     // ─── Profile ─────────────────────────────────────────────────────────────
 
@@ -470,6 +472,7 @@ public class UserProfileServiceImpl implements UserProfileService {
                     fileStorageService.delete(storageKey);
                 } catch (RuntimeException ex) {
                     log.error("Failed to delete stored resume after profile delete: {}", ex.getMessage());
+                    userMetrics.recordMinioDeleteFailure();
                 }
             }
         });

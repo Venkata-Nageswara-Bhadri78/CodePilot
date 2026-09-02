@@ -13,6 +13,7 @@ import com.developer.copilot.user.exception.ResumeNotFoundException;
 import com.developer.copilot.user.exception.ResumeParsingException;
 import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.mapper.ResumeParsedDataMapper;
+import com.developer.copilot.user.metrics.UserMetrics;
 import com.developer.copilot.user.repository.ResumeParsedDataRepository;
 import com.developer.copilot.user.repository.ResumeRepository;
 import com.developer.copilot.user.repository.UserProfileRepository;
@@ -117,7 +118,8 @@ class ResumeParsingServiceImplTest {
                 fileStorageService,
                 currentUserService,
                 resumeProperties,
-                resumeParsingExecutor);
+                resumeParsingExecutor,
+                new UserMetrics());
     }
 
     @Test

@@ -13,6 +13,7 @@ import com.developer.copilot.user.exception.ResumeLimitExceededException;
 import com.developer.copilot.user.exception.ResumeNotFoundException;
 import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.mapper.ResumeMapper;
+import com.developer.copilot.user.metrics.UserMetrics;
 import com.developer.copilot.user.repository.ResumeRepository;
 import com.developer.copilot.user.repository.UserProfileRepository;
 import com.developer.copilot.user.service.impl.UserServiceImpl;
@@ -59,6 +60,9 @@ class UserServiceImplTest {
 
     @Mock
     private ResumeParsingService resumeParsingService;
+
+    @Mock
+    private UserMetrics userMetrics;
 
     @InjectMocks
     private UserServiceImpl userService;

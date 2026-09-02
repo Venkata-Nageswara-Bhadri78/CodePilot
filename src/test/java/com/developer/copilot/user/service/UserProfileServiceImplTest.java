@@ -13,6 +13,7 @@ import com.developer.copilot.user.exception.ProfileItemLimitExceededException;
 import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.config.UserProfileProperties;
 import com.developer.copilot.user.mapper.UserProfileMapper;
+import com.developer.copilot.user.metrics.UserMetrics;
 import com.developer.copilot.user.repository.AdditionalProfileInformationRepository;
 import com.developer.copilot.user.repository.EducationRepository;
 import com.developer.copilot.user.repository.ProfileLinkRepository;
@@ -71,6 +72,9 @@ class UserProfileServiceImplTest {
 
     @Mock
     private UserProfileProperties userProfileProperties;
+
+    @Mock
+    private UserMetrics userMetrics;
 
     @Spy
     private UserProfileMapper userProfileMapper = new UserProfileMapper();
