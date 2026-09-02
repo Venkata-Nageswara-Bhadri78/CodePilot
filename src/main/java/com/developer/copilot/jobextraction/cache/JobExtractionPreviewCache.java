@@ -3,7 +3,10 @@ package com.developer.copilot.jobextraction.cache;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -29,6 +32,8 @@ public class JobExtractionPreviewCache {
     private final JobExtractionRedisService redisService;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ConcurrentHashMap<String, MemoryEntry> memory = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CompletableFuture<JobExtractionResultResponse>> inFlight =
+            new ConcurrentHashMap<>();
 
     public JobExtractionPreviewCache(@Autowired(required = false) JobExtractionRedisService redisService) {
         this.redisService = redisService;
@@ -56,6 +61,53 @@ public class JobExtractionPreviewCache {
             return Optional.empty();
         }
         return Optional.of(entry.value());
+    }
+
+    /**
+     * Returns a cached preview, or runs {@code loader} once per {@code userId+urlHash}
+     * so two tabs cannot start two model calls for the same parse.
+     */
+    public JobExtractionResultResponse computeIfAbsent(
+            Long userId,
+            String urlHash,
+            Supplier<JobExtractionResultResponse> loader) {
+        Optional<JobExtractionResultResponse> cached = get(userId, urlHash);
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+        String identity = identity(userId, urlHash);
+        CompletableFuture<JobExtractionResultResponse> created = new CompletableFuture<>();
+        CompletableFuture<JobExtractionResultResponse> existing = inFlight.putIfAbsent(identity, created);
+        if (existing != null) {
+            return await(existing);
+        }
+        try {
+            JobExtractionResultResponse result = loader.get();
+            put(userId, urlHash, result);
+            created.complete(result);
+            return result;
+        } catch (RuntimeException ex) {
+            created.completeExceptionally(ex);
+            throw ex;
+        } finally {
+            inFlight.remove(identity, created);
+        }
+    }
+
+    private static JobExtractionResultResponse await(
+            CompletableFuture<JobExtractionResultResponse> future) {
+        try {
+            return future.get();
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for an in-flight job extraction.", ex);
+        } catch (ExecutionException ex) {
+            Throwable cause = ex.getCause() == null ? ex : ex.getCause();
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw new IllegalStateException("In-flight job extraction failed.", cause);
+        }
     }
 
     public void put(Long userId, String urlHash, JobExtractionResultResponse preview) {

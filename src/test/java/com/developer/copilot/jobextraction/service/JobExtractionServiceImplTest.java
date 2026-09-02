@@ -377,6 +377,74 @@ class JobExtractionServiceImplTest {
     }
 
     @Test
+    void extractJobInfo_AccessTokenQueryParam_StrippedFromCanonical() {
+        mockAuthenticatedUser();
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(aiService.extractJobInfo(any(JobExtractionAiRequest.class)))
+                .thenReturn(JobExtractionAiResponse.builder().title("T").company("C").build());
+
+        JobExtractionResultResponse result = jobExtractionService.extractJobInfo(JobExtractionRequest.builder()
+                .sourceUrl("https://example.com/job?jobId=abc&access_token=secret&token=t&auth=1")
+                .rawJobText("Full pasted job posting text.")
+                .build());
+
+        assertEquals("https://example.com/job?jobId=abc", result.getSourceUrl());
+        assertFalse(result.getSourceUrl().contains("secret"));
+    }
+
+    @Test
+    void extractJobInfo_OtherUserAlreadySaved_DoesNot409ThisUser() {
+        mockAuthenticatedUser();
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(aiService.extractJobInfo(any(JobExtractionAiRequest.class)))
+                .thenReturn(JobExtractionAiResponse.builder().title("T").company("C").build());
+
+        JobExtractionResultResponse result = jobExtractionService.extractJobInfo(JobExtractionRequest.builder()
+                .sourceUrl("https://company.com/job/secret")
+                .rawJobText("Full pasted job posting text.")
+                .build());
+
+        assertEquals("T", result.getTitle());
+        verify(jobRepository).existsByUserIdAndSourceUrlHash(eq(1L), any());
+        verify(jobRepository, never()).existsByUserIdAndSourceUrlHash(eq(2L), any());
+        verify(aiService).extractJobInfo(any());
+    }
+
+    @Test
+    void extractJobInfo_ConcurrentSameUserAndUrl_CallsAiOnce() throws Exception {
+        mockAuthenticatedUser();
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(aiService.extractJobInfo(any(JobExtractionAiRequest.class))).thenAnswer(invocation -> {
+            Thread.sleep(150);
+            return JobExtractionAiResponse.builder().title("T").company("C").build();
+        });
+
+        JobExtractionRequest request = JobExtractionRequest.builder()
+                .sourceUrl("https://example.com/jobs/double")
+                .rawJobText("Full pasted job posting text.")
+                .build();
+
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Future<JobExtractionResultResponse> first = pool.submit(() -> {
+                barrier.await();
+                return jobExtractionService.extractJobInfo(request);
+            });
+            java.util.concurrent.Future<JobExtractionResultResponse> second = pool.submit(() -> {
+                barrier.await();
+                return jobExtractionService.extractJobInfo(request);
+            });
+            assertEquals("T", first.get().getTitle());
+            assertEquals("T", second.get().getTitle());
+        } finally {
+            pool.shutdownNow();
+        }
+
+        verify(aiService, times(1)).extractJobInfo(any(JobExtractionAiRequest.class));
+    }
+
+    @Test
     void extractJobInfo_DifferentUser_DuplicateCheckUsesThatUserId() {
         testUser.setId(99L);
         mockAuthenticatedUser();

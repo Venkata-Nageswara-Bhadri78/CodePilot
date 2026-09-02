@@ -246,6 +246,25 @@ class JobExtractionControllerTest {
     }
 
     @Test
+    void parseJobInfo_InvalidJobUrlWithScript_DoesNotEchoScript() throws Exception {
+        when(jobExtractionService.extractJobInfo(any()))
+                .thenThrow(new InvalidJobUrlException("Job URL must be a valid absolute http or https link."));
+
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/<script>alert(1)</script>",
+                                  "rawJobText": "Full pasted job posting text describing the role."
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("Job URL must be a valid absolute http or https link."))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("<script>"))));
+    }
+
+    @Test
     void parseJobInfo_DuplicateJobException_Returns409() throws Exception {
         when(jobExtractionService.extractJobInfo(any()))
                 .thenThrow(new DuplicateJobException("This post was already added to your records."));

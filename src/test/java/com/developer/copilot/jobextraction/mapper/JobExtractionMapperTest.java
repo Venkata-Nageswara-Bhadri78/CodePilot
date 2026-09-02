@@ -199,4 +199,39 @@ class JobExtractionMapperTest {
 
         assertTrue(result.isRequiresManualReview());
     }
+
+    @Test
+    void toResultResponse_HtmlInTitle_IsKeptAsText() {
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("<img src=x onerror=alert(1)>")
+                .company("Acme")
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
+
+        assertEquals("<img src=x onerror=alert(1)>", result.getTitle());
+        assertFalse(result.isRequiresManualReview());
+    }
+
+    @Test
+    void toResultResponse_JavascriptUriInExtractedField_IsBlanked() {
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("javascript:alert(1)")
+                .company("Acme")
+                .workMode("data:text/html,hi")
+                .description("Apply at the company site")
+                .skills(List.of("javascript:alert(1)", "Java"))
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "javascript: in the paste is fine");
+
+        assertEquals("", result.getTitle());
+        assertEquals("", result.getWorkMode());
+        assertEquals("Apply at the company site", result.getDescription());
+        assertEquals(List.of("Java"), result.getSkills());
+        assertEquals("javascript: in the paste is fine", result.getOriginalDescription());
+        assertTrue(result.isRequiresManualReview());
+    }
 }

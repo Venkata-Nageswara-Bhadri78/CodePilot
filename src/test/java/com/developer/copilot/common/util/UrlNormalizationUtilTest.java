@@ -55,6 +55,16 @@ class UrlNormalizationUtilTest {
     }
 
     @Test
+    void normalizeStrict_StripsAccessTokenAuthAndToken_KeepsJobId() {
+        String normalized = urlNormalizationUtil.normalizeStrict(
+                "https://example.com/jobs/123?jobId=abc&access_token=secret&token=t&auth=1");
+
+        assertEquals("https://example.com/jobs/123?jobId=abc", normalized);
+        assertFalse(normalized.contains("secret"));
+        assertFalse(normalized.contains("access_token"));
+    }
+
+    @Test
     void normalizeStrict_SameJobDifferentTrackingLinks_ProduceIdenticalCanonicalUrl() {
         String linkedInLink = "https://www.example.com/careers/job/999?utm_source=linkedin&fbclid=abc123";
         String naukriLink = "http://example.com/careers/job/999/?ref=naukri&utm_campaign=jobboard";

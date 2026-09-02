@@ -2,6 +2,7 @@ package com.developer.copilot.jobextraction.mapper;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import org.springframework.stereotype.Component;
 
@@ -68,11 +69,25 @@ public class JobExtractionMapper {
         if (value == null) {
             return Clip.unchanged(null);
         }
-        String cleaned = stripControls(value);
+        String cleaned = blankUnsafeUriScheme(stripControls(value));
         if (cleaned.length() <= maxLength) {
             return Clip.unchanged(cleaned);
         }
         return Clip.truncated(cleaned.substring(0, maxLength));
+    }
+
+    /**
+     * If the whole field is a {@code javascript:} or {@code data:} URI, drop it so a review
+     * UI that turns text into {@code href} cannot navigate there. Markup such as
+     * {@code <script>} is left as JSON text — clients must render it escaped.
+     */
+    private String blankUnsafeUriScheme(String value) {
+        String trimmed = value.stripLeading();
+        String lower = trimmed.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("javascript:") || lower.startsWith("data:")) {
+            return "";
+        }
+        return value;
     }
 
     /**

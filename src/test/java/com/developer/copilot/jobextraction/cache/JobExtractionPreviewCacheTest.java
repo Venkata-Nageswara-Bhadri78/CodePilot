@@ -83,4 +83,33 @@ class JobExtractionPreviewCacheTest {
         assertTrue(hit.isPresent());
         assertEquals("Mem", hit.get().getTitle());
     }
+
+    @Test
+    void computeIfAbsent_runsLoaderOnceForConcurrentCallers() throws Exception {
+        JobExtractionPreviewCache cache = new JobExtractionPreviewCache(null);
+        java.util.concurrent.atomic.AtomicInteger loads = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.CyclicBarrier barrier = new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.Callable<JobExtractionResultResponse> task = () -> {
+                barrier.await();
+                return cache.computeIfAbsent(1L, "hash-a", () -> {
+                    loads.incrementAndGet();
+                    try {
+                        Thread.sleep(80);
+                    } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return JobExtractionResultResponse.builder().title("Once").build();
+                });
+            };
+            java.util.concurrent.Future<JobExtractionResultResponse> first = pool.submit(task);
+            java.util.concurrent.Future<JobExtractionResultResponse> second = pool.submit(task);
+            assertEquals("Once", first.get().getTitle());
+            assertEquals("Once", second.get().getTitle());
+        } finally {
+            pool.shutdownNow();
+        }
+        assertEquals(1, loads.get());
+    }
 }

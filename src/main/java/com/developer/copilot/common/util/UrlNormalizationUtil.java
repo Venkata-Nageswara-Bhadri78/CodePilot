@@ -43,7 +43,8 @@ public class UrlNormalizationUtil {
             "ref", "ref_src", "ref_url", "referrer", "referral_code",
             "source", "src", "trk", "trkinfo", "trackingid", "tracking_id",
             "igshid", "mc_cid", "mc_eid", "spm", "si", "irclickid",
-            "_hsenc", "_hsmi", "originalsubdomain", "position", "pagenumber", "prehotel"
+            "_hsenc", "_hsmi", "originalsubdomain", "position", "pagenumber", "prehotel",
+            "token", "access_token", "auth"
     );
 
     /** Query parameter name prefixes that always indicate tracking metadata. */

@@ -2,7 +2,7 @@ package com.developer.copilot.jobextraction.service.impl;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.springframework.stereotype.Service;
 
@@ -76,35 +76,33 @@ public class JobExtractionServiceImpl implements JobExtractionService {
             throw new DuplicateJobException("This post was already added to your records.");
         }
 
-        Optional<JobExtractionResultResponse> cached = previewCache.get(currentUser.getId(), urlHash);
-        if (cached.isPresent()) {
-            metrics.recordCacheHit();
-            log.info("Job extraction cache hit for user {} and urlHash {}", currentUser.getId(), urlHash);
-            return cached.get();
-        }
-
         JobExtractionAiRequest aiRequest = JobExtractionAiRequest.builder()
                 .jobUrl(normalizedUrl)
                 .rawJobText(request.getRawJobText())
                 .build();
 
-        JobExtractionAiResponse aiResponse;
-        try {
-            aiResponse = aiGuard.call(() -> aiService.extractJobInfo(aiRequest));
-        } catch (AiServiceException | JobExtractionAiUnavailableException ex) {
-            metrics.recordAiFailure();
-            throw ex;
+        AtomicBoolean loaded = new AtomicBoolean(false);
+        JobExtractionResultResponse result = previewCache.computeIfAbsent(currentUser.getId(), urlHash, () -> {
+            loaded.set(true);
+            JobExtractionAiResponse aiResponse;
+            try {
+                aiResponse = aiGuard.call(() -> aiService.extractJobInfo(aiRequest));
+            } catch (AiServiceException | JobExtractionAiUnavailableException ex) {
+                metrics.recordAiFailure();
+                throw ex;
+            }
+            return jobExtractionMapper.toResultResponse(aiResponse, normalizedUrl, request.getRawJobText());
+        });
+
+        if (!loaded.get()) {
+            metrics.recordCacheHit();
+            log.info("Job extraction cache hit for user {} and urlHash {}", currentUser.getId(), urlHash);
+            return result;
         }
 
-        JobExtractionResultResponse result =
-                jobExtractionMapper.toResultResponse(aiResponse, normalizedUrl, request.getRawJobText());
-
-        previewCache.put(currentUser.getId(), urlHash, result);
         metrics.recordSuccess(Duration.between(started, Instant.now()));
-
         log.info("Job extraction completed for user {} and urlHash {}, manualReviewRequired={}",
                 currentUser.getId(), urlHash, result.isRequiresManualReview());
-
         return result;
     }
 }
