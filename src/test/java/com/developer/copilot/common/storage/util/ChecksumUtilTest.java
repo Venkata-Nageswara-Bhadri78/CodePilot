@@ -30,4 +30,15 @@ class ChecksumUtilTest {
 
         assertEquals(expectedEmptyHash, actual);
     }
+
+    @Test
+    void generateSha256_sameBytes_areEqual_differentBytes_areNot() {
+        byte[] hello = "hello".getBytes(StandardCharsets.UTF_8);
+        String first = ChecksumUtil.generateSha256(new ByteArrayInputStream(hello));
+        String second = ChecksumUtil.generateSha256(new ByteArrayInputStream(hello));
+        String other = ChecksumUtil.generateSha256(new ByteArrayInputStream("world".getBytes(StandardCharsets.UTF_8)));
+
+        assertEquals(first, second);
+        org.junit.jupiter.api.Assertions.assertNotEquals(first, other);
+    }
 }

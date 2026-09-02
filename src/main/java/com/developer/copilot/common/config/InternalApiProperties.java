@@ -15,6 +15,12 @@ public class InternalApiProperties {
     private String key;
 
     /**
+     * Previous secret accepted during rotation. Remove after callers have switched to
+     * {@link #key}. Compared with the same constant-time check; never logged.
+     */
+    private String previousKey;
+
+    /**
      * When disabled, the shared-secret check is skipped only on {@code local}/{@code dev}.
      * Any other profile still rejects the request (fail closed).
      */

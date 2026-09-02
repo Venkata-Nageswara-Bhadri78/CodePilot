@@ -1,6 +1,7 @@
 package com.developer.copilot.common.exception;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,7 +9,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -31,15 +35,16 @@ import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.ai.exception.AiUnavailableException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.common.dto.ApiResponse;
+import com.developer.copilot.common.metrics.CopilotMetrics;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
 import com.developer.copilot.jobs.exception.JobValidationException;
 import com.developer.copilot.jobextraction.exception.EmailNotVerifiedException;
 import com.developer.copilot.jobextraction.exception.JobExtractionAiUnavailableException;
 
-import lombok.extern.slf4j.Slf4j;
 import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
+import com.developer.copilot.common.storage.exception.StorageObjectNotFoundException;
 import com.developer.copilot.user.config.ResumeProperties;
 import com.developer.copilot.user.exception.AdditionalProfileInformationNotFoundException;
 import com.developer.copilot.user.exception.DuplicateResumeException;
@@ -55,9 +60,24 @@ import com.developer.copilot.user.exception.ResumeParsingException;
 import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.exception.WorkExperienceNotFoundException;
 
+import jakarta.validation.ConstraintViolationException;
+import lombok.extern.slf4j.Slf4j;
+
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    /**
+     * Intentional client-facing {@link IllegalArgumentException} messages used by other
+     * modules. Anything else is treated as a server bug (500) rather than a 400.
+     */
+    private static final List<String> CLIENT_ILLEGAL_ARGUMENT_PREFIXES = List.of(
+            "Prior turns cannot exceed",
+            "Each prior turn must include",
+            "HMAC value and secret",
+            "username: size must be",
+            "page must be >= 0"
+    );
 
     private final ResumeProperties resumeProperties;
 
@@ -148,17 +168,15 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
-        log.warn("IllegalArgumentException mapped to 400: {}", ex.getMessage());
-
-        ApiResponse<Void> response = ApiResponse.<Void>builder()
-                .success(false)
-                .message(ex.getMessage())
-                .timestamp(LocalDateTime.now())
-                .build();
-
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(response);
+        String message = ex.getMessage();
+        boolean clientFacing = message != null && CLIENT_ILLEGAL_ARGUMENT_PREFIXES.stream()
+                .anyMatch(message::startsWith);
+        if (!clientFacing) {
+            log.error("Unhandled IllegalArgumentException occurred: ", ex);
+            return failure(HttpStatus.INTERNAL_SERVER_ERROR, "Something went wrong.");
+        }
+        log.warn("IllegalArgumentException mapped to 400: {}", message);
+        return failure(HttpStatus.BAD_REQUEST, message);
     }
 
     @ExceptionHandler(JobNotFoundException.class)
@@ -551,6 +569,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidFileException.class)
     public ResponseEntity<ApiResponse<Void>> handleInvalidFile(InvalidFileException ex) {
         log.warn("Rejected file operation: {}", ex.getMessage());
+        CopilotMetrics.increment("copilot.storage.failure", "type", "invalid_file");
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
@@ -652,6 +671,7 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
                 .body(response);
     }
 
@@ -746,15 +766,75 @@ public class GlobalExceptionHandler {
         );
     }
 
-    @ExceptionHandler({MaxUploadSizeExceededException.class, MultipartException.class})
-    public ResponseEntity<ApiResponse<Void>> handleMultipartTooLarge(Exception ex) {
+    @ExceptionHandler(StorageObjectNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleStorageObjectNotFound(
+                StorageObjectNotFoundException ex) {
+        return failure(HttpStatus.NOT_FOUND, "File not found.");
+    }
+
+    @ExceptionHandler(com.developer.copilot.common.ratelimit.exception.RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommonRateLimitExceeded(
+                com.developer.copilot.common.ratelimit.exception.RateLimitExceededException ex) {
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .timestamp(LocalDateTime.now())
+                        .build());
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(
+                ConstraintViolationException ex) {
+        String message = ex.getConstraintViolations().stream()
+                .map(violation -> violation.getMessage())
+                .collect(Collectors.joining(", "));
+        if (message.isBlank()) {
+            message = "Invalid request parameter.";
+        }
+        return failure(HttpStatus.BAD_REQUEST, message);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(
+                HttpRequestMethodNotSupportedException ex) {
+        return failure(HttpStatus.METHOD_NOT_ALLOWED, "Method not allowed.");
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMissingParameter(
+                MissingServletRequestParameterException ex) {
+        return failure(HttpStatus.BAD_REQUEST, "Required request parameter is missing.");
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMediaTypeNotSupported(
+                HttpMediaTypeNotSupportedException ex) {
+        return failure(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Unsupported media type.");
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMultipartTooLarge(MaxUploadSizeExceededException ex) {
         int maxMb = resumeProperties != null ? resumeProperties.getMaxFileSizeMb() : 5;
-        return ResponseEntity.badRequest().body(
+        return failure(HttpStatus.BAD_REQUEST, "Maximum file size is " + maxMb + " MB.");
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMultipart(MultipartException ex) {
+        if (ex instanceof MaxUploadSizeExceededException maxUpload) {
+            return handleMultipartTooLarge(maxUpload);
+        }
+        return failure(HttpStatus.BAD_REQUEST, "Invalid multipart request.");
+    }
+
+    private static ResponseEntity<ApiResponse<Void>> failure(HttpStatus status, String message) {
+        return ResponseEntity.status(status).body(
                 ApiResponse.<Void>builder()
                         .success(false)
-                        .message("Maximum file size is " + maxMb + " MB.")
+                        .message(message)
                         .timestamp(LocalDateTime.now())
-                        .build()
-        );
+                        .build());
     }
 }

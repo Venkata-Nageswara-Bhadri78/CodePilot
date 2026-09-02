@@ -39,4 +39,17 @@ class ApiResponseTest {
         assertFalse(response.isSuccess());
         assertNull(response.getData());
     }
+
+    @Test
+    void builder_failedResponseStillHasTimestamp() {
+        LocalDateTime now = LocalDateTime.now();
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message("failed")
+                .timestamp(now)
+                .build();
+
+        assertFalse(response.isSuccess());
+        assertEquals(now, response.getTimestamp());
+    }
 }

@@ -27,7 +27,7 @@ public class ApiResponse<T> {
     @Schema(description = "The response payload. Null for endpoints that don't return data or on error.")
     private T data;
 
-    @Schema(description = "Server timestamp at which the response was produced.")
+    @Schema(description = "Server LocalDateTime at which the response was produced (no timezone offset).")
     private LocalDateTime timestamp;
 
 }

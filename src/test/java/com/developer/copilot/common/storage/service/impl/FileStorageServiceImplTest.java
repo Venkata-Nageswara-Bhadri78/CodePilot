@@ -6,22 +6,23 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
+
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import com.developer.copilot.auth.entity.User;
+import com.developer.copilot.auth.security.CustomUserDetails;
 
 import com.developer.copilot.common.storage.config.StorageProperties;
 import com.developer.copilot.common.storage.dto.StoredFile;
@@ -32,21 +33,23 @@ import io.minio.MinioClient;
 import io.minio.errors.ErrorResponseException;
 import io.minio.messages.ErrorResponse;
 
-@ExtendWith(MockitoExtension.class)
 class FileStorageServiceImplTest {
 
-    @Mock
     private MinioClient minioClient;
-
-    @Mock
     private StorageProperties storageProperties;
-
-    @InjectMocks
     private FileStorageServiceImpl fileStorageService;
 
     @BeforeEach
     void setUp() {
-        lenient().when(storageProperties.getBucketName()).thenReturn("copilot");
+        minioClient = mock(MinioClient.class);
+        storageProperties = mock(StorageProperties.class);
+        when(storageProperties.getBucketName()).thenReturn("copilot");
+        fileStorageService = new FileStorageServiceImpl(minioClient, storageProperties);
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -91,6 +94,7 @@ class FileStorageServiceImplTest {
         assertNotNull(stored);
         assertEquals("application/pdf", stored.getContentType());
         assertNotNull(stored.getChecksum());
+        assertEquals((long) "%PDF-1.7 real content".getBytes().length, stored.getFileSize());
         assertTrue(stored.getStorageKey().startsWith("users/1/resumes/"));
         assertTrue(stored.getStorageKey().endsWith(".pdf"));
         verify(minioClient, times(1)).putObject(any());
@@ -154,32 +158,40 @@ class FileStorageServiceImplTest {
         assertEquals("connection refused", ex.getCause().getMessage());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "users//1/resumes",
-            "users/./resumes",
-            "users/../resumes",
-            "users/1 resumes",
-            "users/<script>/resumes",
-            "users/1;drop/resumes"
-    })
-    void validateFolderPath_rejectsUnsafeCharactersAndSegments(String unsafeFolderPath) {
+    @Test
+    void validateFolderPath_rejectsUnsafeCharactersAndSegments() {
+        String[] unsafeFolderPaths = {
+                "users//1/resumes",
+                "users/./resumes",
+                "users/../resumes",
+                "users/1 resumes",
+                "users/<script>/resumes",
+                "users/1;drop/resumes"
+        };
         MockMultipartFile file = new MockMultipartFile(
                 "file", "resume.pdf", "application/pdf", "%PDF-1.4 content".getBytes());
 
-        assertThrows(InvalidFileException.class, () -> fileStorageService.upload(file, unsafeFolderPath));
+        for (String unsafeFolderPath : unsafeFolderPaths) {
+            assertThrows(InvalidFileException.class,
+                    () -> fileStorageService.upload(file, unsafeFolderPath),
+                    unsafeFolderPath);
+        }
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "users/1//resumes/a.pdf",
-            "users/./resumes/a.pdf",
-            "users/../resumes/a.pdf",
-            "users/1/re sumes/a.pdf",
-            "users/1/<script>/a.pdf"
-    })
-    void validateStorageKey_rejectsUnsafeCharactersAndSegments(String unsafeKey) {
-        assertThrows(InvalidFileException.class, () -> fileStorageService.download(unsafeKey));
+    @Test
+    void validateStorageKey_rejectsUnsafeCharactersAndSegments() {
+        String[] unsafeKeys = {
+                "users/1//resumes/a.pdf",
+                "users/./resumes/a.pdf",
+                "users/../resumes/a.pdf",
+                "users/1/re sumes/a.pdf",
+                "users/1/<script>/a.pdf"
+        };
+        for (String unsafeKey : unsafeKeys) {
+            assertThrows(InvalidFileException.class,
+                    () -> fileStorageService.download(unsafeKey),
+                    unsafeKey);
+        }
     }
 
     @Test
@@ -209,5 +221,167 @@ class FileStorageServiceImplTest {
         assertThrows(IllegalStateException.class, () -> fileStorageService.initializeStorage());
 
         verify(minioClient, never()).makeBucket(any());
+    }
+
+    @Test
+    void initializeStorage_bucketMissingAndAutoCreateDisabled_messageContainsBucketName() throws Exception {
+        when(minioClient.bucketExists(any())).thenReturn(false);
+        when(storageProperties.isAutoCreateBucket()).thenReturn(false);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> fileStorageService.initializeStorage());
+
+        assertTrue(ex.getMessage().contains("copilot"));
+    }
+
+    @Test
+    void exists_returnsFalseForNoSuchObject() throws Exception {
+        assertExistsFalseForMissingCode("NoSuchObject");
+    }
+
+    @Test
+    void exists_returnsFalseForNotFound() throws Exception {
+        assertExistsFalseForMissingCode("NotFound");
+    }
+
+    private void assertExistsFalseForMissingCode(String code) throws Exception {
+        ErrorResponse errorResponse = mock(ErrorResponse.class);
+        when(errorResponse.code()).thenReturn(code);
+        ErrorResponseException missing = mock(ErrorResponseException.class);
+        when(missing.errorResponse()).thenReturn(errorResponse);
+        when(minioClient.statObject(any())).thenThrow(missing);
+
+        assertFalse(fileStorageService.exists("users/1/resumes/file.pdf"), code);
+    }
+
+    @Test
+    void exists_unknownErrorCode_isStorageException() throws Exception {
+        ErrorResponse errorResponse = mock(ErrorResponse.class);
+        when(errorResponse.code()).thenReturn("AccessDenied");
+        ErrorResponseException denied = mock(ErrorResponseException.class);
+        when(denied.errorResponse()).thenReturn(errorResponse);
+        when(minioClient.statObject(any())).thenThrow(denied);
+
+        assertThrows(StorageException.class,
+                () -> fileStorageService.exists("users/1/resumes/file.pdf"));
+    }
+
+    @Test
+    void download_missingObject_isNotFoundNotStorageOutage() throws Exception {
+        ErrorResponse errorResponse = mock(ErrorResponse.class);
+        when(errorResponse.code()).thenReturn("NoSuchKey");
+        ErrorResponseException missing = mock(ErrorResponseException.class);
+        when(missing.errorResponse()).thenReturn(errorResponse);
+        when(minioClient.getObject(any())).thenThrow(missing);
+
+        assertThrows(com.developer.copilot.common.storage.exception.StorageObjectNotFoundException.class,
+                () -> fileStorageService.download("users/1/resumes/a.pdf"));
+    }
+
+    @Test
+    void upload_acceptsApplicationXPdfWhenMagicMatches() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "resume.pdf", "application/x-pdf", "%PDF-1.4 content".getBytes());
+
+        StoredFile stored = fileStorageService.upload(file, "users/1/resumes");
+
+        assertEquals("application/pdf", stored.getContentType());
+        verify(minioClient, times(1)).putObject(any());
+    }
+
+    @Test
+    void upload_rejectsPngContentTypeEvenWithPdfMagic() {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "resume.pdf", "image/png", "%PDF-1.4 content".getBytes());
+
+        assertThrows(InvalidFileException.class,
+                () -> fileStorageService.upload(file, "users/1/resumes"));
+    }
+
+    @Test
+    void upload_allowsNullContentTypeWhenNameAndMagicArePdf() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "resume.pdf", null, "%PDF-1.4 content".getBytes());
+
+        StoredFile stored = fileStorageService.upload(file, "users/1/resumes");
+
+        assertNotNull(stored.getStorageKey());
+    }
+
+    @Test
+    void upload_acceptsUppercasePdfExtension() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "resume.PDF", "application/pdf", "%PDF-1.4 content".getBytes());
+
+        assertNotNull(fileStorageService.upload(file, "users/1/resumes"));
+    }
+
+    @Test
+    void upload_normalizesBackslashFolder() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "resume.pdf", "application/pdf", "%PDF-1.4 content".getBytes());
+
+        StoredFile stored = fileStorageService.upload(file, "\\users\\1\\resumes");
+
+        assertTrue(stored.getStorageKey().startsWith("users/1/resumes/"));
+    }
+
+    @Test
+    void upload_stripsLeadingAndTrailingSlashesOnFolder() throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "resume.pdf", "application/pdf", "%PDF-1.4 content".getBytes());
+
+        StoredFile stored = fileStorageService.upload(file, "/users/1/resumes/");
+
+        assertTrue(stored.getStorageKey().startsWith("users/1/resumes/"));
+    }
+
+    @Test
+    void upload_withJwtUser_rejectsAnotherUsersFolder() throws Exception {
+        authenticateUser(1L);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "resume.pdf", "application/pdf", "%PDF-1.4 content".getBytes());
+
+        assertThrows(InvalidFileException.class,
+                () -> fileStorageService.upload(file, "users/999/resumes"));
+        verify(minioClient, never()).putObject(any());
+    }
+
+    @Test
+    void upload_withJwtUser_allowsOwnFolder() throws Exception {
+        authenticateUser(1L);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "resume.pdf", "application/pdf", "%PDF-1.4 content".getBytes());
+
+        StoredFile stored = fileStorageService.upload(file, "users/1/resumes");
+
+        assertTrue(stored.getStorageKey().startsWith("users/1/resumes/"));
+        verify(minioClient, times(1)).putObject(any());
+    }
+
+    @Test
+    void download_withJwtUser_rejectsAnotherUsersKey() throws Exception {
+        authenticateUser(1L);
+
+        assertThrows(InvalidFileException.class,
+                () -> fileStorageService.download("users/10/resumes/a.pdf"));
+        verify(minioClient, never()).getObject(any());
+    }
+
+    @Test
+    void exists_withJwtUser_rejectsAnotherUsersKey() throws Exception {
+        authenticateUser(7L);
+
+        assertThrows(InvalidFileException.class,
+                () -> fileStorageService.exists("users/1/resumes/file.pdf"));
+        verify(minioClient, never()).statObject(any());
+    }
+
+    private static void authenticateUser(long userId) {
+        User user = new User();
+        user.setId(userId);
+        CustomUserDetails details = new CustomUserDetails(user);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(details, null, List.of()));
     }
 }

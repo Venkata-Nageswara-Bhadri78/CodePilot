@@ -5,7 +5,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
 import org.springframework.core.env.Environment;
 import tools.jackson.databind.ObjectMapper;
 
@@ -23,10 +22,12 @@ import tools.jackson.databind.ObjectMapper;
 public class InternalApiSecurityConfig {
 
     /**
-     * Registered at the lowest precedence so it runs after the Spring Security
-     * filter chain, and scoped to the internal path prefix so no public endpoint
-     * ever requires the service key.
+     * After {@code springSecurityFilterChain} (-100) so JWT is present; before internal
+     * rate-limit (-70) so 401s are not counted. Scoped to the internal path prefix so no
+     * public endpoint ever requires the service key.
      */
+    private static final int AFTER_JWT = -90;
+
     @Bean
     public FilterRegistrationBean<InternalApiKeyFilter> internalApiKeyFilterRegistration(
             InternalApiProperties internalApiProperties,
@@ -37,9 +38,21 @@ public class InternalApiSecurityConfig {
                 new InternalApiKeyFilter(internalApiProperties, objectMapper, environment));
 
         registration.setName("internalApiKeyFilter");
-        registration.addUrlPatterns(internalApiProperties.getPathPrefix() + "/*");
-        registration.setOrder(Ordered.LOWEST_PRECEDENCE);
+        String prefix = normalizePrefix(internalApiProperties.getPathPrefix());
+        registration.addUrlPatterns(prefix, prefix + "/*");
+        registration.setOrder(AFTER_JWT);
 
         return registration;
+    }
+
+    private static String normalizePrefix(String pathPrefix) {
+        if (pathPrefix == null || pathPrefix.isBlank()) {
+            return "/api/v1/internal";
+        }
+        String prefix = pathPrefix.trim();
+        while (prefix.endsWith("/") && prefix.length() > 1) {
+            prefix = prefix.substring(0, prefix.length() - 1);
+        }
+        return prefix;
     }
 }

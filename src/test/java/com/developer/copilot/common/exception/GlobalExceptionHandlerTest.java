@@ -23,13 +23,29 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
+import com.developer.copilot.auth.exception.EmailDeliveryException;
+import com.developer.copilot.auth.exception.InvalidCredentialsException;
+import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
+import com.developer.copilot.auth.ratelimit.exception.RateLimitExceededException;
+import com.developer.copilot.chatassistant.exception.ChatConflictException;
 import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
+import com.developer.copilot.common.storage.exception.StorageObjectNotFoundException;
+import com.developer.copilot.jobextraction.exception.EmailNotVerifiedException;
+import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobValidationException;
+import com.developer.copilot.user.config.ResumeProperties;
+
+import jakarta.validation.ConstraintViolationException;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -153,6 +169,166 @@ class GlobalExceptionHandlerTest {
 
         boolean loggedAtWarn = logAppender.list.stream().anyMatch(event -> event.getLevel() == Level.WARN);
         assertTrue(loggedAtWarn);
+    }
+
+    @Test
+    void handleIllegalArgument_unknownMessage_mapsTo500() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleIllegalArgument(new IllegalArgumentException("unexpected null"));
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        assertEquals("Something went wrong.", response.getBody().getMessage());
+    }
+
+    @Test
+    void handleInvalidJobUrl_mapsTo400() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleInvalidJobUrl(new InvalidJobUrlException("Job URL must not be empty."));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("Job URL must not be empty.", response.getBody().getMessage());
+    }
+
+    @Test
+    void handleInvalidCredentials_mapsTo401() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleInvalidCredentials(new InvalidCredentialsException("User is not authenticated."));
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+    }
+
+    @Test
+    void handleEmailDelivery_hidesSmtpDetails() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleEmailDelivery(
+                new EmailDeliveryException("smtp://secret", new RuntimeException("auth failed")));
+
+        assertEquals(HttpStatus.SERVICE_UNAVAILABLE, response.getStatusCode());
+        assertEquals("Unable to send email. Please try again later.", response.getBody().getMessage());
+        assertFalse(response.getBody().getMessage().contains("smtp"));
+    }
+
+    @Test
+    void handleAuthRateLimit_includesRetryAfter() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleRateLimitExceeded(
+                new RateLimitExceededException(7));
+
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, response.getStatusCode());
+        assertEquals("7", response.getHeaders().getFirst("Retry-After"));
+    }
+
+    @Test
+    void handleModuleRateLimits_includeRetryAfter() {
+        assertEquals("3", handler.handleJobsRateLimitExceeded(
+                new com.developer.copilot.jobs.ratelimit.exception.RateLimitExceededException(3))
+                .getHeaders().getFirst("Retry-After"));
+        assertEquals("4", handler.handleUserRateLimitExceeded(
+                new com.developer.copilot.user.ratelimit.exception.RateLimitExceededException(4))
+                .getHeaders().getFirst("Retry-After"));
+        assertEquals("5", handler.handleChatAssistantRateLimitExceeded(
+                new com.developer.copilot.chatassistant.ratelimit.exception.RateLimitExceededException(5))
+                .getHeaders().getFirst("Retry-After"));
+        assertEquals("6", handler.handleJobExtractionRateLimitExceeded(
+                new com.developer.copilot.jobextraction.ratelimit.exception.RateLimitExceededException(6))
+                .getHeaders().getFirst("Retry-After"));
+        assertEquals("8", handler.handleCommonRateLimitExceeded(
+                new com.developer.copilot.common.ratelimit.exception.RateLimitExceededException(8))
+                .getHeaders().getFirst("Retry-After"));
+    }
+
+    @Test
+    void handleEmailNotVerified_mapsTo403() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleEmailNotVerified(new EmailNotVerifiedException());
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+    }
+
+    @Test
+    void handleTypeMismatch_jobIdVsOtherParam() throws Exception {
+        MethodParameter param = mockMethodParameter();
+        ResponseEntity<ApiResponse<Void>> jobId = handler.handleTypeMismatch(
+                new MethodArgumentTypeMismatchException("abc", Long.class, "jobId", param, null));
+        ResponseEntity<ApiResponse<Void>> resumeId = handler.handleTypeMismatch(
+                new MethodArgumentTypeMismatchException("abc", Long.class, "resumeId", param, null));
+
+        assertEquals("Invalid job id.", jobId.getBody().getMessage());
+        assertEquals("Invalid request parameter.", resumeId.getBody().getMessage());
+    }
+
+    @Test
+    void handleMaxUploadSize_usesResumePropertiesWhenPresent() {
+        ResumeProperties properties = new ResumeProperties();
+        properties.setMaxFileSizeMb(10);
+        GlobalExceptionHandler sized = new GlobalExceptionHandler(properties);
+
+        ResponseEntity<ApiResponse<Void>> response =
+                sized.handleMultipartTooLarge(new MaxUploadSizeExceededException(10 * 1024 * 1024));
+
+        assertEquals("Maximum file size is 10 MB.", response.getBody().getMessage());
+    }
+
+    @Test
+    void handleMaxUploadSize_defaultsToFiveMbWithoutProperties() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleMultipartTooLarge(new MaxUploadSizeExceededException(1024));
+
+        assertEquals("Maximum file size is 5 MB.", response.getBody().getMessage());
+    }
+
+    @Test
+    void handleMultipart_malformed_isNotFileSizeMessage() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleMultipart(new MultipartException("Unexpected EOF"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("Invalid multipart request.", response.getBody().getMessage());
+    }
+
+    @Test
+    void handleConstraintViolation_emptySet_usesGenericMessage() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleConstraintViolation(
+                new ConstraintViolationException(java.util.Set.of()));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("Invalid request parameter.", response.getBody().getMessage());
+    }
+
+    @Test
+    void handleMethodNotSupported_mapsTo405() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleMethodNotSupported(new HttpRequestMethodNotSupportedException("PATCH"));
+
+        assertEquals(HttpStatus.METHOD_NOT_ALLOWED, response.getStatusCode());
+        assertEquals("Method not allowed.", response.getBody().getMessage());
+    }
+
+    @Test
+    void handleMissingParameter_mapsTo400() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleMissingParameter(
+                new MissingServletRequestParameterException("q", "String"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals("Required request parameter is missing.", response.getBody().getMessage());
+    }
+
+    @Test
+    void handleDuplicateAndConflictTypes_mapTo409() {
+        assertEquals(HttpStatus.CONFLICT, handler.handleDuplicateJob(
+                new DuplicateJobException("dup")).getStatusCode());
+        assertEquals(HttpStatus.CONFLICT, handler.handleResourceAlreadyExists(
+                new ResourceAlreadyExistsException("exists")).getStatusCode());
+        assertEquals(HttpStatus.CONFLICT, handler.handleChatConflict(
+                new ChatConflictException("conflict")).getStatusCode());
+    }
+
+    @Test
+    void handleStorageObjectNotFound_mapsTo404WithoutBucket() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleStorageObjectNotFound(
+                new StorageObjectNotFoundException("missing in bucket=secret"));
+
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+        assertEquals("File not found.", response.getBody().getMessage());
+        assertFalse(response.getBody().getMessage().contains("secret"));
     }
 
     @Test

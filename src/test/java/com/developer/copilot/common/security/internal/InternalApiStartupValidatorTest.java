@@ -157,4 +157,106 @@ class InternalApiStartupValidatorTest {
 
         assertDoesNotThrow(() -> validator.run(new DefaultApplicationArguments()));
     }
+
+    @Test
+    void stagingWithShortKey_failsStartup() {
+        InternalApiProperties properties = new InternalApiProperties();
+        properties.setEnabled(true);
+        properties.setKey("short");
+
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("staging");
+
+        InternalApiStartupValidator validator = new InternalApiStartupValidator(properties, environment);
+
+        assertThrows(IllegalStateException.class,
+                () -> validator.run(new DefaultApplicationArguments()));
+    }
+
+    @Test
+    void noProfileWithShortKey_failsStartup() {
+        InternalApiProperties properties = new InternalApiProperties();
+        properties.setEnabled(true);
+        properties.setKey("short");
+
+        MockEnvironment environment = new MockEnvironment();
+
+        InternalApiStartupValidator validator = new InternalApiStartupValidator(properties, environment);
+
+        assertThrows(IllegalStateException.class,
+                () -> validator.run(new DefaultApplicationArguments()));
+    }
+
+    @Test
+    void productionWithPaddedStrongKey_completesWithoutThrowing() {
+        InternalApiProperties properties = new InternalApiProperties();
+        properties.setEnabled(true);
+        properties.setKey("  " + STRONG_KEY + "  ");
+
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("prod");
+
+        InternalApiStartupValidator validator = new InternalApiStartupValidator(properties, environment);
+
+        assertDoesNotThrow(() -> validator.run(new DefaultApplicationArguments()));
+    }
+
+    @Test
+    void laptopDevCanDisableInternalApi() {
+        InternalApiProperties properties = new InternalApiProperties();
+        properties.setEnabled(false);
+
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("dev");
+
+        InternalApiStartupValidator validator = new InternalApiStartupValidator(properties, environment);
+
+        assertDoesNotThrow(() -> validator.run(new DefaultApplicationArguments()));
+    }
+
+    @Test
+    void productionWithExampleTokenInLongKey_failsStartup() {
+        InternalApiProperties properties = new InternalApiProperties();
+        properties.setEnabled(true);
+        properties.setKey("this-is-an-example-key-that-is-long-enough-32");
+
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("prod");
+
+        InternalApiStartupValidator validator = new InternalApiStartupValidator(properties, environment);
+
+        assertThrows(IllegalStateException.class,
+                () -> validator.run(new DefaultApplicationArguments()));
+    }
+
+    @Test
+    void productionWithStrongPreviousKey_completesWithoutThrowing() {
+        InternalApiProperties properties = new InternalApiProperties();
+        properties.setEnabled(true);
+        properties.setKey(STRONG_KEY);
+        properties.setPreviousKey("another-genuinely-long-random-service-key-99");
+
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("prod");
+
+        InternalApiStartupValidator validator = new InternalApiStartupValidator(properties, environment);
+
+        assertDoesNotThrow(() -> validator.run(new DefaultApplicationArguments()));
+    }
+
+    @Test
+    void productionWithShortPreviousKey_failsStartup() {
+        InternalApiProperties properties = new InternalApiProperties();
+        properties.setEnabled(true);
+        properties.setKey(STRONG_KEY);
+        properties.setPreviousKey("short");
+
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("prod");
+
+        InternalApiStartupValidator validator = new InternalApiStartupValidator(properties, environment);
+
+        assertThrows(IllegalStateException.class,
+                () -> validator.run(new DefaultApplicationArguments()));
+    }
 }

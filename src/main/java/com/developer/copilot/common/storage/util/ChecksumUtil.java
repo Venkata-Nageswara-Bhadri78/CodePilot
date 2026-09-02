@@ -3,6 +3,8 @@ package com.developer.copilot.common.storage.util;
 import java.io.InputStream;
 import java.security.MessageDigest;
 
+import com.developer.copilot.common.storage.exception.StorageException;
+
 public class ChecksumUtil {
 
     private ChecksumUtil() {
@@ -31,8 +33,10 @@ public class ChecksumUtil {
 
             return hexString.toString();
 
+        } catch (StorageException ex) {
+            throw ex;
         } catch (Exception ex) {
-            throw new RuntimeException("Failed to generate checksum.", ex);
+            throw new StorageException("Failed to generate checksum.", ex);
         }
 
     }

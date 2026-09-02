@@ -67,4 +67,26 @@ class CurrentUserServiceImplTest {
 
         assertEquals(42L, result.getId());
     }
+
+    @Test
+    void authenticatedWithNullPrincipal_throwsInvalidCredentials() {
+        Authentication authentication = mock(Authentication.class);
+        when(authentication.isAuthenticated()).thenReturn(true);
+        when(authentication.getPrincipal()).thenReturn(null);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        assertThrows(InvalidCredentialsException.class, currentUserService::getCurrentUser);
+    }
+
+    @Test
+    void authenticatedWithNullUserOnDetails_throwsInvalidCredentials() {
+        CustomUserDetails userDetails = mock(CustomUserDetails.class);
+        when(userDetails.getUser()).thenReturn(null);
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(userDetails, null, java.util.List.of());
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        assertThrows(InvalidCredentialsException.class, currentUserService::getCurrentUser);
+    }
 }

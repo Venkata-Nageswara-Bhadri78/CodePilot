@@ -1,5 +1,6 @@
 package com.developer.copilot.common.storage.service.impl;
 
+import com.developer.copilot.auth.security.CustomUserDetails;
 import com.developer.copilot.common.storage.config.StorageProperties;
 import com.developer.copilot.common.storage.service.FileStorageService;
 
@@ -12,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.core.io.Resource;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,7 +22,9 @@ import org.springframework.web.multipart.MultipartFile;
 import com.developer.copilot.common.storage.dto.StoredFile;
 import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
+import com.developer.copilot.common.storage.exception.StorageObjectNotFoundException;
 import com.developer.copilot.common.storage.util.ChecksumUtil;
+import com.developer.copilot.common.metrics.CopilotMetrics;
 import io.minio.PutObjectArgs;
 
 import io.minio.RemoveObjectArgs;
@@ -65,18 +70,20 @@ public class FileStorageServiceImpl implements FileStorageService {
                             .build()
             );
 
-            log.info("File uploaded successfully : {}", storageKey);
+            log.debug("File uploaded successfully : {}", storageKey);
+            log.info("File uploaded successfully.");
 
             return StoredFile.builder()
                     .storageKey(storageKey)
                     .originalFilename(file.getOriginalFilename())
                     .contentType(PDF_CONTENT_TYPE)
-                    .fileSize(file.getSize())
+                    .fileSize((long) fileBytes.length)
                     .checksum(checksum)
                     .build();
         } catch (InvalidFileException | StorageException ex) {
             throw ex;
         } catch (Exception ex) {
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "upload", "type", "storage");
             throw new StorageException("Failed to upload file.", ex);
         }
 
@@ -95,7 +102,17 @@ public class FileStorageServiceImpl implements FileStorageService {
                     )
             );
 
+        } catch (ErrorResponseException ex) {
+            if (isMissingObject(ex)) {
+                CopilotMetrics.increment("copilot.storage.failure", "operation", "download", "type", "not_found");
+                throw new StorageObjectNotFoundException("File not found.", ex);
+            }
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "download", "type", "storage");
+            throw new StorageException("Failed to download file.", ex);
+        } catch (InvalidFileException | StorageObjectNotFoundException | StorageException ex) {
+            throw ex;
         } catch (Exception ex) {
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "download", "type", "storage");
             throw new StorageException("Failed to download file.", ex);
         }
 
@@ -111,8 +128,10 @@ public class FileStorageServiceImpl implements FileStorageService {
                             .object(safeKey)
                             .build()
             );
-            log.info("File deleted successfully : {}", safeKey);
+            log.debug("File deleted successfully : {}", safeKey);
+            log.info("File deleted successfully.");
         } catch (Exception ex) {
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "delete", "type", "storage");
             throw new StorageException("Failed to delete file.", ex);
         }
     }
@@ -129,14 +148,15 @@ public class FileStorageServiceImpl implements FileStorageService {
             );
             return true;
         } catch (ErrorResponseException ex) {
-            String code = ex.errorResponse() != null ? ex.errorResponse().code() : null;
-            if ("NoSuchKey".equals(code) || "NoSuchObject".equals(code) || "NotFound".equals(code)) {
+            if (isMissingObject(ex)) {
                 return false;
             }
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "exists", "type", "storage");
             throw new StorageException("Failed to check file existence.", ex);
         } catch (StorageException ex) {
             throw ex;
         } catch (Exception ex) {
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "exists", "type", "storage");
             throw new StorageException("Failed to check file existence.", ex);
         }
     }
@@ -168,8 +188,11 @@ public class FileStorageServiceImpl implements FileStorageService {
                 log.info("Storage bucket '{}' is available.", storageProperties.getBucketName());
             }
 
+        } catch (IllegalStateException ex) {
+            throw ex;
         } catch (Exception ex) {
-            log.error("Failed to initialize object storage.", ex);
+            log.error("Failed to initialize object storage for bucket '{}'.",
+                    storageProperties.getBucketName(), ex);
             throw new IllegalStateException(
                     "Unable to initialize object storage.",
                     ex
@@ -177,6 +200,11 @@ public class FileStorageServiceImpl implements FileStorageService {
 
         }
 
+    }
+
+    private boolean isMissingObject(ErrorResponseException ex) {
+        String code = ex.errorResponse() != null ? ex.errorResponse().code() : null;
+        return "NoSuchKey".equals(code) || "NoSuchObject".equals(code) || "NotFound".equals(code);
     }
 
     private void validatePdfUpload(MultipartFile file) {
@@ -210,13 +238,8 @@ public class FileStorageServiceImpl implements FileStorageService {
 
     /**
      * Normalizes and validates a caller-supplied folder path before any MinIO call.
-     * <p>
-     * This is a path-traversal/character-set defense only. It does <b>not</b> and cannot
-     * verify that the path logically belongs to the calling user - callers are required to
-     * always build {@code folderPath} from the authenticated user's own id (or another value
-     * already verified to belong to that user), never directly from raw client input, since a
-     * "technically valid" but logically wrong path (e.g. another user's id due to a bug
-     * elsewhere) would pass this check.
+     * Path-traversal/character-set first; if a JWT user is on the thread, the path must
+     * also sit under {@code users/{thatUserId}/}.
      */
     private String validateFolderPath(String folderPath) {
         if (!StringUtils.hasText(folderPath)) {
@@ -234,9 +257,8 @@ public class FileStorageServiceImpl implements FileStorageService {
     }
 
     /**
-     * Normalizes and validates a caller-supplied storage key before any MinIO call. See
-     * {@link #validateFolderPath(String)} for the same "never build this from raw client
-     * input" requirement.
+     * Normalizes and validates a caller-supplied storage key before any MinIO call. Same
+     * character and ownership checks as {@link #validateFolderPath(String)}.
      */
     private String validateStorageKey(String storageKey) {
         if (!StringUtils.hasText(storageKey)) {
@@ -265,6 +287,38 @@ public class FileStorageServiceImpl implements FileStorageService {
                 }
             }
         }
+        rejectForeignUserPath(path);
+    }
+
+    /**
+     * When a JWT user is present, refuse keys/folders that are not under that user's
+     * prefix. No principal (parse workers, unit tests, boot) skips this so we do not
+     * couple storage to user ids on those paths.
+     */
+    private void rejectForeignUserPath(String path) {
+        Long userId = currentAuthenticatedUserId();
+        if (userId == null) {
+            return;
+        }
+        String owned = "users/" + userId;
+        if (path.equals(owned) || path.startsWith(owned + "/")) {
+            return;
+        }
+        throw new InvalidFileException("Invalid storage path.");
+    }
+
+    private static Long currentAuthenticatedUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return null;
+        }
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof CustomUserDetails details
+                && details.getUser() != null
+                && details.getUser().getId() != null) {
+            return details.getUser().getId();
+        }
+        return null;
     }
 
 }
