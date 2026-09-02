@@ -1,6 +1,7 @@
-package com.developer.copilot.auth.security;
+package com.developer.copilot.auth.ratelimit.filter;
 
 import com.developer.copilot.auth.config.AuthProperties;
+import com.developer.copilot.auth.ratelimit.service.impl.AuthRateLimitServiceImpl;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -17,7 +18,7 @@ class AuthRateLimitFilterTest {
     void login_isLimitedPerIp() throws Exception {
         AuthProperties properties = new AuthProperties();
         properties.setLoginRateLimitPerMinute(2);
-        AuthRateLimitFilter filter = new AuthRateLimitFilter(properties);
+        AuthRateLimitFilter filter = new AuthRateLimitFilter(properties, new AuthRateLimitServiceImpl(properties, null));
         FilterChain chain = mock(FilterChain.class);
 
         for (int i = 0; i < 2; i++) {
@@ -39,7 +40,8 @@ class AuthRateLimitFilterTest {
 
     @Test
     void otherPaths_areNotLimited() throws Exception {
-        AuthRateLimitFilter filter = new AuthRateLimitFilter(new AuthProperties());
+        AuthProperties properties = new AuthProperties();
+        AuthRateLimitFilter filter = new AuthRateLimitFilter(properties, new AuthRateLimitServiceImpl(properties, null));
         FilterChain chain = mock(FilterChain.class);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/refresh-token");
         MockHttpServletResponse response = new MockHttpServletResponse();

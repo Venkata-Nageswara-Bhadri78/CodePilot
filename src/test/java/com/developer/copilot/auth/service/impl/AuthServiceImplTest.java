@@ -26,11 +26,11 @@ import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
 import com.developer.copilot.auth.jwt.JwtService;
 import com.developer.copilot.auth.mapper.AuthMapper;
+import com.developer.copilot.auth.ratelimit.service.impl.AuthRateLimitServiceImpl;
 import com.developer.copilot.auth.repository.EmailVerificationRepository;
 import com.developer.copilot.auth.repository.PasswordResetTokenRepository;
 import com.developer.copilot.auth.repository.RefreshTokenRepository;
 import com.developer.copilot.auth.repository.UserRepository;
-import com.developer.copilot.auth.security.AuthAbuseGuard;
 import com.developer.copilot.auth.service.EmailService;
 import com.developer.copilot.auth.util.CredentialDigests;
 import com.developer.copilot.common.security.CurrentUserService;
@@ -101,11 +101,12 @@ class AuthServiceImplTest {
         user.setEmailVerified(true);
         user.setTokenVersion(0);
 
+        AuthProperties properties = new AuthProperties();
         ReflectionTestUtils.setField(authService, "clock", Clock.systemDefaultZone());
         ReflectionTestUtils.setField(authService, "authMapper", new AuthMapper());
-        ReflectionTestUtils.setField(authService, "authProperties", new AuthProperties());
+        ReflectionTestUtils.setField(authService, "authProperties", properties);
         ReflectionTestUtils.setField(authService, "otpHmacSecret", HMAC_SECRET);
-        ReflectionTestUtils.setField(authService, "authAbuseGuard", new AuthAbuseGuard());
+        ReflectionTestUtils.setField(authService, "authRateLimitService", new AuthRateLimitServiceImpl(properties, null));
     }
 
     @AfterEach

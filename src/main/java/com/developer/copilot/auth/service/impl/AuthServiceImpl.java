@@ -42,7 +42,7 @@ import com.developer.copilot.auth.exception.EmailDeliveryException;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
 import com.developer.copilot.auth.jwt.JwtService;
 import com.developer.copilot.auth.mapper.AuthMapper;
-import com.developer.copilot.auth.security.AuthAbuseGuard;
+import com.developer.copilot.auth.ratelimit.service.AuthRateLimitService;
 import com.developer.copilot.auth.service.AuthService;
 import com.developer.copilot.auth.service.EmailService;
 import com.developer.copilot.auth.util.CredentialDigests;
@@ -82,7 +82,7 @@ public class AuthServiceImpl implements AuthService {
     private final Clock clock;
     private final AuthProperties authProperties;
     private final CurrentUserService currentUserService;
-    private final AuthAbuseGuard authAbuseGuard;
+    private final AuthRateLimitService authRateLimitService;
 
     @Value("${app.jwt.secret}")
     private String otpHmacSecret;
@@ -92,6 +92,8 @@ public class AuthServiceImpl implements AuthService {
     public void register(RegisterRequest registerRequest) {
         String username = normalizeUsername(registerRequest.getUsername());
         String email = normalizeEmail(registerRequest.getEmail());
+        authRateLimitService.consumeOrThrow(
+                "register-email", email, authProperties.getRegisterRateLimitPerMinute(), 60);
         String fullName = registerRequest.getFullName() == null ? null : registerRequest.getFullName().trim();
 
         if (username == null || username.length() < 3 || username.length() > 50) {
@@ -127,9 +129,10 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public AuthResponse login(LoginRequest request) {
         String email = normalizeEmail(request.getEmail());
-        long windowMs = authProperties.getFailedLoginWindowMinutes() * 60_000L;
+        authRateLimitService.consumeOrThrow(
+                "login-email", email, authProperties.getLoginRateLimitPerMinute(), 60);
 
-        if (authAbuseGuard.isLoginBlocked(email, authProperties.getMaxFailedLogins(), windowMs)) {
+        if (authRateLimitService.isLoginBlocked(email)) {
             passwordEncoder.matches(request.getPassword(), DUMMY_PASSWORD_HASH);
             log.debug("Login blocked by failure window for {}", email);
             throw new InvalidCredentialsException(INVALID_CREDENTIALS);
@@ -138,13 +141,13 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByEmail(email).orElse(null);
         if (user == null) {
             passwordEncoder.matches(request.getPassword(), DUMMY_PASSWORD_HASH);
-            authAbuseGuard.recordLoginFailure(email, windowMs);
+            authRateLimitService.recordLoginFailure(email);
             log.debug("Login failed: unknown email");
             throw new InvalidCredentialsException(INVALID_CREDENTIALS);
         }
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            authAbuseGuard.recordLoginFailure(email, windowMs);
+            authRateLimitService.recordLoginFailure(email);
             log.debug("Login failed: bad password");
             throw new InvalidCredentialsException(INVALID_CREDENTIALS);
         }
@@ -154,7 +157,7 @@ public class AuthServiceImpl implements AuthService {
             throw new InvalidCredentialsException(INVALID_CREDENTIALS);
         }
 
-        authAbuseGuard.recordLoginSuccess(email);
+        authRateLimitService.recordLoginSuccess(email);
         return buildAuthResponse(user);
     }
 
@@ -166,8 +169,11 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void verifyOtp(VerifyOtpRequest request) {
+        String email = normalizeEmail(request.getEmail());
+        authRateLimitService.consumeOrThrow(
+                "verify-email", email, authProperties.getVerifyRateLimitPerMinute(), 60);
         EmailVerification verification = emailVerificationRepository
-                .findTopByUserEmailOrderByCreatedAtDesc(normalizeEmail(request.getEmail()))
+                .findTopByUserEmailOrderByCreatedAtDesc(email)
                 .orElseThrow(() -> new InvalidOtpException("OTP not found."));
 
         User user = verification.getUser();
@@ -202,11 +208,14 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void resendOtp(ResendOtpRequest request) {
-        userRepository.findByEmail(normalizeEmail(request.getEmail())).ifPresent(user -> {
+        String email = normalizeEmail(request.getEmail());
+        authRateLimitService.consumeOrThrow(
+                "resend-email", email, authProperties.getResendRateLimitPerMinute(), 60);
+        userRepository.findByEmail(email).ifPresent(user -> {
             if (Boolean.TRUE.equals(user.getEmailVerified())) {
                 return;
             }
-            if (!authAbuseGuard.tryAcquireMail(user.getEmail(), mailCooldownMs())) {
+            if (!authRateLimitService.tryAcquireMail(user.getEmail(), authProperties.getMailCooldownSeconds())) {
                 log.debug("Resend OTP skipped by cooldown");
                 return;
             }
@@ -217,8 +226,12 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void forgotPassword(ForgotPasswordRequest request) {
-        userRepository.findByEmail(normalizeEmail(request.getEmail())).ifPresent(user -> {
-            if (!authAbuseGuard.tryAcquireMail("reset:" + user.getEmail(), mailCooldownMs())) {
+        String email = normalizeEmail(request.getEmail());
+        authRateLimitService.consumeOrThrow(
+                "forgot-email", email, authProperties.getForgotRateLimitPerMinute(), 60);
+        userRepository.findByEmail(email).ifPresent(user -> {
+            if (!authRateLimitService.tryAcquireMail(
+                    "reset:" + user.getEmail(), authProperties.getMailCooldownSeconds())) {
                 log.debug("Forgot password skipped by cooldown");
                 return;
             }
@@ -404,10 +417,6 @@ public class AuthServiceImpl implements AuthService {
 
     private String normalizeUsername(String username) {
         return username == null ? null : username.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private long mailCooldownMs() {
-        return authProperties.getMailCooldownSeconds() * 1000L;
     }
 
     private void sendMailSafely(Runnable send) {

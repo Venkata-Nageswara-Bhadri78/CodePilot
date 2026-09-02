@@ -79,3 +79,11 @@ app.ai.provider=gemini
 app.ai.default-model=gemini-flash-latest
 app.ai.streaming-timeout-seconds=60
 app.ai.agentic-server-url=http://localhost:8000/v1
+
+# Auth Redis (distributed rate limits / mail cooldown / login backoff). Off by default.
+app.auth.redis.enabled=false
+app.auth.redis.host=localhost
+app.auth.redis.port=6379
+app.auth.redis.database=0
+app.auth.redis.timeout-ms=2000
+app.auth.redis.key-prefix=auth

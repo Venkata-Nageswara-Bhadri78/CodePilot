@@ -4,6 +4,7 @@ import com.developer.copilot.auth.config.JsonAuthenticationEntryPoint;
 import com.developer.copilot.auth.config.SecurityBeansConfig;
 import com.developer.copilot.auth.config.SecurityConfig;
 import com.developer.copilot.auth.jwt.JwtService;
+import com.developer.copilot.auth.ratelimit.config.AuthRateLimitConfig;
 import com.developer.copilot.auth.repository.UserRepository;
 import com.developer.copilot.auth.service.AuthService;
 import org.junit.jupiter.api.Test;
@@ -20,7 +21,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = AuthController.class)
-@Import({SecurityConfig.class, SecurityBeansConfig.class, JsonAuthenticationEntryPoint.class})
+@Import({SecurityConfig.class, SecurityBeansConfig.class, JsonAuthenticationEntryPoint.class, AuthRateLimitConfig.class})
 class AuthSecurityTest {
 
     @Autowired

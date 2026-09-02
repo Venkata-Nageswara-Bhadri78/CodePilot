@@ -17,7 +17,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.developer.copilot.auth.jwt.JwtAuthenticationFilter;
-import com.developer.copilot.auth.security.AuthRateLimitFilter;
+import com.developer.copilot.auth.ratelimit.filter.AuthRateLimitFilter;
 
 import lombok.RequiredArgsConstructor;
 
@@ -38,7 +38,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final CorsProperties corsProperties;
     private final JsonAuthenticationEntryPoint jsonAuthenticationEntryPoint;
-    private final AuthProperties authProperties;
+    private final AuthRateLimitFilter authRateLimitFilter;
     private final Environment environment;
 
     @Bean
@@ -66,7 +66,7 @@ public class SecurityConfig {
             ).permitAll()
             .anyRequest().authenticated();
         })
-        .addFilterBefore(new AuthRateLimitFilter(authProperties), UsernamePasswordAuthenticationFilter.class)
+        .addFilterBefore(authRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
