@@ -228,4 +228,35 @@ class InternalApiStartupValidatorTest {
         assertThrows(IllegalStateException.class,
                 () -> validator.run(new DefaultApplicationArguments()));
     }
+
+    @Test
+    void productionWithStrongPreviousKey_completesWithoutThrowing() {
+        InternalApiProperties properties = new InternalApiProperties();
+        properties.setEnabled(true);
+        properties.setKey(STRONG_KEY);
+        properties.setPreviousKey("another-genuinely-long-random-service-key-99");
+
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("prod");
+
+        InternalApiStartupValidator validator = new InternalApiStartupValidator(properties, environment);
+
+        assertDoesNotThrow(() -> validator.run(new DefaultApplicationArguments()));
+    }
+
+    @Test
+    void productionWithShortPreviousKey_failsStartup() {
+        InternalApiProperties properties = new InternalApiProperties();
+        properties.setEnabled(true);
+        properties.setKey(STRONG_KEY);
+        properties.setPreviousKey("short");
+
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("prod");
+
+        InternalApiStartupValidator validator = new InternalApiStartupValidator(properties, environment);
+
+        assertThrows(IllegalStateException.class,
+                () -> validator.run(new DefaultApplicationArguments()));
+    }
 }

@@ -59,24 +59,30 @@ public class InternalApiStartupValidator implements ApplicationRunner {
             return;
         }
 
-        String key = internalApiProperties.getKey();
+        requireStrongSecret("internal.api.key", internalApiProperties.getKey());
+        if (StringUtils.hasText(internalApiProperties.getPreviousKey())) {
+            requireStrongSecret("internal.api.previous-key", internalApiProperties.getPreviousKey());
+        }
+
+        log.info("Internal API key protection verified.");
+    }
+
+    private static void requireStrongSecret(String propertyName, String key) {
         if (!StringUtils.hasText(key)) {
             throw new IllegalStateException(
-                    "internal.api.key must be configured outside local/dev profiles.");
+                    propertyName + " must be configured outside local/dev profiles.");
         }
         if (key.trim().length() < MIN_KEY_LENGTH) {
             throw new IllegalStateException(
-                    "internal.api.key must be at least " + MIN_KEY_LENGTH
+                    propertyName + " must be at least " + MIN_KEY_LENGTH
                             + " characters long outside local/dev profiles.");
         }
         String normalizedKey = key.trim().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
         boolean isPlaceholder = DISALLOWED_PLACEHOLDER_TOKENS.stream().anyMatch(normalizedKey::contains);
         if (isPlaceholder) {
             throw new IllegalStateException(
-                    "internal.api.key must not be a placeholder value outside local/dev profiles.");
+                    propertyName + " must not be a placeholder value outside local/dev profiles.");
         }
-
-        log.info("Internal API key protection verified.");
     }
 
     private boolean isLaptopProfile() {

@@ -21,6 +21,7 @@ import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
 import com.developer.copilot.common.storage.exception.StorageObjectNotFoundException;
 import com.developer.copilot.common.storage.util.ChecksumUtil;
+import com.developer.copilot.common.metrics.CopilotMetrics;
 import io.minio.PutObjectArgs;
 
 import io.minio.RemoveObjectArgs;
@@ -79,6 +80,7 @@ public class FileStorageServiceImpl implements FileStorageService {
         } catch (InvalidFileException | StorageException ex) {
             throw ex;
         } catch (Exception ex) {
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "upload", "type", "storage");
             throw new StorageException("Failed to upload file.", ex);
         }
 
@@ -99,12 +101,15 @@ public class FileStorageServiceImpl implements FileStorageService {
 
         } catch (ErrorResponseException ex) {
             if (isMissingObject(ex)) {
+                CopilotMetrics.increment("copilot.storage.failure", "operation", "download", "type", "not_found");
                 throw new StorageObjectNotFoundException("File not found.", ex);
             }
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "download", "type", "storage");
             throw new StorageException("Failed to download file.", ex);
         } catch (InvalidFileException | StorageObjectNotFoundException | StorageException ex) {
             throw ex;
         } catch (Exception ex) {
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "download", "type", "storage");
             throw new StorageException("Failed to download file.", ex);
         }
 
@@ -123,6 +128,7 @@ public class FileStorageServiceImpl implements FileStorageService {
             log.debug("File deleted successfully : {}", safeKey);
             log.info("File deleted successfully.");
         } catch (Exception ex) {
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "delete", "type", "storage");
             throw new StorageException("Failed to delete file.", ex);
         }
     }
@@ -142,10 +148,12 @@ public class FileStorageServiceImpl implements FileStorageService {
             if (isMissingObject(ex)) {
                 return false;
             }
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "exists", "type", "storage");
             throw new StorageException("Failed to check file existence.", ex);
         } catch (StorageException ex) {
             throw ex;
         } catch (Exception ex) {
+            CopilotMetrics.increment("copilot.storage.failure", "operation", "exists", "type", "storage");
             throw new StorageException("Failed to check file existence.", ex);
         }
     }

@@ -2,6 +2,7 @@ package com.developer.copilot.common.security.internal;
 
 import com.developer.copilot.common.config.InternalApiProperties;
 import com.developer.copilot.common.dto.ApiResponse;
+import com.developer.copilot.common.metrics.CopilotMetrics;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -55,7 +56,7 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
             }
             log.error("Internal API is disabled outside local/dev; rejecting {} {}",
                     request.getMethod(), request.getRequestURI());
-            reject(response);
+            reject(response, "disabled");
             return;
         }
 
@@ -64,14 +65,21 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
         if (configuredKey == null || configuredKey.isBlank()) {
             log.error("Internal API is enabled but '{}' is not configured; rejecting {} {}",
                     "internal.api.key", request.getMethod(), request.getRequestURI());
-            reject(response);
+            reject(response, "unconfigured");
             return;
         }
 
-        if (!matches(configuredKey, request.getHeader(internalApiProperties.getHeaderName()))) {
-            log.warn("Rejected internal request to {} with missing or invalid service key",
+        String provided = request.getHeader(internalApiProperties.getHeaderName());
+        if (provided == null || provided.isBlank()) {
+            log.warn("Rejected internal request to {} with missing service key",
                     request.getRequestURI());
-            reject(response);
+            reject(response, "missing");
+            return;
+        }
+        if (!keyAccepted(provided)) {
+            log.warn("Rejected internal request to {} with invalid service key",
+                    request.getRequestURI());
+            reject(response, "invalid");
             return;
         }
 
@@ -87,8 +95,16 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
                 .anyMatch(profile -> profile.equals("local") || profile.equals("dev"));
     }
 
+    private boolean keyAccepted(String providedKey) {
+        if (matches(internalApiProperties.getKey(), providedKey)) {
+            return true;
+        }
+        String previous = internalApiProperties.getPreviousKey();
+        return previous != null && !previous.isBlank() && matches(previous, providedKey);
+    }
+
     private boolean matches(String configuredKey, String providedKey) {
-        if (providedKey == null) {
+        if (configuredKey == null || providedKey == null) {
             return false;
         }
         return MessageDigest.isEqual(
@@ -96,7 +112,8 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
                 providedKey.getBytes(StandardCharsets.UTF_8));
     }
 
-    private void reject(HttpServletResponse response) throws IOException {
+    private void reject(HttpServletResponse response, String reason) throws IOException {
+        CopilotMetrics.increment("copilot.internal.auth.failure", "reason", reason);
 
         ApiResponse<Void> body = ApiResponse.<Void>builder()
                 .success(false)

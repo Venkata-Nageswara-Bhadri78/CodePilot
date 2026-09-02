@@ -7,6 +7,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import com.developer.copilot.common.metrics.CopilotMetrics;
 import com.developer.copilot.common.storage.config.StorageProperties;
 import com.developer.copilot.common.storage.service.FileStorageService;
 
@@ -27,6 +28,7 @@ public class StorageStartupValidator {
     public void initialize() {
         validateNonLaptopCredentials();
         fileStorageService.initializeStorage();
+        CopilotMetrics.increment("copilot.storage.boot", "result", "success");
     }
 
     /**

@@ -239,4 +239,40 @@ class InternalApiKeyFilterTest {
         assertTrue(InternalApiKeyFilter.class.getAnnotation(
                 org.springframework.stereotype.Component.class) == null);
     }
+
+    @Test
+    void previousKey_isAcceptedDuringRotation() throws Exception {
+        properties.setKey("new-super-secret-service-key-32xx");
+        properties.setPreviousKey("super-secret-service-key");
+        request.addHeader("X-Internal-Api-Key", "super-secret-service-key");
+
+        filter.doFilter(request, response, chain);
+
+        assertNotNull(chain.getRequest());
+        assertEquals(HttpStatus.OK.value(), response.getStatus());
+    }
+
+    @Test
+    void currentKey_isAcceptedWhilePreviousKeyIsConfigured() throws Exception {
+        properties.setKey("new-super-secret-service-key-32xx");
+        properties.setPreviousKey("super-secret-service-key");
+        request.addHeader("X-Internal-Api-Key", "new-super-secret-service-key-32xx");
+
+        filter.doFilter(request, response, chain);
+
+        assertNotNull(chain.getRequest());
+        assertEquals(HttpStatus.OK.value(), response.getStatus());
+    }
+
+    @Test
+    void neitherCurrentNorPreviousKey_isRejected() throws Exception {
+        properties.setKey("new-super-secret-service-key-32xx");
+        properties.setPreviousKey("super-secret-service-key");
+        request.addHeader("X-Internal-Api-Key", "some-other-key");
+
+        filter.doFilter(request, response, chain);
+
+        assertNull(chain.getRequest());
+        assertEquals(HttpStatus.UNAUTHORIZED.value(), response.getStatus());
+    }
 }

@@ -35,6 +35,7 @@ import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.ai.exception.AiUnavailableException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.common.dto.ApiResponse;
+import com.developer.copilot.common.metrics.CopilotMetrics;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
 import com.developer.copilot.jobs.exception.JobValidationException;
@@ -568,6 +569,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidFileException.class)
     public ResponseEntity<ApiResponse<Void>> handleInvalidFile(InvalidFileException ex) {
         log.warn("Rejected file operation: {}", ex.getMessage());
+        CopilotMetrics.increment("copilot.storage.failure", "type", "invalid_file");
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
@@ -768,6 +770,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleStorageObjectNotFound(
                 StorageObjectNotFoundException ex) {
         return failure(HttpStatus.NOT_FOUND, "File not found.");
+    }
+
+    @ExceptionHandler(com.developer.copilot.common.ratelimit.exception.RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommonRateLimitExceeded(
+                com.developer.copilot.common.ratelimit.exception.RateLimitExceededException ex) {
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .timestamp(LocalDateTime.now())
+                        .build());
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
