@@ -88,6 +88,15 @@ class GlobalExceptionHandlerAiTest {
     }
 
     @Test
+    void unexpectedIllegalArgument_mapsTo500() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleIllegalArgument(
+                new IllegalArgumentException("null"));
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        assertEquals("Something went wrong.", response.getBody().getMessage());
+    }
+
+    @Test
     void unexpectedException_mapsTo500WithoutInternals() {
         ResponseEntity<ApiResponse<Void>> response = handler.handleException(new RuntimeException("secret internals"));
 

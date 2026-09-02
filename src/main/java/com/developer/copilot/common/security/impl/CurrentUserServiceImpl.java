@@ -28,6 +28,10 @@ public class CurrentUserServiceImpl implements CurrentUserService {
             throw new InvalidCredentialsException("User is not authenticated.");
         }
 
-        return userDetails.getUser();
+        User user = userDetails.getUser();
+        if (user == null) {
+            throw new InvalidCredentialsException("User is not authenticated.");
+        }
+        return user;
     }
 }

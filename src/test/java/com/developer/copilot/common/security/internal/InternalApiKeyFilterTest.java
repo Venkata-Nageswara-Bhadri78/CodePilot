@@ -79,7 +79,7 @@ class InternalApiKeyFilterTest {
 
         assertNull(chain.getRequest());
         assertEquals(HttpStatus.UNAUTHORIZED.value(), response.getStatus());
-        assertTrue(response.getContentAsString().contains("Internal API is not configured."));
+        assertTrue(response.getContentAsString().contains("Invalid or missing internal service key."));
     }
 
     @Test
@@ -112,7 +112,7 @@ class InternalApiKeyFilterTest {
 
         assertNull(chain.getRequest());
         assertEquals(HttpStatus.UNAUTHORIZED.value(), response.getStatus());
-        assertTrue(response.getContentAsString().contains("Internal API is not configured."));
+        assertTrue(response.getContentAsString().contains("Invalid or missing internal service key."));
     }
 
     @Test
@@ -158,7 +158,85 @@ class InternalApiKeyFilterTest {
         org.springframework.boot.web.servlet.FilterRegistrationBean<InternalApiKeyFilter> registration =
                 config.internalApiKeyFilterRegistration(properties, new ObjectMapper(), environment);
 
+        assertTrue(registration.getUrlPatterns().contains("/api/v1/internal"));
         assertTrue(registration.getUrlPatterns().contains("/api/v1/internal/*"));
-        assertEquals(1, registration.getUrlPatterns().size());
+        assertEquals(2, registration.getUrlPatterns().size());
+    }
+
+    @Test
+    void filterRegistration_customPathPrefix_registersExactAndWildcard() {
+        properties.setPathPrefix("/svc/internal");
+        InternalApiSecurityConfig config = new InternalApiSecurityConfig();
+
+        org.springframework.boot.web.servlet.FilterRegistrationBean<InternalApiKeyFilter> registration =
+                config.internalApiKeyFilterRegistration(properties, new ObjectMapper(), environment);
+
+        assertTrue(registration.getUrlPatterns().contains("/svc/internal"));
+        assertTrue(registration.getUrlPatterns().contains("/svc/internal/*"));
+        assertEquals(2, registration.getUrlPatterns().size());
+    }
+
+    @Test
+    void disabledInternalApi_onLocalUpperCase_skipsKeyCheck() throws Exception {
+        properties.setEnabled(false);
+        environment.setActiveProfiles("LOCAL");
+
+        filter.doFilter(request, response, chain);
+
+        assertNotNull(chain.getRequest());
+        assertEquals(HttpStatus.OK.value(), response.getStatus());
+    }
+
+    @Test
+    void disabledInternalApi_onStaging_failsClosed() throws Exception {
+        properties.setEnabled(false);
+        environment.setActiveProfiles("staging");
+
+        filter.doFilter(request, response, chain);
+
+        assertNull(chain.getRequest());
+        assertEquals(HttpStatus.UNAUTHORIZED.value(), response.getStatus());
+        assertTrue(response.getContentAsString().contains(
+                InternalApiKeyFilter.UNAUTHORIZED_CLIENT_MESSAGE));
+    }
+
+    @Test
+    void enabledOnProdProfile_withValidKey_passesThrough() throws Exception {
+        environment.setActiveProfiles("prod");
+        request.addHeader("X-Internal-Api-Key", "super-secret-service-key");
+
+        filter.doFilter(request, response, chain);
+
+        assertNotNull(chain.getRequest());
+        assertEquals(HttpStatus.OK.value(), response.getStatus());
+    }
+
+    @Test
+    void rejectBody_isApiResponseShapeWithNullData() throws Exception {
+        filter.doFilter(request, response, chain);
+
+        var node = new ObjectMapper().readTree(response.getContentAsString());
+        assertEquals(false, node.get("success").asBoolean());
+        assertEquals(InternalApiKeyFilter.UNAUTHORIZED_CLIENT_MESSAGE, node.get("message").asString());
+        assertTrue(node.get("data") == null || node.get("data").isNull());
+        assertNotNull(node.get("timestamp"));
+    }
+
+    @Test
+    void disabledWithNullEnvironment_failsClosedWithoutNpe() throws Exception {
+        properties.setEnabled(false);
+        InternalApiKeyFilter nullEnvFilter =
+                new InternalApiKeyFilter(properties, new ObjectMapper(), null);
+
+        nullEnvFilter.doFilter(request, response, chain);
+
+        assertNull(chain.getRequest());
+        assertEquals(HttpStatus.UNAUTHORIZED.value(), response.getStatus());
+    }
+
+    @Test
+    void filterClass_isNotASpringComponent() {
+        assertTrue(InternalApiKeyFilter.class.getAnnotation(
+                org.springframework.stereotype.Component.class) == null);
     }
 }

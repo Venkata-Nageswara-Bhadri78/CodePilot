@@ -41,9 +41,9 @@ public class UrlNormalizationUtil {
             "fbclid", "gclid", "gclsrc", "dclid", "msclkid", "yclid", "twclid",
             "share_id", "shareid", "share", "shared_from",
             "ref", "ref_src", "ref_url", "referrer", "referral_code",
-            "source", "src", "trk", "trkinfo", "trackingid", "tracking_id",
+            "src", "trk", "trkinfo", "trackingid", "tracking_id",
             "igshid", "mc_cid", "mc_eid", "spm", "si", "irclickid",
-            "_hsenc", "_hsmi", "originalsubdomain", "position", "pagenumber", "prehotel",
+            "_hsenc", "_hsmi", "originalsubdomain", "pagenumber", "prehotel",
             "token", "access_token", "auth"
     );
 
@@ -65,10 +65,9 @@ public class UrlNormalizationUtil {
     }
 
     /**
-     * Best-effort normalization that never throws. Falls back to the trimmed original
-     * string if it cannot be parsed as a valid URL. Use this for the general job-creation
-     * path so existing lenient behavior around {@code sourceUrl} is preserved while still
-     * canonicalizing well-formed URLs for duplicate detection.
+     * Best-effort normalization that does not throw for ordinary garbage strings.
+     * {@code javascript:}/{@code data:}/{@code file:}/{@code vbscript:} still fail so they
+     * are never stored as a job URL. Well-formed http(s) URLs are canonicalized.
      */
     public String normalizeLenient(String rawUrl) {
         if (rawUrl == null) {
@@ -81,6 +80,9 @@ public class UrlNormalizationUtil {
         try {
             return normalizeOrThrow(trimmed);
         } catch (InvalidJobUrlException ex) {
+            if (isUnsafeNonHttpScheme(trimmed)) {
+                throw new InvalidJobUrlException(INVALID_ABSOLUTE_HTTP_URL);
+            }
             return trimmed;
         }
     }
@@ -154,6 +156,22 @@ public class UrlNormalizationUtil {
         }
 
         return result.toString();
+    }
+
+    /**
+     * javascript / data / file URLs must not be stored even on the lenient path.
+     * Harmless unparseable strings still fall back to the trimmed original.
+     */
+    private boolean isUnsafeNonHttpScheme(String trimmed) {
+        int colon = trimmed.indexOf(':');
+        if (colon <= 0) {
+            return false;
+        }
+        String scheme = trimmed.substring(0, colon).toLowerCase(Locale.ROOT);
+        return scheme.equals("javascript")
+                || scheme.equals("data")
+                || scheme.equals("file")
+                || scheme.equals("vbscript");
     }
 
     private InvalidJobUrlException invalidUrl(String trimmedUrl) {

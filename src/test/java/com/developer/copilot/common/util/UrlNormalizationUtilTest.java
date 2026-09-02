@@ -177,4 +177,66 @@ class UrlNormalizationUtilTest {
         assertNotEquals(hash1, hash3);
         assertEquals(64, hash1.length());
     }
+
+    @Test
+    void sha256Hex_null_returnsNull() {
+        assertNull(urlNormalizationUtil.sha256Hex(null));
+    }
+
+    @Test
+    void normalizeStrict_dropsFragment() {
+        assertEquals("https://example.com/jobs/1",
+                urlNormalizationUtil.normalizeStrict("https://example.com/jobs/1#section"));
+    }
+
+    @Test
+    void normalizeStrict_stripsUserInfo() {
+        String normalized = urlNormalizationUtil.normalizeStrict("https://user:pass@example.com/job");
+        assertEquals("https://example.com/job", normalized);
+        assertFalse(normalized.contains("pass"));
+        assertFalse(normalized.contains("user"));
+    }
+
+    @Test
+    void normalizeStrict_httpAndHttps_areDifferent() {
+        assertNotEquals(
+                urlNormalizationUtil.normalizeStrict("http://example.com/job"),
+                urlNormalizationUtil.normalizeStrict("https://example.com/job"));
+    }
+
+    @Test
+    void normalizeStrict_duplicateQueryKey_lastValueWins() {
+        assertEquals("https://example.com/job?a=2",
+                urlNormalizationUtil.normalizeStrict("https://example.com/job?a=1&a=2"));
+    }
+
+    @Test
+    void normalizeStrict_null_throwsEmptyUrl() {
+        InvalidJobUrlException ex = assertThrows(InvalidJobUrlException.class,
+                () -> urlNormalizationUtil.normalizeStrict(null));
+        assertEquals("Job URL must not be empty.", ex.getMessage());
+    }
+
+    @Test
+    void normalizeStrict_stripsUtmPrefix_butKeepsJobUtmIdInMiddle() {
+        assertEquals("https://example.com/job?job_utm_id=keep",
+                urlNormalizationUtil.normalizeStrict("https://example.com/job?utm_foo=x&job_utm_id=keep"));
+    }
+
+    @Test
+    void normalizeStrict_keepsSourceAndPositionAsIdentity() {
+        String boardA = urlNormalizationUtil.normalizeStrict("https://example.com/job?source=boardA");
+        String boardB = urlNormalizationUtil.normalizeStrict("https://example.com/job?source=boardB");
+        assertNotEquals(boardA, boardB);
+        assertEquals("https://example.com/job?position=2",
+                urlNormalizationUtil.normalizeStrict("https://example.com/job?position=2"));
+    }
+
+    @Test
+    void normalizeLenient_javascriptUrl_throwsWithoutEchoingInput() {
+        InvalidJobUrlException ex = assertThrows(InvalidJobUrlException.class,
+                () -> urlNormalizationUtil.normalizeLenient("javascript:alert(1)"));
+        assertEquals("Job URL must be a valid absolute http or https link.", ex.getMessage());
+        assertFalse(ex.getMessage().contains("javascript"));
+    }
 }

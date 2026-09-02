@@ -19,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.developer.copilot.common.storage.dto.StoredFile;
 import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
+import com.developer.copilot.common.storage.exception.StorageObjectNotFoundException;
 import com.developer.copilot.common.storage.util.ChecksumUtil;
 import io.minio.PutObjectArgs;
 
@@ -65,13 +66,14 @@ public class FileStorageServiceImpl implements FileStorageService {
                             .build()
             );
 
-            log.info("File uploaded successfully : {}", storageKey);
+            log.debug("File uploaded successfully : {}", storageKey);
+            log.info("File uploaded successfully.");
 
             return StoredFile.builder()
                     .storageKey(storageKey)
                     .originalFilename(file.getOriginalFilename())
                     .contentType(PDF_CONTENT_TYPE)
-                    .fileSize(file.getSize())
+                    .fileSize((long) fileBytes.length)
                     .checksum(checksum)
                     .build();
         } catch (InvalidFileException | StorageException ex) {
@@ -95,6 +97,13 @@ public class FileStorageServiceImpl implements FileStorageService {
                     )
             );
 
+        } catch (ErrorResponseException ex) {
+            if (isMissingObject(ex)) {
+                throw new StorageObjectNotFoundException("File not found.", ex);
+            }
+            throw new StorageException("Failed to download file.", ex);
+        } catch (InvalidFileException | StorageObjectNotFoundException | StorageException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new StorageException("Failed to download file.", ex);
         }
@@ -111,7 +120,8 @@ public class FileStorageServiceImpl implements FileStorageService {
                             .object(safeKey)
                             .build()
             );
-            log.info("File deleted successfully : {}", safeKey);
+            log.debug("File deleted successfully : {}", safeKey);
+            log.info("File deleted successfully.");
         } catch (Exception ex) {
             throw new StorageException("Failed to delete file.", ex);
         }
@@ -129,8 +139,7 @@ public class FileStorageServiceImpl implements FileStorageService {
             );
             return true;
         } catch (ErrorResponseException ex) {
-            String code = ex.errorResponse() != null ? ex.errorResponse().code() : null;
-            if ("NoSuchKey".equals(code) || "NoSuchObject".equals(code) || "NotFound".equals(code)) {
+            if (isMissingObject(ex)) {
                 return false;
             }
             throw new StorageException("Failed to check file existence.", ex);
@@ -168,8 +177,11 @@ public class FileStorageServiceImpl implements FileStorageService {
                 log.info("Storage bucket '{}' is available.", storageProperties.getBucketName());
             }
 
+        } catch (IllegalStateException ex) {
+            throw ex;
         } catch (Exception ex) {
-            log.error("Failed to initialize object storage.", ex);
+            log.error("Failed to initialize object storage for bucket '{}'.",
+                    storageProperties.getBucketName(), ex);
             throw new IllegalStateException(
                     "Unable to initialize object storage.",
                     ex
@@ -177,6 +189,11 @@ public class FileStorageServiceImpl implements FileStorageService {
 
         }
 
+    }
+
+    private boolean isMissingObject(ErrorResponseException ex) {
+        String code = ex.errorResponse() != null ? ex.errorResponse().code() : null;
+        return "NoSuchKey".equals(code) || "NoSuchObject".equals(code) || "NotFound".equals(code);
     }
 
     private void validatePdfUpload(MultipartFile file) {

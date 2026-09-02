@@ -17,7 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Fails startup when the internal API key is disabled outside {@code local}/{@code dev}.
- * In production profiles, also rejects a blank, short, or placeholder secret.
+ * On every other profile (including default / {@code staging} / {@code prod}), also
+ * rejects a blank, short, or placeholder secret.
  */
 @Slf4j
 @Component
@@ -25,7 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 public class InternalApiStartupValidator implements ApplicationRunner {
 
     /**
-     * Minimum acceptable length for {@code internal.api.key} in production. A short key
+     * Minimum acceptable length for {@code internal.api.key} outside laptop profiles. A short key
      * (e.g. "a" or "123") would pass a non-blank check but is trivially guessable, defeating
      * the purpose of the internal API boundary.
      */
@@ -54,28 +55,28 @@ public class InternalApiStartupValidator implements ApplicationRunner {
                     "internal.api.enabled must be true outside local/dev profiles.");
         }
 
-        if (!isProductionProfile()) {
+        if (isLaptopProfile()) {
             return;
         }
 
         String key = internalApiProperties.getKey();
         if (!StringUtils.hasText(key)) {
             throw new IllegalStateException(
-                    "internal.api.key must be configured in production profiles.");
+                    "internal.api.key must be configured outside local/dev profiles.");
         }
         if (key.trim().length() < MIN_KEY_LENGTH) {
             throw new IllegalStateException(
                     "internal.api.key must be at least " + MIN_KEY_LENGTH
-                            + " characters long in production profiles.");
+                            + " characters long outside local/dev profiles.");
         }
         String normalizedKey = key.trim().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
         boolean isPlaceholder = DISALLOWED_PLACEHOLDER_TOKENS.stream().anyMatch(normalizedKey::contains);
         if (isPlaceholder) {
             throw new IllegalStateException(
-                    "internal.api.key must not be a placeholder value in production profiles.");
+                    "internal.api.key must not be a placeholder value outside local/dev profiles.");
         }
 
-        log.info("Internal API key protection verified for production profile.");
+        log.info("Internal API key protection verified.");
     }
 
     private boolean isLaptopProfile() {
@@ -84,9 +85,4 @@ public class InternalApiStartupValidator implements ApplicationRunner {
                 .anyMatch(profile -> profile.equals("local") || profile.equals("dev"));
     }
 
-    private boolean isProductionProfile() {
-        return Arrays.stream(environment.getActiveProfiles())
-                .map(profile -> profile.toLowerCase(Locale.ROOT))
-                .anyMatch(profile -> profile.equals("prod") || profile.equals("production"));
-    }
 }

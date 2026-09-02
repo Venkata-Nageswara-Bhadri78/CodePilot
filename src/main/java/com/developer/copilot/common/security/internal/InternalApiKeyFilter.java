@@ -35,6 +35,10 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class InternalApiKeyFilter extends OncePerRequestFilter {
 
+    /** Client-facing 401 for every key failure so responses do not distinguish misconfig from a wrong secret. */
+    public static final String UNAUTHORIZED_CLIENT_MESSAGE =
+            "Invalid or missing internal service key.";
+
     private final InternalApiProperties internalApiProperties;
     private final ObjectMapper objectMapper;
     private final Environment environment;
@@ -51,7 +55,7 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
             }
             log.error("Internal API is disabled outside local/dev; rejecting {} {}",
                     request.getMethod(), request.getRequestURI());
-            reject(response, "Internal API is not configured.");
+            reject(response);
             return;
         }
 
@@ -60,14 +64,14 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
         if (configuredKey == null || configuredKey.isBlank()) {
             log.error("Internal API is enabled but '{}' is not configured; rejecting {} {}",
                     "internal.api.key", request.getMethod(), request.getRequestURI());
-            reject(response, "Internal API is not configured.");
+            reject(response);
             return;
         }
 
         if (!matches(configuredKey, request.getHeader(internalApiProperties.getHeaderName()))) {
             log.warn("Rejected internal request to {} with missing or invalid service key",
                     request.getRequestURI());
-            reject(response, "Invalid or missing internal service key.");
+            reject(response);
             return;
         }
 
@@ -92,11 +96,11 @@ public class InternalApiKeyFilter extends OncePerRequestFilter {
                 providedKey.getBytes(StandardCharsets.UTF_8));
     }
 
-    private void reject(HttpServletResponse response, String message) throws IOException {
+    private void reject(HttpServletResponse response) throws IOException {
 
         ApiResponse<Void> body = ApiResponse.<Void>builder()
                 .success(false)
-                .message(message)
+                .message(UNAUTHORIZED_CLIENT_MESSAGE)
                 .timestamp(LocalDateTime.now())
                 .build();
 

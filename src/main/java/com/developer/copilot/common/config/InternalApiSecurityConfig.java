@@ -37,9 +37,21 @@ public class InternalApiSecurityConfig {
                 new InternalApiKeyFilter(internalApiProperties, objectMapper, environment));
 
         registration.setName("internalApiKeyFilter");
-        registration.addUrlPatterns(internalApiProperties.getPathPrefix() + "/*");
+        String prefix = normalizePrefix(internalApiProperties.getPathPrefix());
+        registration.addUrlPatterns(prefix, prefix + "/*");
         registration.setOrder(Ordered.LOWEST_PRECEDENCE);
 
         return registration;
+    }
+
+    private static String normalizePrefix(String pathPrefix) {
+        if (pathPrefix == null || pathPrefix.isBlank()) {
+            return "/api/v1/internal";
+        }
+        String prefix = pathPrefix.trim();
+        while (prefix.endsWith("/") && prefix.length() > 1) {
+            prefix = prefix.substring(0, prefix.length() - 1);
+        }
+        return prefix;
     }
 }
