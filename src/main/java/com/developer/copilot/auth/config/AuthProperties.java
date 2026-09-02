@@ -35,6 +35,8 @@ public class AuthProperties {
 
     private int forgotRateLimitPerMinute = 3;
 
+    private int refreshRateLimitPerMinute = 10;
+
     private int maxFailedLogins = 10;
 
     private long failedLoginWindowMinutes = 15;

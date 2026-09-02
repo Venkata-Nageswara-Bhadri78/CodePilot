@@ -2,9 +2,14 @@ package com.developer.copilot.auth.jwt;
 
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.enums.Role;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -81,5 +86,36 @@ class JwtServiceTest {
         ReflectionTestUtils.setField(service, "expiration", 1000L);
 
         assertThrows(IllegalStateException.class, service::validateConfiguration);
+    }
+
+    @Test
+    void validateConfiguration_rejectsPlaceholderSecret() {
+        JwtService service = new JwtService();
+        ReflectionTestUtils.setField(service, "secret", "<enter-your-jwt-configuration-secret-key-here>");
+        ReflectionTestUtils.setField(service, "expiration", 1000L);
+
+        assertThrows(IllegalStateException.class, service::validateConfiguration);
+    }
+
+    @Test
+    void isTokenValid_missingTvClaim_treatsAsZero() {
+        String secret = "test-secret-key-that-is-long-enough-for-hmac-sha256";
+        String token = Jwts.builder()
+                .subject("42")
+                .claim("email", "john@example.com")
+                .claim("role", "USER")
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 60_000L))
+                .signWith(Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8)))
+                .compact();
+
+        assertTrue(jwtService.isTokenValid(token, user));
+    }
+
+    @Test
+    void extractUserId_rejectsUnsignedNoneAlgToken() {
+        String noneToken = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiI0MiIsImVtYWlsIjoiam9obkBleGFtcGxlLmNvbSJ9.";
+
+        assertThrows(io.jsonwebtoken.JwtException.class, () -> jwtService.extractUserId(noneToken));
     }
 }

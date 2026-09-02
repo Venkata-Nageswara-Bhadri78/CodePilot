@@ -39,11 +39,35 @@ class AuthRateLimitFilterTest {
     }
 
     @Test
+    void refreshToken_isLimitedPerIp() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setRefreshRateLimitPerMinute(2);
+        AuthRateLimitFilter filter = new AuthRateLimitFilter(properties, new AuthRateLimitServiceImpl(properties, null));
+        FilterChain chain = mock(FilterChain.class);
+
+        for (int i = 0; i < 2; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/refresh-token");
+            request.setRemoteAddr("10.0.0.1");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            filter.doFilterInternal(request, response, chain);
+            assertEquals(200, response.getStatus() == 0 ? 200 : response.getStatus());
+        }
+
+        MockHttpServletRequest blocked = new MockHttpServletRequest("POST", "/api/v1/auth/refresh-token");
+        blocked.setRemoteAddr("10.0.0.1");
+        MockHttpServletResponse blockedResponse = new MockHttpServletResponse();
+        filter.doFilterInternal(blocked, blockedResponse, chain);
+
+        assertEquals(429, blockedResponse.getStatus());
+        verify(chain, times(2)).doFilter(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void otherPaths_areNotLimited() throws Exception {
         AuthProperties properties = new AuthProperties();
         AuthRateLimitFilter filter = new AuthRateLimitFilter(properties, new AuthRateLimitServiceImpl(properties, null));
         FilterChain chain = mock(FilterChain.class);
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/refresh-token");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/reset-password");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         filter.doFilterInternal(request, response, chain);

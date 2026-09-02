@@ -32,7 +32,8 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             "/api/v1/auth/register",
             "/api/v1/auth/verify-email",
             "/api/v1/auth/resend-otp",
-            "/api/v1/auth/forgot-password");
+            "/api/v1/auth/forgot-password",
+            "/api/v1/auth/refresh-token");
 
     private static final long WINDOW_SECONDS = 60L;
 
@@ -82,6 +83,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             case "/api/v1/auth/verify-email" -> authProperties.getVerifyRateLimitPerMinute();
             case "/api/v1/auth/resend-otp" -> authProperties.getResendRateLimitPerMinute();
             case "/api/v1/auth/forgot-password" -> authProperties.getForgotRateLimitPerMinute();
+            case "/api/v1/auth/refresh-token" -> authProperties.getRefreshRateLimitPerMinute();
             default -> 0;
         };
     }
@@ -93,6 +95,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             case "/api/v1/auth/verify-email" -> "verify-ip";
             case "/api/v1/auth/resend-otp" -> "resend-ip";
             case "/api/v1/auth/forgot-password" -> "forgot-ip";
+            case "/api/v1/auth/refresh-token" -> "refresh-ip";
             default -> "auth-ip";
         };
     }

@@ -13,7 +13,8 @@ spring.jpa.properties.hibernate.format_sql=true
 logging.level.org.springframework.security=DEBUG
 
 # JWT Configuration
-app.jwt.secret=<enter-your-jwt-configuration-secret-key-here>
+# Production (prod/production profile) requires APP_JWT_SECRET in the environment.
+app.jwt.secret=${APP_JWT_SECRET:<enter-your-jwt-configuration-secret-key-here>}
 app.jwt.expiration=86400000
 
 # Swagger UI

@@ -2,6 +2,7 @@ package com.developer.copilot.auth.jwt;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.Locale;
 
 import javax.crypto.SecretKey;
 
@@ -32,9 +33,21 @@ public class JwtService {
             throw new IllegalStateException(
                     "app.jwt.secret must be at least " + MIN_SECRET_LENGTH + " characters.");
         }
+        if (looksLikePlaceholder(secret)) {
+            throw new IllegalStateException(
+                    "app.jwt.secret looks like a placeholder. Set APP_JWT_SECRET to a long random value.");
+        }
         if (expiration <= 0) {
             throw new IllegalStateException("app.auth.access-expiry-ms must be a positive duration in milliseconds.");
         }
+    }
+
+    static boolean looksLikePlaceholder(String value) {
+        String lower = value == null ? "" : value.toLowerCase(Locale.ROOT);
+        return lower.isBlank()
+                || lower.contains("enter-your-jwt")
+                || lower.contains("your-jwt-configuration")
+                || "changeme".equals(lower);
     }
 
     private SecretKey getSigningKey() {

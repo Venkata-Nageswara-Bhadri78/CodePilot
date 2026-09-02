@@ -163,6 +163,34 @@ class AuthControllerTest {
     }
 
     @Test
+    void login_passwordLongerThan72_returns400() throws Exception {
+        String longPassword = "Aa1@" + "x".repeat(70);
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "john@example.com",
+                                  "password": "%s"
+                                }
+                                """.formatted(longPassword)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void login_emailLongerThan255_returns400() throws Exception {
+        String email = "a".repeat(250) + "@x.com";
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "%s",
+                                  "password": "Secure@123"
+                                }
+                                """.formatted(email)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void login_malformedJson_returns400() throws Exception {
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -206,6 +234,18 @@ class AuthControllerTest {
                                   "refreshToken": ""
                                 }
                                 """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void refreshToken_oversized_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "refreshToken": "%s"
+                                }
+                                """.formatted("x".repeat(129))))
                 .andExpect(status().isBadRequest());
     }
 }

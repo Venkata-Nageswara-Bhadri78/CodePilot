@@ -17,7 +17,8 @@ public class LoginRequest {
     @Size(max = 255)
     private String email;
 
-    @Schema(description = "Account password", example = "Secure@123", format = "password")
+    @Schema(description = "Account password", example = "Secure@123", format = "password", maxLength = 72)
     @NotBlank
+    @Size(max = 72)
     private String password;
 }

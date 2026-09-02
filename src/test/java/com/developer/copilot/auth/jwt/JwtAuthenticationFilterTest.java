@@ -94,6 +94,22 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void doFilterInternal_unverifiedUser_leavesContextEmpty() throws Exception {
+        user.setEmailVerified(false);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer valid-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        when(jwtService.extractUserId("valid-token")).thenReturn(1L);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        assertNull(SecurityContextHolder.getContext().getAuthentication());
+        verify(filterChain).doFilter(request, response);
+    }
+
+    @Test
     void doFilterInternal_noAuthorizationHeader_leavesContextEmpty() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpServletResponse response = new MockHttpServletResponse();

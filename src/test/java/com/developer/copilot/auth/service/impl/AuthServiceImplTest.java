@@ -370,6 +370,7 @@ class AuthServiceImplTest {
 
         assertTrue(resetToken.getUsed());
         assertTrue(activeToken.getRevoked());
+        assertEquals(1, user.getTokenVersion());
         verify(userRepository).save(user);
     }
 
