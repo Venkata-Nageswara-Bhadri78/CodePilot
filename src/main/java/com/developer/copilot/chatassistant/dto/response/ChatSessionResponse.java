@@ -20,10 +20,14 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Schema(description = "The full chat history for one job")
+@Schema(
+        description = "Paged chat history for one job. When no chat has started, chatSessionId and "
+                + "chatTitle are null and messages is []. That is 200, not 404. createdAt is local-datetime without offset.",
+        example = "{\"chatSessionId\":null,\"jobId\":42,\"chatTitle\":null,\"messages\":[],"
+                + "\"page\":0,\"size\":50,\"totalElements\":0,\"totalPages\":0}")
 public class ChatSessionResponse {
 
-    @Schema(description = "Null if no chat has been started for this job yet")
+    @Schema(description = "Null if no chat has been started for this job yet", example = "15", nullable = true)
     private Long chatSessionId;
 
     @Schema(description = "ID of the job this chat belongs to", example = "42")

@@ -37,6 +37,7 @@ public class ChatSessionSummaryResponse {
     @Schema(description = "Auto-generated title, e.g. 'Amazon - SDE 1'", example = "Amazon - SDE 1")
     private String chatTitle;
 
-    @Schema(description = "When this chat was last updated", example = "2026-08-24T15:30:00")
+    @Schema(description = "When the session row was last updated (bumped on each saved turn)",
+            example = "2026-08-24T15:30:00")
     private LocalDateTime updatedAt;
 }

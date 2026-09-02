@@ -98,7 +98,8 @@ public class SwaggerConfig {
                 .group("public")
                 .displayName("Public API")
                 .pathsToMatch("/api/v1/**")
-                .pathsToExclude("/api/v1/internal/**", "/api/v1/auth/**", "/api/v1/users/**", "/api/v1/ai/**")
+                .pathsToExclude("/api/v1/internal/**", "/api/v1/auth/**", "/api/v1/users/**",
+                        "/api/v1/ai/**", "/api/v1/chat-assistant/**")
                 .build();
     }
 

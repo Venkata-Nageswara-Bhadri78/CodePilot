@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
 import com.developer.copilot.chatassistant.dto.response.ChatMessageResponse;
+import com.developer.copilot.chatassistant.dto.response.ChatSessionListResponse;
 import com.developer.copilot.chatassistant.dto.response.ChatSessionResponse;
 import com.developer.copilot.chatassistant.dto.response.ChatSessionSummaryResponse;
 import com.developer.copilot.chatassistant.entity.ChatMessage;
@@ -73,5 +74,15 @@ public class ChatAssistantMapper {
         return sessions.stream()
                 .map(this::toSummaryResponse)
                 .collect(Collectors.toList());
+    }
+
+    public ChatSessionListResponse toListResponse(Page<ChatSession> page) {
+        return ChatSessionListResponse.builder()
+                .chats(toSummaryResponseList(page.getContent()))
+                .page(page.getNumber())
+                .size(page.getSize())
+                .totalElements(page.getTotalElements())
+                .totalPages(page.getTotalPages())
+                .build();
     }
 }

@@ -1,5 +1,8 @@
 package com.developer.copilot.chatassistant.entity;
 
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
+
 import com.developer.copilot.auth.entity.BaseEntity;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.jobs.entity.JobEntity;
@@ -12,8 +15,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToOne;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -50,9 +53,10 @@ public class ChatSession extends BaseEntity {
 
     /**
      * The job this chat is about. One job has at most one chat (enforced by the unique
-     * constraint below).
+     * constraint below). {@code ON DELETE CASCADE} so deleting the job also removes the session.
      */
     @OneToOne(fetch = FetchType.LAZY)
+    @OnDelete(action = OnDeleteAction.CASCADE)
     @JoinColumn(name = "job_id", nullable = false, unique = true)
     private JobEntity job;
 

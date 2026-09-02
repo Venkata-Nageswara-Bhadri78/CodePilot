@@ -1,22 +1,30 @@
 package com.developer.copilot.chatassistant.repository;
 
-import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.developer.copilot.chatassistant.entity.ChatSession;
 
+import jakarta.persistence.LockModeType;
+
 public interface ChatSessionRepository extends JpaRepository<ChatSession, Long> {
 
-    Optional<ChatSession> findByJobId(Long jobId);
+    Optional<ChatSession> findByJobIdAndUserId(Long jobId, Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT cs FROM ChatSession cs WHERE cs.id = :id")
+    Optional<ChatSession> findByIdForUpdate(@Param("id") Long id);
 
     /**
-     * Eagerly fetches the associated job in the same query so rendering a "my chats" list
-     * (job title/company + chat title) never triggers one lazy-load query per session.
+     * Sidebar list: job is fetched in the same query so we never N+1 on title/company.
      */
-    @Query("SELECT cs FROM ChatSession cs JOIN FETCH cs.job WHERE cs.user.id = :userId ORDER BY cs.updatedAt DESC")
-    List<ChatSession> findAllByUserIdWithJob(@Param("userId") Long userId);
+    @EntityGraph(attributePaths = "job")
+    Page<ChatSession> findAllByUserIdOrderByUpdatedAtDesc(Long userId, Pageable pageable);
 }
