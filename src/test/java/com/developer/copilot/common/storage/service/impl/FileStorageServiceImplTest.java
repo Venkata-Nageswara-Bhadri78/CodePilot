@@ -12,9 +12,17 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
+
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import com.developer.copilot.auth.entity.User;
+import com.developer.copilot.auth.security.CustomUserDetails;
 
 import com.developer.copilot.common.storage.config.StorageProperties;
 import com.developer.copilot.common.storage.dto.StoredFile;
@@ -37,6 +45,11 @@ class FileStorageServiceImplTest {
         storageProperties = mock(StorageProperties.class);
         when(storageProperties.getBucketName()).thenReturn("copilot");
         fileStorageService = new FileStorageServiceImpl(minioClient, storageProperties);
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -321,5 +334,54 @@ class FileStorageServiceImplTest {
         StoredFile stored = fileStorageService.upload(file, "/users/1/resumes/");
 
         assertTrue(stored.getStorageKey().startsWith("users/1/resumes/"));
+    }
+
+    @Test
+    void upload_withJwtUser_rejectsAnotherUsersFolder() throws Exception {
+        authenticateUser(1L);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "resume.pdf", "application/pdf", "%PDF-1.4 content".getBytes());
+
+        assertThrows(InvalidFileException.class,
+                () -> fileStorageService.upload(file, "users/999/resumes"));
+        verify(minioClient, never()).putObject(any());
+    }
+
+    @Test
+    void upload_withJwtUser_allowsOwnFolder() throws Exception {
+        authenticateUser(1L);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "resume.pdf", "application/pdf", "%PDF-1.4 content".getBytes());
+
+        StoredFile stored = fileStorageService.upload(file, "users/1/resumes");
+
+        assertTrue(stored.getStorageKey().startsWith("users/1/resumes/"));
+        verify(minioClient, times(1)).putObject(any());
+    }
+
+    @Test
+    void download_withJwtUser_rejectsAnotherUsersKey() throws Exception {
+        authenticateUser(1L);
+
+        assertThrows(InvalidFileException.class,
+                () -> fileStorageService.download("users/10/resumes/a.pdf"));
+        verify(minioClient, never()).getObject(any());
+    }
+
+    @Test
+    void exists_withJwtUser_rejectsAnotherUsersKey() throws Exception {
+        authenticateUser(7L);
+
+        assertThrows(InvalidFileException.class,
+                () -> fileStorageService.exists("users/1/resumes/file.pdf"));
+        verify(minioClient, never()).statObject(any());
+    }
+
+    private static void authenticateUser(long userId) {
+        User user = new User();
+        user.setId(userId);
+        CustomUserDetails details = new CustomUserDetails(user);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(details, null, List.of()));
     }
 }

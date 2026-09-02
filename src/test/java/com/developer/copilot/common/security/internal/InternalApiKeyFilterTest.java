@@ -13,6 +13,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -262,6 +263,28 @@ class InternalApiKeyFilterTest {
 
         assertNotNull(chain.getRequest());
         assertEquals(HttpStatus.OK.value(), response.getStatus());
+    }
+
+    @Test
+    void disabledMisconfigAndWrongKey_returnIdenticalClientBodies() throws Exception {
+        properties.setEnabled(false);
+        filter.doFilter(request, response, chain);
+        String disabledMessage = new ObjectMapper()
+                .readTree(response.getContentAsString())
+                .get("message")
+                .asString();
+
+        setUp();
+        request.addHeader("X-Internal-Api-Key", "wrong-key");
+        filter.doFilter(request, response, chain);
+        String invalidMessage = new ObjectMapper()
+                .readTree(response.getContentAsString())
+                .get("message")
+                .asString();
+
+        assertEquals(InternalApiKeyFilter.UNAUTHORIZED_CLIENT_MESSAGE, disabledMessage);
+        assertEquals(disabledMessage, invalidMessage);
+        assertFalse(response.getContentAsString().contains("wrong-key"));
     }
 
     @Test

@@ -9,6 +9,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.Profile;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
@@ -58,5 +59,14 @@ class SwaggerConfigTest {
 
         assertTrue(login.getPost().getSecurity() == null || login.getPost().getSecurity().isEmpty());
         assertFalse(jobs.getGet().getSecurity() == null || jobs.getGet().getSecurity().isEmpty());
+    }
+
+    @Test
+    void swaggerConfig_isOffOnProdAndProductionProfiles() {
+        Profile profile = SwaggerConfig.class.getAnnotation(Profile.class);
+        assertNotNull(profile);
+        String expression = String.join(" & ", profile.value());
+        assertTrue(expression.contains("!prod"));
+        assertTrue(expression.contains("!production"));
     }
 }
