@@ -43,14 +43,15 @@ public class InternalResumeController {
 
     @Operation(
             summary = "Get parsed data for the high-priority resume",
-            description = "Returns COMPLETED parsed data, or parses on demand (timeout applies). "
-                    + "FAILED records with the current parser-version return 422, not 200."
+            description = "Returns COMPLETED parsed data. PENDING (background parse still running) "
+                    + "and FAILED return 422. Cache misses with no PENDING row parse on demand "
+                    + "(timeout applies). Payload is PII; not for the SPA."
     )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Parsed resume information"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing/invalid JWT or internal service key", content = @Content),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "No profile or no high-priority resume", content = @Content),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "Resume could not be parsed (FAILED)", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "PENDING or FAILED parse", content = @Content),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "Rate limit exceeded", content = @Content)
     })
     @GetMapping("/parsed")
@@ -66,7 +67,7 @@ public class InternalResumeController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Parsed resume information"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing/invalid JWT or internal service key", content = @Content),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Resume not found for this user", content = @Content),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "Resume could not be parsed (FAILED)", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "422", description = "PENDING or FAILED parse", content = @Content),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "Rate limit exceeded", content = @Content)
     })
     @GetMapping("/{resumeId}/parsed")

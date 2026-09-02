@@ -110,6 +110,10 @@ public class ResumeParsingServiceImpl implements ResumeParsingService {
             throw parsingFailed(existing);
         }
 
+        if (existing != null && existing.isPending() && versionMatches) {
+            throw new ResumeParsingException("Resume parsing is still in progress. Please retry shortly.");
+        }
+
         if (!fileStorageService.exists(resume.getStorageKey())) {
             log.warn("Resume {} has no stored file", resume.getId());
             throw new ResumeNotFoundException();

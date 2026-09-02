@@ -50,7 +50,8 @@ public class InternalOpenApiConfig {
                 .name("Internal - Resume Parsing")
                 .description("Backend-only. JWT identifies the user; X-Internal-Api-Key identifies the calling service. "
                         + "Ownership is still the JWT user — you cannot fetch another person's resume by id. "
-                        + "200 only when status is COMPLETED. FAILED is 422. PENDING/on-demand parse can take several seconds. "
+                        + "200 only when status is COMPLETED. FAILED and still-PENDING are 422. "
+                        + "On-demand parse (no row yet) can take several seconds. "
                         + "Payload includes rawText and contextText (PII). Not for the SPA. 429 if parse budget is spent."));
     }
 }

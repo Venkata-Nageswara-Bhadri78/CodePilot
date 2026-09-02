@@ -32,6 +32,7 @@ import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
@@ -197,36 +198,32 @@ class ResumeParsingServiceImplTest {
     }
 
     @Test
-    void getParsedResume_pendingRecord_isParsedOnDemand() {
+    void getParsedResume_pendingRecord_doesNotParseInline() {
         ResumeParsedData pending = record(ResumeParsingStatus.PENDING);
-        ResumeParsedData parsed = record(ResumeParsingStatus.COMPLETED);
+        pending.setParserVersion("v1");
 
         withProfile();
         when(resumeRepository.findByIdAndUserProfileAndActiveTrue(5L, profile))
                 .thenReturn(Optional.of(resume));
         when(resumeParsedDataRepository.findByResume(resume)).thenReturn(Optional.of(pending));
-        when(fileStorageService.exists("users/10/resumes/a.pdf")).thenReturn(true);
-        when(resumeParser.parseWithRetry(resume, pending)).thenReturn(parsed);
-        when(resumeParsedDataMapper.toResponse(resume, parsed)).thenReturn(response("COMPLETED"));
 
-        resumeParsingService.getParsedResume(5L);
-
-        verify(resumeParser).parseWithRetry(resume, pending);
-        verify(resumeParsingWorker).persistAsync(5L, parsed);
+        ResumeParsingException ex = assertThrows(
+                ResumeParsingException.class, () -> resumeParsingService.getParsedResume(5L));
+        assertTrue(ex.getMessage().contains("still in progress"));
+        verify(resumeParser, never()).parseWithRetry(any(), any());
     }
 
     @Test
     void getParsedResume_onDemandFailed_throwsAfterPersist() {
-        ResumeParsedData pending = record(ResumeParsingStatus.PENDING);
         ResumeParsedData failed = record(ResumeParsingStatus.FAILED);
         failed.setLastError("bad pdf");
 
         withProfile();
         when(resumeRepository.findByIdAndUserProfileAndActiveTrue(5L, profile))
                 .thenReturn(Optional.of(resume));
-        when(resumeParsedDataRepository.findByResume(resume)).thenReturn(Optional.of(pending));
+        when(resumeParsedDataRepository.findByResume(resume)).thenReturn(Optional.empty());
         when(fileStorageService.exists("users/10/resumes/a.pdf")).thenReturn(true);
-        when(resumeParser.parseWithRetry(resume, pending)).thenReturn(failed);
+        when(resumeParser.parseWithRetry(resume, null)).thenReturn(failed);
 
         assertThrows(ResumeParsingException.class, () -> resumeParsingService.getParsedResume(5L));
         verify(resumeParsingWorker).persistAsync(5L, failed);

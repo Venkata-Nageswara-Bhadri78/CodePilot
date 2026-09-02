@@ -87,6 +87,19 @@ class InternalResumeControllerTest {
                 .andExpect(jsonPath("$.message").value("Resume contains no extractable text."));
     }
 
+    @Test
+    void getParsedResume_pendingParse_returns422() throws Exception {
+        when(resumeParsingService.getParsedResume(5L))
+                .thenThrow(new ResumeParsingException(
+                        "Resume parsing is still in progress. Please retry shortly."));
+
+        mockMvc.perform(get("/api/v1/internal/resumes/5/parsed"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value(
+                        "Resume parsing is still in progress. Please retry shortly."));
+    }
+
     private ResumeParsedDataResponse parsed() {
         return ResumeParsedDataResponse.builder()
                 .resumeId(5L)

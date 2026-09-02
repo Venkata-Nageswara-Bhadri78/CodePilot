@@ -16,9 +16,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Fails startup in production profiles when the internal API key boundary is disabled,
- * the shared secret is blank, too short to be a meaningful secret, or is still set to a
- * well-known placeholder value.
+ * Fails startup when the internal API key is disabled outside {@code local}/{@code dev}.
+ * In production profiles, also rejects a blank, short, or placeholder secret.
  */
 @Slf4j
 @Component
@@ -47,13 +46,16 @@ public class InternalApiStartupValidator implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        if (!isProductionProfile()) {
-            return;
+        if (!internalApiProperties.isEnabled()) {
+            if (isLaptopProfile()) {
+                return;
+            }
+            throw new IllegalStateException(
+                    "internal.api.enabled must be true outside local/dev profiles.");
         }
 
-        if (!internalApiProperties.isEnabled()) {
-            throw new IllegalStateException(
-                    "internal.api.enabled must be true in production profiles.");
+        if (!isProductionProfile()) {
+            return;
         }
 
         String key = internalApiProperties.getKey();
@@ -74,6 +76,12 @@ public class InternalApiStartupValidator implements ApplicationRunner {
         }
 
         log.info("Internal API key protection verified for production profile.");
+    }
+
+    private boolean isLaptopProfile() {
+        return Arrays.stream(environment.getActiveProfiles())
+                .map(profile -> profile.toLowerCase(Locale.ROOT))
+                .anyMatch(profile -> profile.equals("local") || profile.equals("dev"));
     }
 
     private boolean isProductionProfile() {

@@ -139,6 +139,31 @@ class UserServiceImplTest {
     }
 
     @Test
+    void uploadResume_unsanitaryFilename_storesAllowlistedDefault() {
+        when(userProfileRepository.findByUserForUpdate(user)).thenReturn(Optional.of(profile));
+        when(resumeRepository.countByUserProfileAndActiveTrue(profile)).thenReturn(0L);
+        when(fileStorageService.upload(any(MultipartFile.class), anyString()))
+                .thenReturn(StoredFile.builder()
+                        .storageKey("users/10/resumes/uuid.pdf")
+                        .originalFilename("my resume.pdf")
+                        .checksum("abc")
+                        .fileSize(10L)
+                        .contentType("application/pdf")
+                        .build());
+        when(resumeRepository.findByChecksumAndUserProfileAndActiveTrue("abc", profile))
+                .thenReturn(Optional.empty());
+        when(resumeRepository.saveAndFlush(any(Resume.class))).thenAnswer(invocation -> {
+            Resume resume = invocation.getArgument(0);
+            resume.setId(5L);
+            return resume;
+        });
+
+        userService.uploadResume(pdfFile);
+
+        verify(resumeRepository).saveAndFlush(argThat(r -> "resume.pdf".equals(r.getOriginalFilename())));
+    }
+
+    @Test
     void uploadResume_duplicateChecksum_deletesStorageAndThrows() {
         when(userProfileRepository.findByUserForUpdate(user)).thenReturn(Optional.of(profile));
         when(resumeRepository.countByUserProfileAndActiveTrue(profile)).thenReturn(0L);

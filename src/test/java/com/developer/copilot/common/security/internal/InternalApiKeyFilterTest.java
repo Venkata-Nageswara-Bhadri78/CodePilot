@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -19,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InternalApiKeyFilterTest {
 
     private InternalApiProperties properties;
+    private MockEnvironment environment;
     private InternalApiKeyFilter filter;
     private MockHttpServletRequest request;
     private MockHttpServletResponse response;
@@ -29,8 +31,9 @@ class InternalApiKeyFilterTest {
         properties = new InternalApiProperties();
         properties.setEnabled(true);
         properties.setKey("super-secret-service-key");
+        environment = new MockEnvironment();
 
-        filter = new InternalApiKeyFilter(properties, new ObjectMapper());
+        filter = new InternalApiKeyFilter(properties, new ObjectMapper(), environment);
 
         request = new MockHttpServletRequest("GET", "/api/v1/internal/resumes/parsed");
         response = new MockHttpServletResponse();
@@ -80,13 +83,36 @@ class InternalApiKeyFilterTest {
     }
 
     @Test
-    void disabledInternalApi_skipsKeyCheck() throws Exception {
+    void disabledInternalApi_onLaptopProfile_skipsKeyCheck() throws Exception {
         properties.setEnabled(false);
+        environment.setActiveProfiles("local");
 
         filter.doFilter(request, response, chain);
 
         assertNotNull(chain.getRequest());
         assertEquals(HttpStatus.OK.value(), response.getStatus());
+    }
+
+    @Test
+    void disabledInternalApi_onDevProfile_skipsKeyCheck() throws Exception {
+        properties.setEnabled(false);
+        environment.setActiveProfiles("dev");
+
+        filter.doFilter(request, response, chain);
+
+        assertNotNull(chain.getRequest());
+        assertEquals(HttpStatus.OK.value(), response.getStatus());
+    }
+
+    @Test
+    void disabledInternalApi_outsideLaptop_failsClosed() throws Exception {
+        properties.setEnabled(false);
+
+        filter.doFilter(request, response, chain);
+
+        assertNull(chain.getRequest());
+        assertEquals(HttpStatus.UNAUTHORIZED.value(), response.getStatus());
+        assertTrue(response.getContentAsString().contains("Internal API is not configured."));
     }
 
     @Test
@@ -101,9 +127,6 @@ class InternalApiKeyFilterTest {
 
     @Test
     void comparisonIsSafeForKeysOfDifferentLengths() throws Exception {
-        // MessageDigest.isEqual returns false (never throws) when lengths differ, regardless
-        // of how many leading characters match - proving the comparison doesn't short-circuit
-        // in a way that would leak timing information proportional to a matching prefix.
         request.addHeader("X-Internal-Api-Key", "super-secret-service-key-but-longer");
 
         filter.doFilter(request, response, chain);
@@ -133,7 +156,7 @@ class InternalApiKeyFilterTest {
         InternalApiSecurityConfig config = new InternalApiSecurityConfig();
 
         org.springframework.boot.web.servlet.FilterRegistrationBean<InternalApiKeyFilter> registration =
-                config.internalApiKeyFilterRegistration(properties, new ObjectMapper());
+                config.internalApiKeyFilterRegistration(properties, new ObjectMapper(), environment);
 
         assertTrue(registration.getUrlPatterns().contains("/api/v1/internal/*"));
         assertEquals(1, registration.getUrlPatterns().size());

@@ -21,7 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 
 /**
- * Per-IP and per-user limits on resume upload and internal parse reads.
+ * Per-IP and per-user limits on resume upload/delete and internal parse reads.
  * Runs after the security chain so a stolen JWT is keyed by user id.
  */
 public class UserRateLimitFilter extends OncePerRequestFilter {
@@ -81,6 +81,9 @@ public class UserRateLimitFilter extends OncePerRequestFilter {
         if ("POST".equals(method) && isResumeCollection(path)) {
             return "upload";
         }
+        if ("DELETE".equals(method) && isResumeItem(path)) {
+            return "delete";
+        }
         if ("GET".equals(method) && isInternalParse(path)) {
             return "parse";
         }
@@ -90,6 +93,7 @@ public class UserRateLimitFilter extends OncePerRequestFilter {
     private int limitFor(String bucket) {
         return switch (bucket) {
             case "upload" -> properties.getUploadPerMinute();
+            case "delete" -> properties.getDeletePerMinute();
             case "parse" -> properties.getParsePerMinute();
             default -> 0;
         };
@@ -97,6 +101,14 @@ public class UserRateLimitFilter extends OncePerRequestFilter {
 
     private static boolean isResumeCollection(String path) {
         return "/api/v1/users/resumes".equals(path);
+    }
+
+    private static boolean isResumeItem(String path) {
+        if (path == null || !path.startsWith("/api/v1/users/resumes/")) {
+            return false;
+        }
+        String rest = path.substring("/api/v1/users/resumes/".length());
+        return !rest.isEmpty() && rest.indexOf('/') < 0;
     }
 
     private static boolean isInternalParse(String path) {

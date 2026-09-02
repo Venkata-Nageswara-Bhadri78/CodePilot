@@ -119,7 +119,7 @@ class InternalApiStartupValidatorTest {
     }
 
     @Test
-    void nonProductionCanDisableInternalApi() {
+    void laptopCanDisableInternalApi() {
         InternalApiProperties properties = new InternalApiProperties();
         properties.setEnabled(false);
 
@@ -129,6 +129,19 @@ class InternalApiStartupValidatorTest {
         InternalApiStartupValidator validator = new InternalApiStartupValidator(properties, environment);
 
         assertDoesNotThrow(() -> validator.run(new DefaultApplicationArguments()));
+    }
+
+    @Test
+    void disabledOutsideLaptop_failsStartup() {
+        InternalApiProperties properties = new InternalApiProperties();
+        properties.setEnabled(false);
+
+        MockEnvironment environment = new MockEnvironment();
+
+        InternalApiStartupValidator validator = new InternalApiStartupValidator(properties, environment);
+
+        assertThrows(IllegalStateException.class,
+                () -> validator.run(new DefaultApplicationArguments()));
     }
 
     @Test

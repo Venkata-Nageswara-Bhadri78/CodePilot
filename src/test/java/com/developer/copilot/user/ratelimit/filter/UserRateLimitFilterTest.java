@@ -96,6 +96,43 @@ class UserRateLimitFilterTest {
     }
 
     @Test
+    void delete_isLimitedPerIp() throws Exception {
+        UserRateLimitProperties properties = new UserRateLimitProperties();
+        properties.setDeletePerMinute(2);
+        UserRateLimitFilter filter = newFilter(properties);
+        FilterChain chain = mock(FilterChain.class);
+
+        for (int i = 0; i < 2; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("DELETE", "/api/v1/users/resumes/5");
+            request.setRemoteAddr("10.0.0.1");
+            filter.doFilterInternal(request, new MockHttpServletResponse(), chain);
+        }
+
+        MockHttpServletRequest blocked = new MockHttpServletRequest("DELETE", "/api/v1/users/resumes/6");
+        blocked.setRemoteAddr("10.0.0.1");
+        MockHttpServletResponse blockedResponse = new MockHttpServletResponse();
+        filter.doFilterInternal(blocked, blockedResponse, chain);
+
+        assertEquals(429, blockedResponse.getStatus());
+        assertNotNull(blockedResponse.getHeader("Retry-After"));
+        verify(chain, times(2)).doFilter(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void patchHighPriority_isNotDeleteLimited() throws Exception {
+        UserRateLimitProperties properties = new UserRateLimitProperties();
+        properties.setDeletePerMinute(1);
+        UserRateLimitFilter filter = newFilter(properties);
+        FilterChain chain = mock(FilterChain.class);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("PATCH", "/api/v1/users/resumes/5/high-priority");
+        request.setRemoteAddr("10.0.0.1");
+        filter.doFilterInternal(request, new MockHttpServletResponse(), chain);
+
+        verify(chain).doFilter(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void listResumes_isNotLimited() throws Exception {
         UserRateLimitFilter filter = newFilter(tightUploadLimit());
         FilterChain chain = mock(FilterChain.class);
@@ -108,12 +145,13 @@ class UserRateLimitFilterTest {
     }
 
     @Test
-    void registration_coversUploadAndParsePaths() {
+    void registration_coversUploadDeleteAndParsePaths() {
         UserRateLimitConfig config = new UserRateLimitConfig();
         var registration = config.userRateLimitFilterRegistration(
                 newFilter(new UserRateLimitProperties()));
 
         assertTrue(registration.getUrlPatterns().contains("/api/v1/users/resumes"));
+        assertTrue(registration.getUrlPatterns().contains("/api/v1/users/resumes/*"));
         assertTrue(registration.getUrlPatterns().contains("/api/v1/internal/resumes/*"));
     }
 

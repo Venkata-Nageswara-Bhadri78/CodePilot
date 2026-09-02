@@ -5,6 +5,8 @@ import com.developer.copilot.user.exception.ResumeParsingException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.io.IOUtils;
+import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 import org.apache.pdfbox.text.PDFTextStripper;
@@ -28,7 +30,8 @@ public class ResumeTextExtractor {
             throw new ResumeParsingException("Resume file is empty and cannot be parsed.");
         }
 
-        try (PDDocument document = Loader.loadPDF(pdfBytes)) {
+        try (RandomAccessReadBuffer source = new RandomAccessReadBuffer(pdfBytes);
+             PDDocument document = Loader.loadPDF(source, IOUtils.createTempFileOnlyStreamCache())) {
 
             if (!document.getCurrentAccessPermission().canExtractContent()) {
                 throw new ResumeParsingException(

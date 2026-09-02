@@ -129,11 +129,16 @@ public class UserController {
                 .body(download.resource());
     }
 
-    @Operation(summary = "Delete resume")
+    @Operation(
+            summary = "Delete resume",
+            description = "Hard-deletes the row so the same PDF checksum can be uploaded again. "
+                    + "429 + Retry-After when the per-user/IP delete budget is spent."
+    )
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Deleted"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Resume not found", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "Rate limit exceeded", content = @Content),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Storage failure", content = @Content)
     })
     @DeleteMapping("/resumes/{resumeId}")

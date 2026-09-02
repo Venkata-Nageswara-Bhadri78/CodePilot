@@ -109,4 +109,8 @@ public class ResumeParsedData extends BaseEntity {
     public boolean isFailed() {
         return status == ResumeParsingStatus.FAILED;
     }
+
+    public boolean isPending() {
+        return status == ResumeParsingStatus.PENDING;
+    }
 }

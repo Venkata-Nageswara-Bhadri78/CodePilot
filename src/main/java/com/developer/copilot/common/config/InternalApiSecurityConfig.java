@@ -6,6 +6,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
+import org.springframework.core.env.Environment;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -29,10 +30,11 @@ public class InternalApiSecurityConfig {
     @Bean
     public FilterRegistrationBean<InternalApiKeyFilter> internalApiKeyFilterRegistration(
             InternalApiProperties internalApiProperties,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            Environment environment) {
 
         FilterRegistrationBean<InternalApiKeyFilter> registration = new FilterRegistrationBean<>(
-                new InternalApiKeyFilter(internalApiProperties, objectMapper));
+                new InternalApiKeyFilter(internalApiProperties, objectMapper, environment));
 
         registration.setName("internalApiKeyFilter");
         registration.addUrlPatterns(internalApiProperties.getPathPrefix() + "/*");

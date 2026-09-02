@@ -35,13 +35,13 @@ class UserExceptionMappingTest {
     }
 
     @Test
-    void resumeParsing_is422() {
+    void resumeParsing_pending_is422() {
         GlobalExceptionHandler handler = new GlobalExceptionHandler();
 
         var response = handler.handleResumeParsing(
-                new ResumeParsingException("Resume contains no extractable text."));
+                new ResumeParsingException("Resume parsing is still in progress. Please retry shortly."));
 
         assertEquals(HttpStatus.UNPROCESSABLE_ENTITY, response.getStatusCode());
-        assertTrue(response.getBody().getMessage().contains("no extractable text"));
+        assertTrue(response.getBody().getMessage().contains("still in progress"));
     }
 }

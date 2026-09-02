@@ -112,7 +112,7 @@ public class UserServiceImpl implements UserService {
 
         Resume resume = Resume.builder()
                 .userProfile(profile)
-                .originalFilename(storedFile.getOriginalFilename())
+                .originalFilename(ResumeFilenameUtil.sanitizeForDownload(storedFile.getOriginalFilename()))
                 .storageKey(storedFile.getStorageKey())
                 .checksum(storedFile.getChecksum())
                 .fileSize(storedFile.getFileSize())
