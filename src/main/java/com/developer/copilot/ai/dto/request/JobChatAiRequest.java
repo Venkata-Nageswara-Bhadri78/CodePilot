@@ -21,7 +21,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "Internal request to continue a job-scoped multi-turn AI chat")
+@Schema(hidden = true, description = "Internal request to continue a job-scoped multi-turn AI chat")
 public class JobChatAiRequest {
 
     @NotNull(message = "Job ID cannot be null.")
@@ -31,8 +31,8 @@ public class JobChatAiRequest {
     @Schema(description = "Optional Resume ID owned by the user")
     private Long resumeId;
 
-    @Size(max = 50000, message = "Custom resume text cannot exceed 50000 characters.")
-    @Schema(description = "Optional custom resume text overriding stored resume context", maxLength = 50000)
+    @Size(max = 16000, message = "Custom resume text cannot exceed 16000 characters.")
+    @Schema(description = "Optional custom resume text overriding stored resume context", maxLength = 16000)
     private String customResumeText;
 
     @Valid

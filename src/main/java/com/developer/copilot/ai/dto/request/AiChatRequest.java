@@ -23,13 +23,14 @@ public class AiChatRequest {
     @Size(max = 8000, message = "Prompt cannot exceed 8000 characters.")
     @Schema(description = "User situational prompt or question",
             example = "Rate my resume against this job description and suggest 3 high-impact improvements.",
+            requiredMode = Schema.RequiredMode.REQUIRED,
             maxLength = 8000)
     private String prompt;
 
-    @Size(max = 50000, message = "Job description cannot exceed 50000 characters.")
+    @Size(max = 16000, message = "Job description cannot exceed 16000 characters.")
     @Schema(description = "Inline job description text. When present, overrides jobId.",
             example = "Senior Full Stack Java Engineer required with 3+ years experience in Spring Boot, React, and AWS.",
-            maxLength = 50000)
+            maxLength = 16000)
     private String jobDescription;
 
     @Schema(description = "Saved job ID owned by the authenticated user. Ignored when jobDescription is provided.",
@@ -40,10 +41,10 @@ public class AiChatRequest {
             example = "5")
     private Long resumeId;
 
-    @Size(max = 50000, message = "Custom resume text cannot exceed 50000 characters.")
+    @Size(max = 16000, message = "Custom resume text cannot exceed 16000 characters.")
     @Schema(description = "Inline resume text that overrides resumeId and the high-priority resume.",
             example = "Senior Java Full Stack Developer with 4 years experience...",
-            maxLength = 50000)
+            maxLength = 16000)
     private String customResumeText;
 
     @Builder.Default
