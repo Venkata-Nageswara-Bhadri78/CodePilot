@@ -35,6 +35,13 @@ public class ResumeTextExtractor {
                         "Resume is protected and does not allow text extraction.");
             }
 
+            if (document.getNumberOfPages() > resumeProperties.getParsing().getMaxPages()) {
+                throw new ResumeParsingException(
+                        "Resume exceeds the maximum of "
+                                + resumeProperties.getParsing().getMaxPages()
+                                + " pages.");
+            }
+
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
 

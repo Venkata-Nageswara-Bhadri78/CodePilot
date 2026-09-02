@@ -3,12 +3,14 @@ package com.developer.copilot.user.service;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.common.security.CurrentUserService;
 import com.developer.copilot.common.storage.service.FileStorageService;
+import com.developer.copilot.user.config.ResumeProperties;
 import com.developer.copilot.user.dto.parsing.ResumeParsedDataResponse;
 import com.developer.copilot.user.entity.Resume;
 import com.developer.copilot.user.entity.ResumeParsedData;
 import com.developer.copilot.user.entity.ResumeParsingStatus;
 import com.developer.copilot.user.entity.UserProfile;
 import com.developer.copilot.user.exception.ResumeNotFoundException;
+import com.developer.copilot.user.exception.ResumeParsingException;
 import com.developer.copilot.user.exception.UserProfileNotFoundException;
 import com.developer.copilot.user.mapper.ResumeParsedDataMapper;
 import com.developer.copilot.user.repository.ResumeParsedDataRepository;
@@ -20,17 +22,18 @@ import com.developer.copilot.user.service.parsing.ResumeParsingWorker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -64,12 +67,18 @@ class ResumeParsingServiceImplTest {
     @Mock
     private CurrentUserService currentUserService;
 
-    @InjectMocks
+    @Mock
+    private ResumeProperties resumeProperties;
+
+    @Mock
+    private Executor resumeParsingExecutor;
+
     private ResumeParsingServiceImpl resumeParsingService;
 
     private User user;
     private UserProfile profile;
     private Resume resume;
+    private ResumeProperties.Parsing parsing;
 
     @BeforeEach
     void setUp() {
@@ -87,12 +96,34 @@ class ResumeParsingServiceImplTest {
                 .active(true)
                 .build();
 
+        parsing = new ResumeProperties.Parsing();
+        parsing.setParserVersion("v1");
+        parsing.setTimeoutSeconds(15);
+
         lenient().when(currentUserService.getCurrentUser()).thenReturn(user);
+        lenient().when(resumeProperties.getParsing()).thenReturn(parsing);
+        lenient().doAnswer(invocation -> {
+            invocation.getArgument(0, Runnable.class).run();
+            return null;
+        }).when(resumeParsingExecutor).execute(any());
+
+        resumeParsingService = new ResumeParsingServiceImpl(
+                userProfileRepository,
+                resumeRepository,
+                resumeParsedDataRepository,
+                resumeParser,
+                resumeParsingWorker,
+                resumeParsedDataMapper,
+                fileStorageService,
+                currentUserService,
+                resumeProperties,
+                resumeParsingExecutor);
     }
 
     @Test
     void getParsedResume_completedRecord_returnsPersistedDataWithoutParsing() {
         ResumeParsedData completed = record(ResumeParsingStatus.COMPLETED);
+        completed.setParserVersion("v1");
 
         withProfile();
         when(resumeRepository.findByIdAndUserProfileAndActiveTrue(5L, profile))
@@ -107,21 +138,42 @@ class ResumeParsingServiceImplTest {
     }
 
     @Test
-    void getParsedResume_failedRecord_isNotRetried() {
+    void getParsedResume_failedRecord_throws422() {
         ResumeParsedData failed = record(ResumeParsingStatus.FAILED);
         failed.setAttemptCount(3);
+        failed.setParserVersion("v1");
+        failed.setLastError("Resume contains no extractable text.");
 
         withProfile();
         when(resumeRepository.findByIdAndUserProfileAndActiveTrue(5L, profile))
                 .thenReturn(Optional.of(resume));
         when(resumeParsedDataRepository.findByResume(resume)).thenReturn(Optional.of(failed));
-        when(resumeParsedDataMapper.toResponse(resume, failed)).thenReturn(response("FAILED"));
 
-        ResumeParsedDataResponse response = resumeParsingService.getParsedResume(5L);
-
-        assertEquals("FAILED", response.getStatus());
+        ResumeParsingException ex = assertThrows(
+                ResumeParsingException.class, () -> resumeParsingService.getParsedResume(5L));
+        assertEquals("Resume contains no extractable text.", ex.getMessage());
         verify(resumeParser, never()).parseWithRetry(any(), any());
-        verify(resumeParsingWorker, never()).persistAsync(any(), any());
+    }
+
+    @Test
+    void getParsedResume_staleParserVersion_reparses() {
+        ResumeParsedData stale = record(ResumeParsingStatus.COMPLETED);
+        stale.setParserVersion("v0");
+        ResumeParsedData parsed = record(ResumeParsingStatus.COMPLETED);
+        parsed.setParserVersion("v1");
+
+        withProfile();
+        when(resumeRepository.findByIdAndUserProfileAndActiveTrue(5L, profile))
+                .thenReturn(Optional.of(resume));
+        when(resumeParsedDataRepository.findByResume(resume)).thenReturn(Optional.of(stale));
+        when(fileStorageService.exists("users/10/resumes/a.pdf")).thenReturn(true);
+        when(resumeParser.parseWithRetry(resume, stale)).thenReturn(parsed);
+        when(resumeParsedDataMapper.toResponse(resume, parsed)).thenReturn(response("COMPLETED"));
+
+        resumeParsingService.getParsedResume(5L);
+
+        verify(resumeParser).parseWithRetry(resume, stale);
+        verify(resumeParsingWorker).persistAsync(5L, parsed);
     }
 
     @Test
@@ -162,6 +214,23 @@ class ResumeParsingServiceImplTest {
     }
 
     @Test
+    void getParsedResume_onDemandFailed_throwsAfterPersist() {
+        ResumeParsedData pending = record(ResumeParsingStatus.PENDING);
+        ResumeParsedData failed = record(ResumeParsingStatus.FAILED);
+        failed.setLastError("bad pdf");
+
+        withProfile();
+        when(resumeRepository.findByIdAndUserProfileAndActiveTrue(5L, profile))
+                .thenReturn(Optional.of(resume));
+        when(resumeParsedDataRepository.findByResume(resume)).thenReturn(Optional.of(pending));
+        when(fileStorageService.exists("users/10/resumes/a.pdf")).thenReturn(true);
+        when(resumeParser.parseWithRetry(resume, pending)).thenReturn(failed);
+
+        assertThrows(ResumeParsingException.class, () -> resumeParsingService.getParsedResume(5L));
+        verify(resumeParsingWorker).persistAsync(5L, failed);
+    }
+
+    @Test
     void getParsedResume_missingStoredFile_throwsResumeNotFound() {
         withProfile();
         when(resumeRepository.findByIdAndUserProfileAndActiveTrue(5L, profile))
@@ -176,6 +245,7 @@ class ResumeParsingServiceImplTest {
     @Test
     void getParsedResume_nullResumeId_resolvesHighPriorityResume() {
         ResumeParsedData completed = record(ResumeParsingStatus.COMPLETED);
+        completed.setParserVersion("v1");
 
         withProfile();
         when(resumeRepository.findByHighPriorityTrueAndUserProfileAndActiveTrue(profile))

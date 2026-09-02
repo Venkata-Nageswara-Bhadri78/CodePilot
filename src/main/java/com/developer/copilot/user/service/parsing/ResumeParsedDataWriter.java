@@ -62,6 +62,7 @@ public class ResumeParsedDataWriter {
         target.setParsedAt(source.getParsedAt());
         target.setPageCount(source.getPageCount());
         target.setCharacterCount(source.getCharacterCount());
+        target.setTruncated(Boolean.TRUE.equals(source.getTruncated()));
         target.setRawText(source.getRawText());
         target.setSectionsJson(source.getSectionsJson());
         target.setCandidateName(source.getCandidateName());

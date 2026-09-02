@@ -41,7 +41,7 @@ class UserControllerTest {
     }
 
     @Test
-    void uploadResume_returns200() throws Exception {
+    void uploadResume_returns201() throws Exception {
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "resume.pdf",
@@ -50,7 +50,7 @@ class UserControllerTest {
         );
 
         mockMvc.perform(multipart("/api/v1/users/resumes").file(file))
-                .andExpect(status().isOk());
+                .andExpect(status().isCreated());
     }
 
     @Test
@@ -67,6 +67,23 @@ class UserControllerTest {
                 .andExpect(header().string(
                         "Content-Disposition",
                         "attachment; filename=\"John_Doe_Resume.pdf\""
+                ));
+    }
+
+    @Test
+    void downloadResume_crlfFilename_fallsBackToResumePdf() throws Exception {
+        when(userService.downloadResume(1L)).thenReturn(
+                new ResumeDownload(
+                        new ByteArrayResource("%PDF".getBytes()),
+                        "a\r\nContent-Type: text/html"
+                )
+        );
+
+        mockMvc.perform(get("/api/v1/users/resumes/1"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Content-Disposition",
+                        "attachment; filename=\"resume.pdf\""
                 ));
     }
 

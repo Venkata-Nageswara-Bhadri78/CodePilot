@@ -106,11 +106,34 @@ class ResumeTextExtractorTest {
         assertThrows(ResumeParsingException.class, () -> extractor.extract(new byte[0]));
     }
 
+    @Test
+    void extract_tooManyPages_throws() throws IOException {
+        resumeProperties.getParsing().setMaxPages(2);
+        byte[] pdf = pdfWithBlankPages(3);
+
+        ResumeParsingException ex = assertThrows(ResumeParsingException.class,
+                () -> extractor.extract(pdf));
+
+        assertTrue(ex.getMessage().contains("30") || ex.getMessage().contains("pages"));
+        assertTrue(ex.getMessage().contains("2"));
+    }
+
     private byte[] pdfWithLines(String... lines) throws IOException {
         try (PDDocument document = new PDDocument();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
             writeLines(document, lines);
+            document.save(out);
+            return out.toByteArray();
+        }
+    }
+
+    private byte[] pdfWithBlankPages(int pages) throws IOException {
+        try (PDDocument document = new PDDocument();
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            for (int i = 0; i < pages; i++) {
+                document.addPage(new PDPage(PDRectangle.A4));
+            }
             document.save(out);
             return out.toByteArray();
         }

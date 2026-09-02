@@ -9,7 +9,9 @@ import com.developer.copilot.user.entity.Resume;
 import com.developer.copilot.user.entity.UserProfile;
 import com.developer.copilot.user.entity.WorkExperience;
 import com.developer.copilot.user.exception.DuplicateUserProfileException;
+import com.developer.copilot.user.exception.ProfileItemLimitExceededException;
 import com.developer.copilot.user.exception.UserProfileNotFoundException;
+import com.developer.copilot.user.config.UserProfileProperties;
 import com.developer.copilot.user.mapper.UserProfileMapper;
 import com.developer.copilot.user.repository.AdditionalProfileInformationRepository;
 import com.developer.copilot.user.repository.EducationRepository;
@@ -67,6 +69,9 @@ class UserProfileServiceImplTest {
     @Mock
     private ResumeParsingService resumeParsingService;
 
+    @Mock
+    private UserProfileProperties userProfileProperties;
+
     @Spy
     private UserProfileMapper userProfileMapper = new UserProfileMapper();
 
@@ -90,6 +95,7 @@ class UserProfileServiceImplTest {
                 .build();
 
         lenient().when(currentUserService.getCurrentUser()).thenReturn(user);
+        lenient().when(userProfileProperties.getMaxChildItems()).thenReturn(20);
     }
 
     @Test
@@ -138,7 +144,7 @@ class UserProfileServiceImplTest {
                 .storageKey("users/1/resumes/a.pdf")
                 .build();
 
-        when(userProfileRepository.findByUser(user)).thenReturn(Optional.of(profile));
+        when(userProfileRepository.findByUserForUpdate(user)).thenReturn(Optional.of(profile));
         when(resumeRepository.findByUserProfile(profile)).thenReturn(List.of(resume));
         when(workExperienceRepository.findByUserProfile(profile)).thenReturn(List.of());
         when(educationRepository.findByUserProfile(profile)).thenReturn(List.of());
@@ -150,7 +156,7 @@ class UserProfileServiceImplTest {
 
         verify(resumeParsingService).deleteParsedDataFor(List.of(resume));
         verify(fileStorageService).delete("users/1/resumes/a.pdf");
-        verify(resumeRepository).delete(resume);
+        verify(resumeRepository).deleteAll(List.of(resume));
         verify(userProfileRepository).delete(profile);
     }
 
@@ -169,12 +175,49 @@ class UserProfileServiceImplTest {
     void deleteWorkExperience_removesRow() {
         WorkExperience experience = WorkExperience.builder().id(5L).userProfile(profile).build();
 
-        when(userProfileRepository.findByUser(user)).thenReturn(Optional.of(profile));
+        when(userProfileRepository.findByUserForUpdate(user)).thenReturn(Optional.of(profile));
         when(workExperienceRepository.findByIdAndUserProfile(5L, profile))
                 .thenReturn(Optional.of(experience));
 
         userProfileService.deleteWorkExperience(5L);
 
         verify(workExperienceRepository).delete(experience);
+    }
+
+    @Test
+    void updateProfile_nullHeadline_clearsField() {
+        profile.setHeadline("A");
+        profile.setSummary("old");
+
+        UserProfileRequest request = new UserProfileRequest();
+        request.setHeadline(null);
+        request.setSummary("x");
+
+        when(userProfileRepository.findByUserForUpdate(user)).thenReturn(Optional.of(profile));
+        when(workExperienceRepository.findByUserProfile(profile)).thenReturn(List.of());
+        when(educationRepository.findByUserProfile(profile)).thenReturn(List.of());
+        when(projectRepository.findByUserProfile(profile)).thenReturn(List.of());
+        when(additionalProfileInformationRepository.findByUserProfile(profile)).thenReturn(List.of());
+        when(profileLinkRepository.findByUserProfile(profile)).thenReturn(List.of());
+
+        var response = userProfileService.updateProfile(request);
+
+        assertNull(response.getHeadline());
+        assertEquals("x", response.getSummary());
+    }
+
+    @Test
+    void addWorkExperience_atCap_throws() {
+        WorkExperienceRequest request = new WorkExperienceRequest();
+        request.setCompanyName("Acme");
+        request.setJobTitle("Dev");
+        request.setStartYear(2020);
+
+        when(userProfileRepository.findByUserForUpdate(user)).thenReturn(Optional.of(profile));
+        when(workExperienceRepository.countByUserProfile(profile)).thenReturn(20L);
+
+        assertThrows(ProfileItemLimitExceededException.class,
+                () -> userProfileService.addWorkExperience(request));
+        verify(workExperienceRepository, never()).save(any());
     }
 }

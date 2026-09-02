@@ -64,6 +64,13 @@ public class ResumeParsedData extends BaseEntity {
     private Integer characterCount;
 
     /**
+     * True when extracted text was cut at {@code resume.parsing.max-text-length}.
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean truncated = false;
+
+    /**
      * Normalized full text of the resume.
      */
     @Lob

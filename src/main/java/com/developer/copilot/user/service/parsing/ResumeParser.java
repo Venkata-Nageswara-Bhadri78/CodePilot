@@ -96,6 +96,7 @@ public class ResumeParser {
         target.setRawText(extracted.text());
         target.setPageCount(extracted.pageCount());
         target.setCharacterCount(extracted.text().length());
+        target.setTruncated(extracted.truncated());
         target.setSectionsJson(resumeSectionsCodec.toJson(content.getSections()));
         target.setCandidateName(content.getCandidateName());
         target.setEmail(content.getEmail());

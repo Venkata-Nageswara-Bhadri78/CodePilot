@@ -20,10 +20,13 @@ import com.developer.copilot.user.repository.ResumeRepository;
 import com.developer.copilot.user.repository.UserProfileRepository;
 import com.developer.copilot.user.service.ResumeParsingService;
 import com.developer.copilot.user.service.UserService;
+import com.developer.copilot.user.util.AfterCommitActions;
 import com.developer.copilot.user.util.PdfValidationUtil;
+import com.developer.copilot.user.util.ResumeFilenameUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -50,7 +53,7 @@ public class UserServiceImpl implements UserService {
         User user = currentUserService.getCurrentUser();
 
         UserProfile profile = userProfileRepository
-                .findByUser(user)
+                .findByUserForUpdate(user)
                 .orElseThrow(UserProfileNotFoundException::new);
 
         if (resumeRepository.countByUserProfileAndActiveTrue(profile)
@@ -74,6 +77,13 @@ public class UserServiceImpl implements UserService {
                     "Maximum file size is "
                             + resumeProperties.getMaxFileSizeMb()
                             + " MB.");
+        }
+
+        if (ResumeFilenameUtil.isTooLong(file.getOriginalFilename())) {
+            throw new InvalidResumeException(
+                    "Original filename must not exceed "
+                            + ResumeFilenameUtil.MAX_FILENAME_LENGTH
+                            + " characters.");
         }
 
         StoredFile storedFile = fileStorageService.upload(
@@ -103,18 +113,17 @@ public class UserServiceImpl implements UserService {
                 .build();
 
         try {
-            resumeRepository.save(resume);
+            resumeRepository.saveAndFlush(resume);
             resumeParsingService.initializeAndScheduleParsing(resume);
-        } catch (Exception ex) {
+        } catch (DataIntegrityViolationException ex) {
+            fileStorageService.delete(storedFile.getStorageKey());
+            throw new DuplicateResumeException();
+        } catch (RuntimeException ex) {
             fileStorageService.delete(storedFile.getStorageKey());
             throw ex;
         }
 
-        log.info(
-                "User {} uploaded resume '{}'",
-                user.getId(),
-                storedFile.getOriginalFilename()
-        );
+        log.info("User {} uploaded resume {}", user.getId(), resume.getId());
 
         return ResumeUploadResponse.builder()
                 .resumeId(resume.getId())
@@ -165,29 +174,30 @@ public class UserServiceImpl implements UserService {
         User user = currentUserService.getCurrentUser();
 
         UserProfile profile = userProfileRepository
-                .findByUser(user)
+                .findByUserForUpdate(user)
                 .orElseThrow(UserProfileNotFoundException::new);
 
         Resume resume = resumeRepository
                 .findByIdAndUserProfileAndActiveTrue(resumeId, profile)
                 .orElseThrow(ResumeNotFoundException::new);
 
-        boolean wasPrimary = resume.getHighPriority();
+        boolean wasPrimary = Boolean.TRUE.equals(resume.getHighPriority());
         String storageKey = resume.getStorageKey();
 
-        // The stored file is about to be removed, so the parsed data derived from it
-        // would be unverifiable and un-reparseable.
         resumeParsingService.deleteParsedDataFor(resume);
-
-        resume.setActive(false);
-        resume.setHighPriority(false);
-        resumeRepository.save(resume);
-
-        fileStorageService.delete(storageKey);
+        resumeRepository.delete(resume);
 
         if (wasPrimary) {
             promoteMostRecentResume(profile);
         }
+
+        AfterCommitActions.run(() -> {
+            try {
+                fileStorageService.delete(storageKey);
+            } catch (RuntimeException ex) {
+                log.error("Failed to delete stored resume {} after commit: {}", resumeId, ex.getMessage());
+            }
+        });
 
         log.info("User {} deleted resume {}", user.getId(), resumeId);
     }
@@ -199,7 +209,7 @@ public class UserServiceImpl implements UserService {
         User user = currentUserService.getCurrentUser();
 
         UserProfile profile = userProfileRepository
-                .findByUser(user)
+                .findByUserForUpdate(user)
                 .orElseThrow(UserProfileNotFoundException::new);
 
         Resume selectedResume = resumeRepository
@@ -211,11 +221,7 @@ public class UserServiceImpl implements UserService {
         selectedResume.setHighPriority(true);
         resumeRepository.save(selectedResume);
 
-        log.info(
-                "User {} set resume {} as high priority",
-                user.getId(),
-                resumeId
-        );
+        log.info("User {} set resume {} as high priority", user.getId(), resumeId);
     }
 
     private void promoteMostRecentResume(UserProfile profile) {

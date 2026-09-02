@@ -13,4 +13,6 @@ public interface AdditionalProfileInformationRepository extends JpaRepository<Ad
 
     Optional<AdditionalProfileInformation> findByIdAndUserProfile(Long id, UserProfile userProfile);
 
+    long countByUserProfile(UserProfile userProfile);
+
 }

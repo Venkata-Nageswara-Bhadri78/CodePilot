@@ -27,9 +27,8 @@ public class ResumeParsingAsyncConfig {
         executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("resume-parse-");
 
-        // A saturated queue must not silently drop parsing work, so the submitting
-        // thread absorbs the task instead.
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        // Saturating the queue must not steal Tomcat threads. Extra work stays PENDING.
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
 
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);

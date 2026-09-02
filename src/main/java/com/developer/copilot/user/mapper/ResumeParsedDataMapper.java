@@ -37,6 +37,7 @@ public class ResumeParsedDataMapper {
                 .parsedAt(parsedData.getParsedAt())
                 .pageCount(parsedData.getPageCount())
                 .characterCount(parsedData.getCharacterCount())
+                .truncated(parsedData.getTruncated())
                 .candidateName(parsedData.getCandidateName())
                 .email(parsedData.getEmail())
                 .phone(parsedData.getPhone())

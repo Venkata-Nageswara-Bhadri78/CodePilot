@@ -14,6 +14,9 @@ import com.developer.copilot.user.dto.profilelink.ProfileLinkResponse;
 import com.developer.copilot.user.dto.project.ProjectRequest;
 import com.developer.copilot.user.dto.project.ProjectResponse;
 import com.developer.copilot.user.service.UserProfileService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -25,7 +28,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
 
-@Tag(name = "User - Profile", description = "User profile and career information")
+@Tag(name = "User - Profile", description = "User profile and career information. JWT required. PUT replaces headline/summary/technicalSkills (JSON null clears). Max 20 items per child collection.")
 @RestController
 @RequestMapping("/api/v1/users/profile")
 @RequiredArgsConstructor
@@ -36,6 +39,13 @@ public class UserProfileController {
 
     // ─── Profile ─────────────────────────────────────────────────────────────
 
+    @Operation(summary = "Create profile", description = "One profile per user. All fields optional.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Created"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Profile already exists", content = @Content)
+    })
     @PostMapping
     public ResponseEntity<ApiResponse<UserProfileResponse>> createProfile(
             @Valid @RequestBody UserProfileRequest request) {
@@ -52,6 +62,12 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Get profile", description = "Nested children, not paginated.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Profile"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "No profile", content = @Content)
+    })
     @GetMapping
     public ResponseEntity<ApiResponse<UserProfileResponse>> getProfile() {
 
@@ -65,6 +81,13 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Replace profile fields", description = "PUT replaces headline, summary, and technicalSkills. JSON null clears a field. Omitted JSON keys are also null. Children are not in this body.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "No profile", content = @Content)
+    })
     @PutMapping
     public ResponseEntity<ApiResponse<UserProfileResponse>> updateProfile(
             @Valid @RequestBody UserProfileRequest request) {
@@ -79,6 +102,13 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Delete profile", description = "Removes career rows and resume files. Auth user remains.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Deleted"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "No profile", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "Storage failure", content = @Content)
+    })
     @DeleteMapping
     public ResponseEntity<ApiResponse<Void>> deleteProfile() {
 
@@ -95,6 +125,13 @@ public class UserProfileController {
 
     // ─── Work Experience ──────────────────────────────────────────────────────
 
+    @Operation(summary = "Add work experience", description = "Max 20. End year must be greater than or equal to start year.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Created"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation or cap", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "No profile", content = @Content)
+    })
     @PostMapping("/experiences")
     public ResponseEntity<ApiResponse<WorkExperienceResponse>> addWorkExperience(
             @Valid @RequestBody WorkExperienceRequest request) {
@@ -109,6 +146,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "List work experiences")
     @GetMapping("/experiences")
     public ResponseEntity<ApiResponse<List<WorkExperienceResponse>>> getWorkExperiences() {
 
@@ -122,6 +160,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Update work experience")
     @PutMapping("/experiences/{id}")
     public ResponseEntity<ApiResponse<WorkExperienceResponse>> updateWorkExperience(
             @PathVariable Long id,
@@ -137,6 +176,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Delete work experience")
     @DeleteMapping("/experiences/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteWorkExperience(@PathVariable Long id) {
 
@@ -153,6 +193,7 @@ public class UserProfileController {
 
     // ─── Education ────────────────────────────────────────────────────────────
 
+    @Operation(summary = "Add education", description = "Max 20. End year must be greater than or equal to start year.")
     @PostMapping("/educations")
     public ResponseEntity<ApiResponse<EducationResponse>> addEducation(
             @Valid @RequestBody EducationRequest request) {
@@ -167,6 +208,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "List education")
     @GetMapping("/educations")
     public ResponseEntity<ApiResponse<List<EducationResponse>>> getEducations() {
 
@@ -180,6 +222,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Update education")
     @PutMapping("/educations/{id}")
     public ResponseEntity<ApiResponse<EducationResponse>> updateEducation(
             @PathVariable Long id,
@@ -195,6 +238,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Delete education")
     @DeleteMapping("/educations/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteEducation(@PathVariable Long id) {
 
@@ -211,6 +255,7 @@ public class UserProfileController {
 
     // ─── Projects ────────────────────────────────────────────────────────────
 
+    @Operation(summary = "Add project", description = "Max 20. projectLink must be http or https when present.")
     @PostMapping("/projects")
     public ResponseEntity<ApiResponse<ProjectResponse>> addProject(
             @Valid @RequestBody ProjectRequest request) {
@@ -225,6 +270,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "List projects")
     @GetMapping("/projects")
     public ResponseEntity<ApiResponse<List<ProjectResponse>>> getProjects() {
 
@@ -238,6 +284,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Update project")
     @PutMapping("/projects/{id}")
     public ResponseEntity<ApiResponse<ProjectResponse>> updateProject(
             @PathVariable Long id,
@@ -253,6 +300,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Delete project")
     @DeleteMapping("/projects/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteProject(@PathVariable Long id) {
 
@@ -269,6 +317,7 @@ public class UserProfileController {
 
     // ─── Additional Information ───────────────────────────────────────────────
 
+    @Operation(summary = "Add additional information", description = "Max 20. link must be http or https when present.")
     @PostMapping("/additional-info")
     public ResponseEntity<ApiResponse<AdditionalProfileInformationResponse>> addAdditionalInformation(
             @Valid @RequestBody AdditionalProfileInformationRequest request) {
@@ -283,6 +332,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "List additional information")
     @GetMapping("/additional-info")
     public ResponseEntity<ApiResponse<List<AdditionalProfileInformationResponse>>> getAdditionalInformation() {
 
@@ -296,6 +346,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Update additional information")
     @PutMapping("/additional-info/{id}")
     public ResponseEntity<ApiResponse<AdditionalProfileInformationResponse>> updateAdditionalInformation(
             @PathVariable Long id,
@@ -311,6 +362,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Delete additional information")
     @DeleteMapping("/additional-info/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteAdditionalInformation(@PathVariable Long id) {
 
@@ -327,6 +379,7 @@ public class UserProfileController {
 
     // ─── Profile Links ────────────────────────────────────────────────────────
 
+    @Operation(summary = "Add profile link", description = "Max 20. URL must be http or https.")
     @PostMapping("/links")
     public ResponseEntity<ApiResponse<ProfileLinkResponse>> addProfileLink(
             @Valid @RequestBody ProfileLinkRequest request) {
@@ -341,6 +394,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "List profile links")
     @GetMapping("/links")
     public ResponseEntity<ApiResponse<List<ProfileLinkResponse>>> getProfileLinks() {
 
@@ -354,6 +408,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Update profile link")
     @PutMapping("/links/{id}")
     public ResponseEntity<ApiResponse<ProfileLinkResponse>> updateProfileLink(
             @PathVariable Long id,
@@ -369,6 +424,7 @@ public class UserProfileController {
         );
     }
 
+    @Operation(summary = "Delete profile link")
     @DeleteMapping("/links/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteProfileLink(@PathVariable Long id) {
 

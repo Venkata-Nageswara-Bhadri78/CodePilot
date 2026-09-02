@@ -2,10 +2,10 @@ package com.developer.copilot.user.dto.profilelink;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import com.developer.copilot.user.validation.HttpOrHttpsUrl;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.validator.constraints.URL;
 
 @Getter
 @Setter
@@ -13,7 +13,7 @@ import org.hibernate.validator.constraints.URL;
 public class ProfileLinkRequest {
 
     @NotBlank(message = "URL is required.")
-    @URL(message = "Must be a valid URL.")
+    @HttpOrHttpsUrl
     @Size(max = 500, message = "URL must not exceed 500 characters.")
     private String url;
 

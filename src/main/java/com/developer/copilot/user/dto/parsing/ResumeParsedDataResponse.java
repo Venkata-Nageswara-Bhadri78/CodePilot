@@ -42,6 +42,11 @@ public class ResumeParsedDataResponse {
 
     private Integer characterCount;
 
+    /**
+     * True when extracted text was cut at the configured maximum length.
+     */
+    private Boolean truncated;
+
     private String candidateName;
 
     private String email;

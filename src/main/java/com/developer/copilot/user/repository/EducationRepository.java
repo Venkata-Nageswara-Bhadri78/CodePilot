@@ -13,4 +13,6 @@ public interface EducationRepository extends JpaRepository<Education, Long> {
 
     Optional<Education> findByIdAndUserProfile(Long id, UserProfile userProfile);
 
+    long countByUserProfile(UserProfile userProfile);
+
 }

@@ -2,10 +2,10 @@ package com.developer.copilot.user.dto.project;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import com.developer.copilot.user.validation.HttpOrHttpsUrl;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.validator.constraints.URL;
 
 @Getter
 @Setter
@@ -19,7 +19,7 @@ public class ProjectRequest {
     @Size(max = 5000, message = "Project description must not exceed 5000 characters.")
     private String projectDescription;
 
-    @URL(message = "Project link must be a valid URL.")
+    @HttpOrHttpsUrl
     @Size(max = 500, message = "Project link must not exceed 500 characters.")
     private String projectLink;
 

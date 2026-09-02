@@ -3,6 +3,7 @@ package com.developer.copilot.common.exception;
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +11,8 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
 import com.developer.copilot.auth.exception.EmailDeliveryException;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
@@ -35,11 +38,13 @@ import com.developer.copilot.jobextraction.exception.JobExtractionAiUnavailableE
 import lombok.extern.slf4j.Slf4j;
 import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
+import com.developer.copilot.user.config.ResumeProperties;
 import com.developer.copilot.user.exception.AdditionalProfileInformationNotFoundException;
 import com.developer.copilot.user.exception.DuplicateResumeException;
 import com.developer.copilot.user.exception.DuplicateUserProfileException;
 import com.developer.copilot.user.exception.EducationNotFoundException;
 import com.developer.copilot.user.exception.InvalidResumeException;
+import com.developer.copilot.user.exception.ProfileItemLimitExceededException;
 import com.developer.copilot.user.exception.ProfileLinkNotFoundException;
 import com.developer.copilot.user.exception.ProjectNotFoundException;
 import com.developer.copilot.user.exception.ResumeLimitExceededException;
@@ -51,6 +56,17 @@ import com.developer.copilot.user.exception.WorkExperienceNotFoundException;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private final ResumeProperties resumeProperties;
+
+    public GlobalExceptionHandler() {
+        this(null);
+    }
+
+    @Autowired(required = false)
+    public GlobalExceptionHandler(ResumeProperties resumeProperties) {
+        this.resumeProperties = resumeProperties;
+    }
 
     @ExceptionHandler(AiServiceException.class)
     public ResponseEntity<ApiResponse<Void>> handleAiServiceException(AiServiceException ex) {
@@ -626,5 +642,44 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
                 .body(response);
+    }
+
+    @ExceptionHandler(com.developer.copilot.user.ratelimit.exception.RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUserRateLimitExceeded(
+                com.developer.copilot.user.ratelimit.exception.RateLimitExceededException ex) {
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(response);
+    }
+
+    @ExceptionHandler(ProfileItemLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleProfileItemLimit(ProfileItemLimitExceededException ex) {
+        return ResponseEntity.badRequest().body(
+                ApiResponse.<Void>builder()
+                        .success(false)
+                        .message(ex.getMessage())
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+    }
+
+    @ExceptionHandler({MaxUploadSizeExceededException.class, MultipartException.class})
+    public ResponseEntity<ApiResponse<Void>> handleMultipartTooLarge(Exception ex) {
+        int maxMb = resumeProperties != null ? resumeProperties.getMaxFileSizeMb() : 5;
+        return ResponseEntity.badRequest().body(
+                ApiResponse.<Void>builder()
+                        .success(false)
+                        .message("Maximum file size is " + maxMb + " MB.")
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
     }
 }
