@@ -244,6 +244,29 @@ class JobControllerTest {
     }
 
     @Test
+    void getAllJobs_sortByUserPassword_returns400() throws Exception {
+        mockMvc.perform(get("/api/v1/jobs")
+                        .param("sortBy", "user.password"))
+                .andExpect(status().isBadRequest());
+        verify(jobService, never()).getAllJobs(any(), any());
+    }
+
+    @Test
+    void getAllJobs_sortBySourceUrlHash_returns400() throws Exception {
+        mockMvc.perform(get("/api/v1/jobs")
+                        .param("sortBy", "sourceUrlHash"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getAllJobs_maxIntSize_returns400() throws Exception {
+        mockMvc.perform(get("/api/v1/jobs")
+                        .param("size", "2147483647"))
+                .andExpect(status().isBadRequest());
+        verify(jobService, never()).getAllJobs(any(), any());
+    }
+
+    @Test
     void getAllJobs_sizeTooLarge_returns400() throws Exception {
         mockMvc.perform(get("/api/v1/jobs")
                         .param("size", "50000"))

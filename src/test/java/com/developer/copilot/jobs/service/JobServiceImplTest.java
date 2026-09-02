@@ -153,6 +153,29 @@ class JobServiceImplTest {
     }
 
     @Test
+    void createJob_fileUrl_rejected() {
+        stubCurrentUser();
+        JobRequest request = baseCreateRequest();
+        request.setSourceUrl("file:///etc/passwd");
+
+        assertThrows(InvalidJobUrlException.class, () -> jobService.createJob(request));
+        verify(jobRepository, never()).save(any(JobEntity.class));
+    }
+
+    @Test
+    void createJob_htmlInTitle_isStoredAsPlainText() {
+        stubCurrentUser();
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        JobRequest request = baseCreateRequest();
+        request.setTitle("<script>alert(1)</script>");
+
+        JobResponse response = jobService.createJob(request);
+        assertEquals("<script>alert(1)</script>", response.getTitle());
+    }
+
+    @Test
     void createJob_sameNormalizedUrlAsExistingHash_isDuplicate() {
         stubCurrentUser();
         when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(true);
@@ -382,6 +405,18 @@ class JobServiceImplTest {
     }
 
     @Test
+    void getAllJobs_barePercentSearch_isEscapedNotMatchAll() {
+        stubCurrentUser();
+        Pageable pageable = PageRequest.of(0, 10);
+        when(jobRepository.searchJobsByUserId(1L, "\\%", pageable)).thenReturn(Page.empty(pageable));
+
+        jobService.getAllJobs("%", pageable);
+
+        verify(jobRepository).searchJobsByUserId(1L, "\\%", pageable);
+        verify(jobRepository, never()).findAllByUserId(anyLong(), any(Pageable.class));
+    }
+
+    @Test
     void getAllJobs_withoutSearch_usesFindAllRepository() {
         stubCurrentUser();
         Pageable pageable = PageRequest.of(0, 10);
@@ -443,6 +478,32 @@ class JobServiceImplTest {
         verify(jobRepository).save(argThat(job ->
                 "https://amazon.jobs/en/jobs/99999".equals(job.getSourceUrl())
                         && job.getSourceUrlHash() != null));
+    }
+
+    @Test
+    void updateSourceUrl_javascriptUrl_rejected() {
+        stubCurrentUser();
+        when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
+
+        UpdateSourceUrlRequest request = UpdateSourceUrlRequest.builder()
+                .sourceUrl("javascript:alert(1)")
+                .build();
+
+        assertThrows(InvalidJobUrlException.class, () -> jobService.updateSourceUrl(100L, request));
+        verify(jobRepository, never()).save(any(JobEntity.class));
+    }
+
+    @Test
+    void patchJob_javascriptUrl_rejected() {
+        stubCurrentUser();
+        when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
+
+        JobPatchRequest request = JobPatchRequest.builder()
+                .sourceUrl("javascript:alert(1)")
+                .build();
+
+        assertThrows(InvalidJobUrlException.class, () -> jobService.patchJob(100L, request));
+        verify(jobRepository, never()).save(any(JobEntity.class));
     }
 
     @Test
