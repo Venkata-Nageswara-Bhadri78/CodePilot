@@ -29,7 +29,7 @@ Three namespaces (after sanitization they become part of the key):
 | Mail cooldown | `mail` | `SET key 1 NX` with TTL = cooldown |
 | Login failures | `login-fail` | `INCR` with TTL = failure window; `GET`; `DEL` on success |
 
-Identity is email (already lowercased by the service) or client IP (or `unknown`).
+Identity is email (already lowercased by the service), numeric **user id** (`extension-token` mint), or client IP (or `unknown`).
 
 ## Key structure
 
@@ -48,6 +48,8 @@ Examples:
 - `auth:mail:jane@example.com`
 - `auth:mail:reset_jane@example.com` (forgot-password uses identity `reset:` + email, colon becomes `_`)
 - `auth:login-fail:jane@example.com`
+- `auth:rl-extension-token:1` (per-user mint)
+- `auth:rl-extension-token-ip:10.0.0.1`
 - `auth:rl-login_ip:2001_db8__1` if a namespace still contained a colon
 
 Blank identity becomes `unknown`.

@@ -38,7 +38,7 @@ Rate limits: selected POSTs also have a **per-IP** limit in `AuthRateLimitFilter
 | POST | `/api/v1/auth/logout-all` | Bearer | No | No |
 | GET | `/api/v1/test` | Bearer, **`dev` profile only** | No | No |
 
-Missing/invalid JWT on protected routes: `401` `"Unauthorized."` (filter entry point), not the login message.
+Missing/invalid JWT on protected routes: `401` `"Unauthorized."` (filter entry point), not the login message. Browser-extension JWT on `/me`, `/logout`, `/logout-all`, `/extension-token`, `/api/v1/test`, and other non-job-extraction routes: `403` `"This client is not authorized to access this resource."`
 
 ---
 
@@ -114,7 +114,7 @@ Mints a **restricted** access JWT for the Chrome browser-extension client. Requi
 
 **Auth:** Bearer (web). Not `permitAll`.
 
-**Body:** none.
+**Body:** none. No DTO. `Content-Type` is not required.
 
 **Success:** `200` `"Browser extension access token issued."` with `ExtensionAuthResponse`:
 
@@ -134,9 +134,9 @@ Mints a **restricted** access JWT for the Chrome browser-extension client. Requi
 
 No refresh token is issued. The JWT includes signed `cid=browser-extension` plus the same `sub` / `email` / `role` / `tv` as a web access token.
 
-**Errors:** `401` `"Unauthorized."`; `403` if the caller is already an extension client or `app.extension.enabled=false`; `429` rate limit.
+**Errors:** `401` `"Unauthorized."`; `403` `"This client is not authorized to access this resource."` if the caller is already an extension client; `403` `"Browser extension access is disabled."` if `app.extension.enabled=false`; `429` rate limit.
 
-**Authorization of the minted token:** only `POST /api/v1/job-extraction/**` and `POST /api/v1/automated-job-extraction/**`. Other APIs return `403` `"This client is not authorized to access this resource."`
+**Authorization of the minted token:** `SecurityConfig` allows it on `/api/v1/job-extraction/**` and `/api/v1/automated-job-extraction/**` (any HTTP method). Other APIs return `403` `"This client is not authorized to access this resource."` See [BROWSER-EXTENSION.md](AUTH-SERVICE-SPECIFIC-DOCS/BROWSER-EXTENSION.md).
 
 ---
 
@@ -223,7 +223,7 @@ No refresh token is issued. The JWT includes signed `cid=browser-extension` plus
 
 ## GET `/api/v1/auth/me`
 
-**Auth:** `Authorization: Bearer <accessToken>` required.
+**Auth:** `Authorization: Bearer <accessToken>` required (web-frontend JWT; extension JWT → `403`).
 
 **Success:** `200` `"Current user."` with `UserResponse`:
 
@@ -244,7 +244,7 @@ No refresh token is issued. The JWT includes signed `cid=browser-extension` plus
 
 Password, `enabled`, `emailVerified`, and `tokenVersion` are not returned.
 
-**Errors:** `401` `"Unauthorized."` if the JWT is missing/invalid or the user is disabled/unverified. If a principal is present but not `CustomUserDetails`, `CurrentUserService` throws `401` `"User is not authenticated."`
+**Errors:** `401` `"Unauthorized."` if the JWT is missing/invalid or the user is disabled/unverified. A browser-extension JWT is `403` `"This client is not authorized to access this resource."` before the controller. If a principal is present but not `CustomUserDetails`, `CurrentUserService` throws `401` `"User is not authenticated."`
 
 ---
 
@@ -272,7 +272,7 @@ Password, `enabled`, `emailVerified`, and `tokenVersion` are not returned.
 
 ## POST `/api/v1/auth/logout`
 
-**Auth:** Bearer required. Body must be the **current session’s** refresh UUID.
+**Auth:** Bearer required (web-frontend JWT; extension JWT → `403`). Body must be the **current session’s** refresh UUID.
 
 **Body (`LogoutRequest`):** `refreshToken` required, max 128.
 
@@ -286,7 +286,7 @@ Password, `enabled`, `emailVerified`, and `tokenVersion` are not returned.
 
 ## POST `/api/v1/auth/logout-all`
 
-**Auth:** Bearer required. No body.
+**Auth:** Bearer required (web-frontend JWT; extension JWT → `403`). No body.
 
 **Success:** `200` `"Logged out from all devices successfully."`
 
@@ -300,7 +300,7 @@ Password, `enabled`, `emailVerified`, and `tokenVersion` are not returned.
 
 **Not a production API.** `TestController` is `@Profile("dev")` and `@Hidden` from OpenAPI.
 
-**Auth:** Bearer required (`anyRequest().authenticated()`).
+**Auth:** Bearer required (`anyRequest()` = authenticated and **not** `CLIENT_BROWSER_EXTENSION`).
 
 **Success:** `200` with `data` `"JWT Authentication Successful"` and the same message field.
 

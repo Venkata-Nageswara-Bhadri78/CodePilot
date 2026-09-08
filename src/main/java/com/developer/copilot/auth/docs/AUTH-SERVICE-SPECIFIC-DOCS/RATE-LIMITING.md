@@ -1,8 +1,8 @@
 # Rate Limiting
 
-Auth applies three kinds of request control: **per-IP** filters on expensive public POSTs, **per-email** counters in `AuthServiceImpl`, and **specialized** mail cooldown plus failed-login backoff. Storage is Redis when enabled, otherwise in-memory. See [REDIS-INFRASTRUCTURE.md](../REDIS-INFRASTRUCTURE.md) for keys and fallback.
+Auth applies three kinds of request control: **per-IP** filters on selected POSTs (public auth routes plus `/extension-token`), **per-identity** counters in `AuthServiceImpl` (email or user id), and **specialized** mail cooldown plus failed-login backoff. Storage is Redis when enabled, otherwise in-memory. See [REDIS-INFRASTRUCTURE.md](../REDIS-INFRASTRUCTURE.md) for keys and fallback.
 
-Related: [ENDPOINTS.md](../ENDPOINTS.md), [CONFIGURATION.md](../CONFIGURATION.md).
+Related: [ENDPOINTS.md](../ENDPOINTS.md), [CONFIGURATION.md](../CONFIGURATION.md), [BROWSER-EXTENSION.md](BROWSER-EXTENSION.md).
 
 ## Why these limits exist
 
@@ -32,20 +32,20 @@ On deny the filter writes `429`, `Retry-After`, and `"Too many requests. Please 
 
 Limit `<= 0` skips the filter for that path.
 
-## Service: per-email
+## Service: per-identity
 
-After validation, `consumeOrThrow(bucket, email, limit, 60)`:
+After validation, `consumeOrThrow(bucket, identity, limit, 60)`:
 
-| Use case | Bucket | Default / 60s |
-| --- | --- | --- |
-| Register | `register-email` | 5 |
-| Login | `login-email` | 5 |
-| Verify | `verify-email` | 10 |
-| Resend | `resend-email` | 3 |
-| Forgot | `forgot-email` | 3 |
-| Extension token | `extension-token` (user id) | 10 (`app.extension.token-rate-limit-per-minute`) |
+| Use case | Bucket | Identity | Default / 60s |
+| --- | --- | --- | --- |
+| Register | `register-email` | email (lowercase) | 5 |
+| Login | `login-email` | email (lowercase) | 5 |
+| Verify | `verify-email` | email (lowercase) | 10 |
+| Resend | `resend-email` | email (lowercase) | 3 |
+| Forgot | `forgot-email` | email (lowercase) | 3 |
+| Extension token | `extension-token` | user id string | 10 (`app.extension.token-rate-limit-per-minute`) |
 
-Throws `RateLimitExceededException` → `429` + `Retry-After` via advice. Email is already normalized lowercase.
+Throws `RateLimitExceededException` → `429` + `Retry-After` via advice.
 
 Refresh has **no** per-email (or per-token) service limit.
 

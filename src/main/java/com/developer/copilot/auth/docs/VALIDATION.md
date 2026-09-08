@@ -4,7 +4,7 @@ Validation in auth is four layers: HTTP DTO constraints, extra service normaliza
 
 ## Input validation (Bean Validation)
 
-`AuthController` methods take `@Valid` request bodies. Failures become `400` with `field: message` (see [ERROR-HANDLING.md](ERROR-HANDLING.md)).
+`AuthController` methods take `@Valid` request bodies where a body exists. `POST /extension-token` has no body and no DTO. Failures become `400` with `field: message` (see [ERROR-HANDLING.md](ERROR-HANDLING.md)).
 
 ### `@ValidPassword`
 
@@ -77,8 +77,11 @@ Existence of an email on forgot/resend is **not** revealed to the client.
 | --- | --- |
 | Password at login | `PasswordEncoder.matches`; dummy hash if user missing or lockout active |
 | Account usable | `emailVerified == true` and `enabled == true` or same login 401 |
-| Access JWT | Signature, expiry, `sub` matches user id, `tv` matches `tokenVersion` |
+| Access JWT | Signature, expiry, `sub` matches user id, `tv` matches `tokenVersion`, `cid` absent or exactly `browser-extension` |
+| JWT `cid` | Missing/blank = web frontend. `browser-extension` accepted only while `app.extension.enabled` is true. Any other value fails `isTokenValid` |
 | JWT user state | Filter: user must exist, enabled, verified |
+| Extension mint caller | Must be authenticated **without** `CLIENT_BROWSER_EXTENSION`; `app.extension.enabled` must be true |
+| `app.extension.id` | If set: not a URL, path, wildcard, backslash, or space (`ExtensionProperties.resolvedOrigin`) |
 | Refresh / reset possession | SHA-256 lookup of the raw UUID |
 | OTP possession | HMAC-SHA256 with `app.jwt.secret` |
 | JWT secret quality | Length ≥ 32; not a known placeholder; prod requires env `APP_JWT_SECRET` |
@@ -90,8 +93,9 @@ Constant-time compare: `MessageDigest.isEqual` for HMAC and SHA-256 helpers.
 
 These are validation-adjacent controls, not Bean Validation:
 
-- Per-IP filter on selected POSTs
+- Per-IP filter on selected POSTs (including `/extension-token`)
 - Per-email `consumeOrThrow` on register, login, verify, resend, forgot
+- Per-user `consumeOrThrow` on `issueExtensionToken` (identity = user id)
 - Failed-login window (`maxFailedLogins` / `failedLoginWindowMinutes`)
 - Mail cooldown seconds
 
@@ -100,6 +104,7 @@ They produce `429` (rate limit) or the generic login `401` (lockout). Details: [
 ## What is not validated
 
 - `Role` is not accepted from the client; register always sets `USER`.
+- Client identity is not taken from request headers (`X-Client`, `X-Extension-Id`) or Origin.
 - Refresh/reset tokens are not checked for UUID format, only non-blank length ≤ 128 then hashed lookup.
 - `fullName` has no extra character-class rules beyond size.
 - There is no password-history or “new password ≠ old password” check on reset.

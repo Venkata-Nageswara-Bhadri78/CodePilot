@@ -4,9 +4,9 @@ This document describes only mechanisms present in the auth package and the secu
 
 ## Authentication model
 
-Two credentials:
+Two credentials, plus a restricted variant of the access JWT:
 
-1. **Access JWT** — short-lived HS256 token in `Authorization: Bearer`. Default lifetime `app.auth.access-expiry-ms` = 900_000 ms (15 minutes). `JwtService` does **not** read `app.jwt.expiration` even if that property appears in a local file.
+1. **Access JWT** — short-lived HS256 token in `Authorization: Bearer`. Default lifetime `app.auth.access-expiry-ms` = 900_000 ms (15 minutes). `JwtService` does **not** read `app.jwt.expiration` even if that property appears in a local file. Web tokens omit `cid`. Extension tokens (`POST /api/v1/auth/extension-token`) add `cid=browser-extension` and use `app.extension.access-expiry-ms`; they have **no** refresh UUID.
 2. **Refresh UUID** — opaque token returned at login/refresh. Stored as SHA-256. Sent in JSON, not as a Bearer JWT. Default lifetime 30 days.
 
 Login is a custom BCrypt comparison in `AuthServiceImpl`, not Spring form login and not `AuthenticationManager`.
@@ -20,17 +20,23 @@ flowchart TD
     B -->|no or allowed| C{Authorization starts with Bearer?}
     C -->|no| D[Continue anonymous]
     C -->|yes| E[Parse JWT user id]
-    E --> F{User exists, enabled, emailVerified, signature, expiry, tv match?}
+    E --> F{User exists, enabled, emailVerified, signature, expiry, tv, trusted cid?}
     F -->|no - JwtException| D
-    F -->|no - user state| D
+    F -->|no - user state or cid| D
     F -->|yes| G[SecurityContext CustomUserDetails]
-    D --> H{Path permitAll?}
-    G --> I[Controller]
-    H -->|yes| I
-    H -->|no| J[JsonAuthenticationEntryPoint 401 Unauthorized.]
+    G --> G2{cid is browser-extension?}
+    G2 -->|yes| G3[Add CLIENT_BROWSER_EXTENSION]
+    G2 -->|no| H{Authorization}
+    G3 --> H
+    D --> H
+    H -->|path permitAll| I[Controller]
+    H -->|job-extraction and authenticated| I
+    H -->|other and web principal| I
+    H -->|other and extension principal| K[JsonAccessDeniedHandler 403]
+    H -->|protected and anonymous| J[JsonAuthenticationEntryPoint 401 Unauthorized.]
 ```
 
-Invalid JWTs do not produce a dedicated “bad token” body from the filter; the request continues unauthenticated. Protected routes then return `"Unauthorized."`
+Invalid JWTs (including unknown `cid` or an extension JWT while `app.extension.enabled=false`) do not produce a dedicated “bad token” body from the filter; the request continues unauthenticated. Protected routes then return `"Unauthorized."`
 
 The filter requires **both** `enabled` and `emailVerified`. A token issued before those flags could theoretically exist only if generated another way; login and refresh already refuse unverified/disabled users.
 
@@ -114,6 +120,8 @@ See [RATE-LIMITING.md](AUTH-SERVICE-SPECIFIC-DOCS/RATE-LIMITING.md).
 | Bad refresh | `401` with refresh-specific messages |
 | `CurrentUserService` without `CustomUserDetails` | `401` `"User is not authenticated."` |
 | Browser-extension JWT on a non-job-extraction route | `403` `"This client is not authorized to access this resource."` |
+| Extension mint while `app.extension.enabled=false` | `403` `"Browser extension access is disabled."` |
+| Extension JWT while `app.extension.enabled=false` | `401` `"Unauthorized."` (`isTokenValid` fails; treated as anonymous) |
 | Role mismatch | Not enforced on auth endpoints |
 
 ## Sensitive information in responses and logs
@@ -121,6 +129,8 @@ See [RATE-LIMITING.md](AUTH-SERVICE-SPECIFIC-DOCS/RATE-LIMITING.md).
 - OTP and reset tokens are not in JSON success bodies (reset token is only in email).
 - Login/register debug logs avoid printing emails in some paths; failed login uses `log.debug`. Email delivery failures log without the recipient in `EmailServiceImpl` (`"Failed to send verification email"`).
 - Unhandled exceptions map to `"Something went wrong."` (`500`), not stack traces.
+- `issueExtensionToken` logs `Issued browser-extension access token for userId=` at INFO (user id only).
+- `JsonAccessDeniedHandler` logs WARN with HTTP method and URI (not the token).
 - OpenAPI is an attack map: disabled in `application-prod.properties` / `application-production.properties`, and Swagger matchers are not `permitAll` on those profiles.
 
 ## Production considerations supported by code
@@ -134,4 +144,4 @@ See [RATE-LIMITING.md](AUTH-SERVICE-SPECIFIC-DOCS/RATE-LIMITING.md).
 
 ## What the JWT filter does not do
 
-It does not write 401 itself. It does not refresh tokens. It does not check `Role`. Database outages while loading the user are propagated, not turned into anonymous requests.
+It does not write 401 itself. It does not refresh tokens. It does not check `Role`. It does grant `CLIENT_BROWSER_EXTENSION` from a trusted `cid` claim. Database outages while loading the user are propagated, not turned into anonymous requests.

@@ -45,6 +45,8 @@ Project-wide MySQL is included because auth tables live in that database. MinIO,
 | `access-expiry-ms` | 900000 | Extension access JWT lifetime |
 | `token-rate-limit-per-minute` | 10 | Per-IP (filter) and per-user (service) on `POST /api/v1/auth/extension-token` |
 
+See [BROWSER-EXTENSION.md](AUTH-SERVICE-SPECIFIC-DOCS/BROWSER-EXTENSION.md).
+
 Relaxed binding accepts `otpExpiryMinutes` or `otp-expiry-minutes`. Setting a per-minute limit to `<= 0` disables that bucket (filter and `consume` permit).
 
 ## Redis (`app.auth.redis`)

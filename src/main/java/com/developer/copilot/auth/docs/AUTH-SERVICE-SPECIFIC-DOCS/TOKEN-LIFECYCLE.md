@@ -2,7 +2,7 @@
 
 Access JWTs and refresh UUIDs are the contract between auth and every other HTTP API in Copilot. This document describes issuance, validation, rotation, reuse detection, session capping, and invalidation as implemented in `JwtService`, `JwtAuthenticationFilter`, and `AuthServiceImpl`.
 
-Related: [FLOW.md](../FLOW.md), [SECURITY.md](../SECURITY.md), [DATABASE.md](../DATABASE.md).
+Related: [FLOW.md](../FLOW.md), [SECURITY.md](../SECURITY.md), [DATABASE.md](../DATABASE.md), [BROWSER-EXTENSION.md](BROWSER-EXTENSION.md).
 
 ## Two tokens, two jobs
 
@@ -28,7 +28,7 @@ Web frontend tokens **omit** `cid`. Browser-extension tokens add **`cid`:** `bro
 
 Startup refuses secrets shorter than 32 characters or placeholder-like values.
 
-Validation (`isTokenValid`): parse with `verifyWith` (rejects `alg=none`), user id equals `sub`, `exp` not in the past, `tv` equals the user’s current `tokenVersion` (missing `tv` → 0).
+Validation (`isTokenValid`): parse with `verifyWith` (rejects `alg=none`), user id equals `sub`, `exp` not in the past, `tv` equals the user’s current `tokenVersion` (missing `tv` → 0), `cid` trusted (absent/blank or `browser-extension` while the extension is enabled).
 
 The filter also requires the user row to exist, `enabled == true`, and `emailVerified == true`. For extension tokens it adds `CLIENT_BROWSER_EXTENSION` to the `Authentication` authorities. It authenticates with `extractUserId` only. It does not compare the JWT `email` or `role` claims to the database; those claims are informational for clients/other layers. Identity is `sub` + live user row + `tv`. Client authorization is the signed `cid` claim.
 
@@ -114,8 +114,8 @@ Hourly job deletes revoked or expired refresh **rows**. Security decisions use `
 
 ## Client practical rules
 
-1. Send access JWT on `/me`, `/logout`, `/logout-all`, and all non-auth APIs.
-2. When access expires (`401 Unauthorized.`), call `/refresh-token` once with the current UUID; store the new pair.
+1. Send a **web** access JWT on `/me`, `/logout`, `/logout-all`, `/extension-token`, and all non-job-extraction APIs. An extension JWT is valid only on `/api/v1/job-extraction/**` and `/api/v1/automated-job-extraction/**`.
+2. When access expires (`401 Unauthorized.`), call `/refresh-token` once with the current UUID; store the new pair. Extension tokens have no refresh UUID; mint a new one from the website with a web JWT.
 3. Never retry refresh with a UUID that already rotated; that can revoke every session.
 4. After password reset or logout-all, discard both tokens and use login.
 5. `/logout` is enough to stop refresh on that device; wait out or ignore the access JWT, or use logout-all if the access JWT must die immediately.
