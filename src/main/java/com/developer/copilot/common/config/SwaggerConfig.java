@@ -53,7 +53,7 @@ public class SwaggerConfig {
                 .info(new Info()
                         .title("Copilot REST API")
                         .description("""
-                                One Spring Boot app — pick a group (Authentication, Users, Jobs, Job extraction, AI, Chat assistant, Internal Service API). There is no Common group.
+                                One Spring Boot app — pick a group (Authentication, Users, Jobs, Job extraction, Automated job extraction, AI, Chat assistant, Internal Service API). There is no Common group.
                                 Login in Authentication, then Authorize with the access JWT. The user must be enabled and email-verified or every other call is 401 "Unauthorized."
                                 /api/v1/internal/** is not for the SPA: JWT plus X-Internal-Api-Key. Ownership is still the JWT user.
                                 Every JSON error is ApiResponse with success false. Filters may return that shape without going through a controller (internal key 401 is "Invalid or missing internal service key."; missing JWT is "Unauthorized."; CurrentUserService is "User is not authenticated.").

@@ -96,3 +96,17 @@ app.jobextraction.redis.port=6379
 app.jobextraction.redis.database=0
 app.jobextraction.redis.timeout-ms=2000
 app.jobextraction.redis.key-prefix=jobextraction
+
+# Automated job-extraction (URL fetch + parse). Redis off by default.
+app.automatedjobextraction.parse-per-minute=5
+app.automatedjobextraction.http.connect-timeout-ms=5000
+app.automatedjobextraction.http.request-timeout-ms=15000
+app.automatedjobextraction.http.max-response-bytes=1500000
+app.automatedjobextraction.http.max-redirects=3
+app.automatedjobextraction.http.user-agent=CopilotJobExtraction/1.0
+app.automatedjobextraction.redis.enabled=false
+app.automatedjobextraction.redis.host=localhost
+app.automatedjobextraction.redis.port=6379
+app.automatedjobextraction.redis.database=0
+app.automatedjobextraction.redis.timeout-ms=2000
+app.automatedjobextraction.redis.key-prefix=automatedjobextraction

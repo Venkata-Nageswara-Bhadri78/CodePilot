@@ -116,6 +116,15 @@ These types are defined in other packages. Common only chooses the HTTP status.
 | `JobExtractionAiUnavailableException` | 503 |
 | `jobextraction.ratelimit.exception.RateLimitExceededException` | 429 + `Retry-After` |
 
+### Automated job extraction
+
+| Exception | HTTP |
+|---|---|
+| `InvalidAutomatedJobUrlException` | 400 (`INVALID JOB URL`) |
+| `AutomatedJobPageFetchException` | 502 (`Unable to access the job posting. Please try again later.`) |
+| `AutomatedJobExtractionUnavailableException` | 503 |
+| `automatedjobextraction.ratelimit.exception.RateLimitExceededException` | 429 + `Retry-After` |
+
 ### AI
 
 | Exception | HTTP |

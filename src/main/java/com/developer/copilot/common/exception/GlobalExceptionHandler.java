@@ -722,6 +722,55 @@ public class GlobalExceptionHandler {
                 .body(response);
     }
 
+    @ExceptionHandler(com.developer.copilot.jobextraction.automatedjobextraction.ratelimit.exception.RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAutomatedJobExtractionRateLimitExceeded(
+                com.developer.copilot.jobextraction.automatedjobextraction.ratelimit.exception.RateLimitExceededException ex) {
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(response);
+    }
+
+    @ExceptionHandler(com.developer.copilot.jobextraction.automatedjobextraction.exception.InvalidAutomatedJobUrlException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidAutomatedJobUrl(
+            com.developer.copilot.jobextraction.automatedjobextraction.exception.InvalidAutomatedJobUrlException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    @ExceptionHandler(com.developer.copilot.jobextraction.automatedjobextraction.exception.AutomatedJobExtractionUnavailableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAutomatedJobExtractionUnavailable(
+            com.developer.copilot.jobextraction.automatedjobextraction.exception.AutomatedJobExtractionUnavailableException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(response);
+    }
+
+    @ExceptionHandler(com.developer.copilot.jobextraction.automatedjobextraction.exception.AutomatedJobPageFetchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAutomatedJobPageFetch(
+            com.developer.copilot.jobextraction.automatedjobextraction.exception.AutomatedJobPageFetchException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(response);
+    }
+
     @ExceptionHandler(com.developer.copilot.user.ratelimit.exception.RateLimitExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleUserRateLimitExceeded(
                 com.developer.copilot.user.ratelimit.exception.RateLimitExceededException ex) {
