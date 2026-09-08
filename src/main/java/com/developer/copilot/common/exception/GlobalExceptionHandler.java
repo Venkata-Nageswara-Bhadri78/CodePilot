@@ -39,12 +39,11 @@ import com.developer.copilot.common.metrics.CopilotMetrics;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
 import com.developer.copilot.jobs.exception.JobValidationException;
-import com.developer.copilot.jobextraction.exception.EmailNotVerifiedException;
-import com.developer.copilot.jobextraction.exception.JobExtractionAiUnavailableException;
-
 import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
 import com.developer.copilot.common.storage.exception.StorageObjectNotFoundException;
+import com.developer.copilot.jobextraction.manualextraction.exception.EmailNotVerifiedException;
+import com.developer.copilot.jobextraction.manualextraction.exception.JobExtractionAiUnavailableException;
 import com.developer.copilot.user.config.ResumeProperties;
 import com.developer.copilot.user.exception.AdditionalProfileInformationNotFoundException;
 import com.developer.copilot.user.exception.DuplicateResumeException;
@@ -707,9 +706,9 @@ public class GlobalExceptionHandler {
                 .body(response);
     }
 
-    @ExceptionHandler(com.developer.copilot.jobextraction.ratelimit.exception.RateLimitExceededException.class)
+    @ExceptionHandler(com.developer.copilot.jobextraction.manualextraction.ratelimit.exception.RateLimitExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleJobExtractionRateLimitExceeded(
-                com.developer.copilot.jobextraction.ratelimit.exception.RateLimitExceededException ex) {
+                com.developer.copilot.jobextraction.manualextraction.ratelimit.exception.RateLimitExceededException ex) {
 
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .success(false)
