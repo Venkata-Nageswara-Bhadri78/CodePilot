@@ -141,7 +141,7 @@ Auth use cases on `AuthServiceImpl` are `@Transactional`. Mail is scheduled `aft
 
 ## What is not stored
 
-- Access JWTs are not stored. Invalidation is `tokenVersion` + expiry.
+- Access JWTs (web and browser-extension) are not stored. Invalidation is `tokenVersion` + expiry.
 - Redis does not persist users or tokens.
 - Plain OTP, refresh UUID, and reset UUID are not stored.
 

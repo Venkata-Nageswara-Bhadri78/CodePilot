@@ -36,6 +36,17 @@ Project-wide MySQL is included because auth tables live in that database. MinIO,
 | `max-failed-logins` | 10 | Lockout threshold. `<= 0` disables lockout |
 | `failed-login-window-minutes` | 15 | Failure window |
 
+## Browser extension (`app.extension`)
+
+| Property | Default | Purpose |
+| --- | --- | --- |
+| `enabled` | `true` | Kill switch for minting and accepting extension JWTs |
+| `id` | blank | Chrome extension ID. When set, CORS allows `chrome-extension://<id>`. Not an authorization secret. Must not be a URL or `*` |
+| `access-expiry-ms` | 900000 | Extension access JWT lifetime |
+| `token-rate-limit-per-minute` | 10 | Per-IP (filter) and per-user (service) on `POST /api/v1/auth/extension-token` |
+
+See [BROWSER-EXTENSION.md](AUTH-SERVICE-SPECIFIC-DOCS/BROWSER-EXTENSION.md).
+
 Relaxed binding accepts `otpExpiryMinutes` or `otp-expiry-minutes`. Setting a per-minute limit to `<= 0` disables that bucket (filter and `consume` permit).
 
 ## Redis (`app.auth.redis`)
@@ -73,7 +84,7 @@ Templates: `src/main/resources/templates/otp-email.html`, `password-reset.html`.
 | --- | --- |
 | `cors.allowed-origins` | `http://localhost:5173`, `5174`, `3000` and the same ports on `127.0.0.1` |
 
-Wildcard `*` is ignored. `allowCredentials` is hardcoded `true` in `SecurityConfig`.
+Wildcard `*` is ignored. `allowCredentials` is hardcoded `true` in `SecurityConfig`. If `app.extension.id` is set, `chrome-extension://<id>` is merged into the allow-list.
 
 ## HTTP security / OpenAPI / profiles
 
@@ -101,7 +112,7 @@ Example local files set `logging.level.org.springframework.security=DEBUG`. That
 
 ## Startup checks that abort the process
 
-1. `JwtService.validateConfiguration` — secret length/placeholder, positive `access-expiry-ms`.
+1. `JwtService.validateConfiguration` — secret length/placeholder, positive `access-expiry-ms`, valid `app.extension.id` if set.
 2. `EmailServiceImpl.validateMailProperties` — from and sender name.
 3. `AuthSecretsGuard` — `APP_JWT_SECRET` on prod/production.
 

@@ -8,7 +8,7 @@ Auth is a package in the Copilot Maven module (`com.developer:copilot`). It does
 | --- | --- |
 | `com.developer.copilot.common.dto.ApiResponse` | Uniform JSON envelope for every auth response. |
 | `com.developer.copilot.common.exception.GlobalExceptionHandler` | Maps auth exceptions to HTTP statuses (auth also has `RateLimitExceptionHandler` for 429). |
-| `com.developer.copilot.common.security.CurrentUserService` | Resolves the authenticated `User` for `/me`, `/logout`, `/logout-all`. Implementation lives in common and reads `CustomUserDetails`. |
+| `com.developer.copilot.common.security.CurrentUserService` | Resolves the authenticated `User` for `/me`, `/logout`, `/logout-all`, `/extension-token`. Implementation lives in common and reads `CustomUserDetails`. |
 | `com.developer.copilot.common.config.JpaConfig` | `@EnableJpaAuditing` for `BaseEntity` timestamps. |
 | `CopilotApplication` | Enables `EmailProperties`; excludes Boot Redis auto-config so auth Redis is opt-in. |
 | Other feature packages | Not called by auth. They consume JWTs and `User`. |
@@ -22,7 +22,7 @@ Auth is a package in the Copilot Maven module (`com.developer:copilot`). It does
 | `spring-boot-starter-webmvc` | REST controllers, filters, JSON. |
 | `spring-boot-starter-validation` | `@Valid`, `@Email`, `@Size`, `@ValidPassword`. |
 | Spring Scheduling | `AuthTokenCleanupJob` (`@EnableScheduling` on `AuthConfig`). |
-| Jackson | `ApiResponse` in filters/entry point (`JavaTimeModule` for `LocalDateTime`). |
+| Jackson | `ApiResponse` in filters, `JsonAuthenticationEntryPoint`, and `JsonAccessDeniedHandler` (`JavaTimeModule` for `LocalDateTime`). |
 
 ## Security
 

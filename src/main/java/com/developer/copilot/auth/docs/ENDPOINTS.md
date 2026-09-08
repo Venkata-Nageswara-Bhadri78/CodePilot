@@ -27,6 +27,7 @@ Rate limits: selected POSTs also have a **per-IP** limit in `AuthRateLimitFilter
 | --- | --- | --- | --- | --- |
 | POST | `/api/v1/auth/register` | Public | Yes | Yes |
 | POST | `/api/v1/auth/login` | Public | Yes | Yes + failure window |
+| POST | `/api/v1/auth/extension-token` | Bearer (web frontend JWT only) | Yes | Per-user |
 | POST | `/api/v1/auth/verify-email` | Public | Yes | Yes |
 | POST | `/api/v1/auth/resend-otp` | Public | Yes | Yes + mail cooldown |
 | POST | `/api/v1/auth/forgot-password` | Public | Yes | Yes + mail cooldown |
@@ -37,7 +38,7 @@ Rate limits: selected POSTs also have a **per-IP** limit in `AuthRateLimitFilter
 | POST | `/api/v1/auth/logout-all` | Bearer | No | No |
 | GET | `/api/v1/test` | Bearer, **`dev` profile only** | No | No |
 
-Missing/invalid JWT on protected routes: `401` `"Unauthorized."` (filter entry point), not the login message.
+Missing/invalid JWT on protected routes: `401` `"Unauthorized."` (filter entry point), not the login message. Browser-extension JWT on `/me`, `/logout`, `/logout-all`, `/extension-token`, `/api/v1/test`, and other non-job-extraction routes: `403` `"This client is not authorized to access this resource."`
 
 ---
 
@@ -104,6 +105,38 @@ OTP is never in the JSON.
 **Errors:** `400` validation; `401` `"Invalid email or password."` for unknown email, wrong password, unverified, disabled, or lockout; `429` rate limit.
 
 **Side effects:** new refresh row (may revoke oldest active tokens if over `maxActiveRefreshTokens`); new access JWT; clears failed-login counter on success.
+
+---
+
+## POST `/api/v1/auth/extension-token`
+
+Mints a **restricted** access JWT for the Chrome browser-extension client. Requires a live **web-frontend** access JWT. Extension tokens cannot call this endpoint.
+
+**Auth:** Bearer (web). Not `permitAll`.
+
+**Body:** none. No DTO. `Content-Type` is not required.
+
+**Success:** `200` `"Browser extension access token issued."` with `ExtensionAuthResponse`:
+
+```json
+{
+  "success": true,
+  "message": "Browser extension access token issued.",
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
+    "tokenType": "Bearer",
+    "client": "browser-extension",
+    "expiresIn": 900
+  },
+  "timestamp": "2026-01-01T12:00:00"
+}
+```
+
+No refresh token is issued. The JWT includes signed `cid=browser-extension` plus the same `sub` / `email` / `role` / `tv` as a web access token.
+
+**Errors:** `401` `"Unauthorized."`; `403` `"This client is not authorized to access this resource."` if the caller is already an extension client; `403` `"Browser extension access is disabled."` if `app.extension.enabled=false`; `429` rate limit.
+
+**Authorization of the minted token:** `SecurityConfig` allows it on `/api/v1/job-extraction/**` and `/api/v1/automated-job-extraction/**` (any HTTP method). Other APIs return `403` `"This client is not authorized to access this resource."` See [BROWSER-EXTENSION.md](AUTH-SERVICE-SPECIFIC-DOCS/BROWSER-EXTENSION.md).
 
 ---
 
@@ -190,7 +223,7 @@ OTP is never in the JSON.
 
 ## GET `/api/v1/auth/me`
 
-**Auth:** `Authorization: Bearer <accessToken>` required.
+**Auth:** `Authorization: Bearer <accessToken>` required (web-frontend JWT; extension JWT → `403`).
 
 **Success:** `200` `"Current user."` with `UserResponse`:
 
@@ -211,7 +244,7 @@ OTP is never in the JSON.
 
 Password, `enabled`, `emailVerified`, and `tokenVersion` are not returned.
 
-**Errors:** `401` `"Unauthorized."` if the JWT is missing/invalid or the user is disabled/unverified. If a principal is present but not `CustomUserDetails`, `CurrentUserService` throws `401` `"User is not authenticated."`
+**Errors:** `401` `"Unauthorized."` if the JWT is missing/invalid or the user is disabled/unverified. A browser-extension JWT is `403` `"This client is not authorized to access this resource."` before the controller. If a principal is present but not `CustomUserDetails`, `CurrentUserService` throws `401` `"User is not authenticated."`
 
 ---
 
@@ -239,7 +272,7 @@ Password, `enabled`, `emailVerified`, and `tokenVersion` are not returned.
 
 ## POST `/api/v1/auth/logout`
 
-**Auth:** Bearer required. Body must be the **current session’s** refresh UUID.
+**Auth:** Bearer required (web-frontend JWT; extension JWT → `403`). Body must be the **current session’s** refresh UUID.
 
 **Body (`LogoutRequest`):** `refreshToken` required, max 128.
 
@@ -253,7 +286,7 @@ Password, `enabled`, `emailVerified`, and `tokenVersion` are not returned.
 
 ## POST `/api/v1/auth/logout-all`
 
-**Auth:** Bearer required. No body.
+**Auth:** Bearer required (web-frontend JWT; extension JWT → `403`). No body.
 
 **Success:** `200` `"Logged out from all devices successfully."`
 
@@ -267,7 +300,7 @@ Password, `enabled`, `emailVerified`, and `tokenVersion` are not returned.
 
 **Not a production API.** `TestController` is `@Profile("dev")` and `@Hidden` from OpenAPI.
 
-**Auth:** Bearer required (`anyRequest().authenticated()`).
+**Auth:** Bearer required (`anyRequest()` = authenticated and **not** `CLIENT_BROWSER_EXTENSION`).
 
 **Success:** `200` with `data` `"JWT Authentication Successful"` and the same message field.
 

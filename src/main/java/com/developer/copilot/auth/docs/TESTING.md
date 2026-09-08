@@ -8,43 +8,50 @@ Use this list to see what is already locked by tests and where to add new ones.
 
 ```text
 src/test/java/com/developer/copilot/auth/
-├── controller/     AuthControllerTest, AuthSecurityTest, AuthProductionSecurityTest
+├── controller/     AuthControllerTest, AuthSecurityTest, AuthProductionSecurityTest,
+│                   BrowserExtensionSecurityTest, BrowserExtensionProbeController (test-only mappings)
 ├── service/impl/   AuthServiceImplTest, EmailServiceImplTest
 ├── jwt/            JwtServiceTest, JwtAuthenticationFilterTest
 ├── ratelimit/      AuthRateLimitFilterTest, AuthRateLimitServiceImplTest
 ├── redis/          AuthRedisKeyBuilderTest, AuthRedisServiceImplTest
-├── config/         AuthSecretsGuardTest, CorsPropertiesTest
+├── config/         AuthSecretsGuardTest, CorsPropertiesTest, ExtensionPropertiesTest
 ├── mapper/         AuthMapperTest
 └── util/           CredentialDigestsTest, OtpGeneratorTest
 ```
 
-Related: `src/test/java/com/developer/copilot/common/exception/GlobalExceptionHandlerTest` includes mappings for auth exceptions (including `ResourceAlreadyExistsException` → 409). That class is not under the auth test tree.
+Related: `src/test/java/com/developer/copilot/common/exception/GlobalExceptionHandlerTest` includes mappings for auth exceptions (including `ResourceAlreadyExistsException` → 409 and `BrowserExtensionAccessDeniedException` → 403). That class is not under the auth test tree.
 
 ## Controller and HTTP contract
 
 **`AuthControllerTest`** — standalone `MockMvc` + `GlobalExceptionHandler`, `AuthService` mocked.
 
-Covers: register `201`; invalid email / short password / password longer than 72 / email longer than 255 → `400`; login missing password, oversized password/email, malformed JSON message; login `200` with token fields; `GET /me` body; OTP not 6 digits; forgot-password generic success message; blank and oversized refresh token → `400`.
+Covers: register `201`; invalid email / short password / password longer than 72 / email longer than 255 → `400`; login missing password, oversized password/email, malformed JSON message; login `200` with token fields; `GET /me` body; OTP not 6 digits; forgot-password generic success message; blank and oversized refresh token → `400`; `POST /extension-token` `200` with `client` / `expiresIn` and no `refreshToken`.
 
 Does **not** run `SecurityConfig` or rate-limit filters.
 
 **`AuthSecurityTest`** — `@WebMvcTest(AuthController)` importing `SecurityConfig`, `SecurityBeansConfig`, `JsonAuthenticationEntryPoint`, `AuthRateLimitConfig`.
 
-Covers: `/me` and `/logout-all` / `/logout` without auth → `401`; `/me` with `@WithMockUser` → `200`; public register and forgot-password are not `401`.
+Covers: `/me` and `/logout-all` / `/logout` without auth → `401`; `/me` with `@WithMockUser` → `200`; public register and forgot-password are not `401`; `/extension-token` without auth → `401`, with web user → `200`, with extension authority → `403`; `/me` with extension authority → `403`.
 
-**`AuthProductionSecurityTest`** — same slice, `@ActiveProfiles("prod")`.
+**`BrowserExtensionSecurityTest`** — `@WebMvcTest(BrowserExtensionProbeController)` importing `SecurityConfig`.
+
+Covers: unauthenticated job-extraction and other probes → `401`; web user keeps access to job-extraction, jobs, AI, chat, users, and internal resume probes; extension authority allowed on job-extraction GET/POST probes only; extension denied on jobs/AI/chat/users/internal/`/auth/me-probe` with forbidden message; `X-Client` / `X-Extension-Id` headers do not change authorization.
+
+**`AuthProductionSecurityTest`** — same slice as `AuthSecurityTest`, `@ActiveProfiles("prod")`.
 
 Covers: `GET /v3/api-docs` is not HTTP 200 (Swagger not publicly documented on production profile).
 
 ## Security components
 
-**`JwtServiceTest`** — generate token contains user id and email; valid for matching user; invalid for other user or bumped `tokenVersion`; expired token; short/placeholder secret rejected at `validateConfiguration`; missing `tv` treated as 0; `alg=none` token rejected.
+**`JwtServiceTest`** — generate token contains user id and email; valid for matching user; invalid for other user or bumped `tokenVersion`; expired token; short/placeholder secret rejected at `validateConfiguration`; missing `tv` treated as 0; `alg=none` token rejected; web token omits `cid`; extension token includes `cid=browser-extension`; unknown `cid` invalid; extension JWT invalid when `app.extension.enabled=false`; `generateExtensionToken` throws when disabled.
 
-**`JwtAuthenticationFilterTest`** — valid Bearer sets `CustomUserDetails`; disabled or unverified user leaves context empty; no header / malformed JWT continues without auth; `DataAccessException` on user load propagates.
+**`JwtAuthenticationFilterTest`** — valid Bearer sets `CustomUserDetails`; disabled or unverified user leaves context empty; no header / malformed JWT continues without auth; `DataAccessException` on user load propagates; extension token adds `CLIENT_BROWSER_EXTENSION`.
 
 **`AuthSecretsGuardTest`** — blank/null env secret rejected; non-blank accepted.
 
 **`CorsPropertiesTest`** — `*` dropped from allowed origins; only-wildcard list becomes empty.
+
+**`ExtensionPropertiesTest`** — blank id → no CORS origin; valid id → `chrome-extension://…`; URL/`*`/`/` rejected; defaults enabled, 900_000 ms, 10/min.
 
 ## Service / business behavior
 
@@ -59,12 +66,13 @@ Covers: `GET /v3/api-docs` is not HTTP 200 (Swagger not publicly documented on p
 - Logout success / invalid / other user’s token; logout-all revokes all and bumps version.
 - OTP storage is HMAC, not plain SHA-256.
 - `me` mapping.
+- `issueExtensionToken` returns scoped token without calling `generateToken`; disabled and extension-client throw `BrowserExtensionAccessDeniedException`.
 
 **`EmailServiceImplTest`** — OTP and reset templates receive configured expiry minutes; blank `from` fails `validateMailProperties`.
 
 ## Rate limiting and Redis
 
-**`AuthRateLimitFilterTest`** — login and refresh-token limited per IP; `/reset-password` not limited by the filter.
+**`AuthRateLimitFilterTest`** — login and refresh-token limited per IP; `/reset-password` not limited by the filter; `/extension-token` limited per IP.
 
 **`AuthRateLimitServiceImplTest`** — in-memory block after limit; `consumeOrThrow`; mail cooldown; login failure window clears on success; Redis increment path; Redis exception falls back to memory.
 
@@ -87,6 +95,7 @@ No dedicated tests for `AuthTokenCleanupJob`, `AuthOpenApiConfig`, `TestControll
 | New work | Add tests next to |
 | --- | --- |
 | New `/api/v1/auth` route | `AuthControllerTest` + `AuthSecurityTest` (public vs authenticated) |
+| Extension client authorization | `BrowserExtensionSecurityTest` |
 | Login / token / OTP rule | `AuthServiceImplTest` |
 | JWT claim or validation | `JwtServiceTest` / filter test |
 | New rate-limit path | filter test + properties default |

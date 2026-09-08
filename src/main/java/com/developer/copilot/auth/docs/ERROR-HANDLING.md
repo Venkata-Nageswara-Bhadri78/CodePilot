@@ -24,6 +24,7 @@ flowchart TD
     A[Throw or filter write] --> B{Which layer?}
     B -->|AuthRateLimitFilter deny| C[Writes 429 JSON itself]
     B -->|Protected, not authenticated| D[JsonAuthenticationEntryPoint 401 Unauthorized.]
+    B -->|Authenticated, not authorized| AD[JsonAccessDeniedHandler 403]
     B -->|Controller / service exception| E[RestControllerAdvice]
     E --> F{Auth RateLimitExceededException}
     F -->|RateLimitExceptionHandler or GlobalExceptionHandler| G[429 plus Retry-After]
@@ -47,6 +48,7 @@ flowchart TD
 | `RefreshTokenExpiredException` | 401 | `"Refresh token has expired."` |
 | `RefreshTokenRevokedException` | 401 | `"Refresh token has been revoked."` |
 | `RateLimitExceededException` | 429 | `"Too many requests. Please try again later."` |
+| `BrowserExtensionAccessDeniedException` | 403 | `"This client is not authorized to access this resource."` or `"Browser extension access is disabled."` |
 | `EmailDeliveryException` | 503 | Handler message `"Unable to send email. Please try again later."` (not the internal cause) |
 
 `EmailDeliveryException` is thrown by `EmailServiceImpl` on SMTP/template failure. Register/resend/forgot wrap send in `sendMailSafely`, which **catches** this exception and logs it. Those flows therefore usually still return success after a mail failure. The `503` mapping applies if the exception escapes (for example a future caller that does not use `sendMailSafely`).
@@ -77,7 +79,8 @@ Register catches `DataIntegrityViolationException` on user insert and returns no
 
 | Situation | Mechanism | HTTP / message |
 | --- | --- | --- |
-| No authentication on `/me`, `/logout`, `/logout-all` | `JsonAuthenticationEntryPoint` | 401 `"Unauthorized."` |
+| No authentication on `/me`, `/logout`, `/logout-all`, `/extension-token` | `JsonAuthenticationEntryPoint` | 401 `"Unauthorized."` |
+| Extension JWT on a non-job-extraction route | `JsonAccessDeniedHandler` | 403 `"This client is not authorized to access this resource."` |
 | Per-IP rate limit | `AuthRateLimitFilter` | 429 `"Too many requests. Please try again later."` |
 
 Jwt parse failures are logged at debug and do not throw to the client; the entry point runs only if the route requires authentication.
@@ -101,3 +104,5 @@ Clients must distinguish:
 - **Protected route** `401` `"Unauthorized."` — missing or unaccepted access JWT.
 
 Do not treat those messages as interchangeable.
+
+Protected routes that reject a **browser-extension** principal use `403` `"This client is not authorized to access this resource."`, not 401.

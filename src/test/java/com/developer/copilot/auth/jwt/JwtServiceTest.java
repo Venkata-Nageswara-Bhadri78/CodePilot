@@ -1,7 +1,9 @@
 package com.developer.copilot.auth.jwt;
 
+import com.developer.copilot.auth.config.ExtensionProperties;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.enums.Role;
+import com.developer.copilot.auth.security.AuthClientAuthorities;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +15,7 @@ import java.util.Date;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -117,5 +120,60 @@ class JwtServiceTest {
         String noneToken = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiI0MiIsImVtYWlsIjoiam9obkBleGFtcGxlLmNvbSJ9.";
 
         assertThrows(io.jsonwebtoken.JwtException.class, () -> jwtService.extractUserId(noneToken));
+    }
+
+    @Test
+    void generateToken_doesNotIncludeClientClaim() {
+        String token = jwtService.generateToken(user);
+
+        assertNull(jwtService.extractClientId(token));
+        assertFalse(jwtService.isBrowserExtensionClient(token));
+    }
+
+    @Test
+    void generateExtensionToken_includesBrowserExtensionClientClaim() {
+        String token = jwtService.generateExtensionToken(user);
+
+        assertEquals(42L, jwtService.extractUserId(token));
+        assertEquals("john@example.com", jwtService.extractEmail(token));
+        assertEquals(AuthClientAuthorities.CLIENT_ID_BROWSER_EXTENSION, jwtService.extractClientId(token));
+        assertTrue(jwtService.isBrowserExtensionClient(token));
+        assertTrue(jwtService.isTokenValid(token, user));
+    }
+
+    @Test
+    void isTokenValid_rejectsUnknownClientClaim() {
+        String secret = "test-secret-key-that-is-long-enough-for-hmac-sha256";
+        String token = Jwts.builder()
+                .subject("42")
+                .claim("email", "john@example.com")
+                .claim("role", "USER")
+                .claim("tv", 0)
+                .claim(AuthClientAuthorities.CLAIM, "spoofed-client")
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 60_000L))
+                .signWith(Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8)))
+                .compact();
+
+        assertFalse(jwtService.isTokenValid(token, user));
+    }
+
+    @Test
+    void isTokenValid_rejectsExtensionTokenWhenDisabled() {
+        String token = jwtService.generateExtensionToken(user);
+        ExtensionProperties disabled = new ExtensionProperties();
+        disabled.setEnabled(false);
+        ReflectionTestUtils.setField(jwtService, "extensionProperties", disabled);
+
+        assertFalse(jwtService.isTokenValid(token, user));
+    }
+
+    @Test
+    void generateExtensionToken_whenDisabled_throws() {
+        ExtensionProperties disabled = new ExtensionProperties();
+        disabled.setEnabled(false);
+        ReflectionTestUtils.setField(jwtService, "extensionProperties", disabled);
+
+        assertThrows(IllegalStateException.class, () -> jwtService.generateExtensionToken(user));
     }
 }

@@ -16,6 +16,8 @@ import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +25,9 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.developer.copilot.auth.config.AuthProperties;
+import com.developer.copilot.auth.config.ExtensionProperties;
 import com.developer.copilot.auth.dto.AuthResponse;
+import com.developer.copilot.auth.dto.ExtensionAuthResponse;
 import com.developer.copilot.auth.dto.ForgotPasswordRequest;
 import com.developer.copilot.auth.dto.LoginRequest;
 import com.developer.copilot.auth.dto.LogoutRequest;
@@ -47,6 +51,7 @@ import com.developer.copilot.auth.service.AuthService;
 import com.developer.copilot.auth.service.EmailService;
 import com.developer.copilot.auth.util.CredentialDigests;
 import com.developer.copilot.auth.util.OtpGenerator;
+import com.developer.copilot.auth.exception.BrowserExtensionAccessDeniedException;
 import com.developer.copilot.auth.exception.InvalidOtpException;
 import com.developer.copilot.auth.exception.InvalidPasswordResetTokenException;
 import com.developer.copilot.auth.exception.InvalidRefreshTokenException;
@@ -55,6 +60,7 @@ import com.developer.copilot.auth.exception.PasswordResetTokenExpiredException;
 import com.developer.copilot.auth.exception.PasswordResetTokenUsedException;
 import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
+import com.developer.copilot.auth.security.AuthClientAuthorities;
 import com.developer.copilot.common.security.CurrentUserService;
 
 @Slf4j
@@ -83,6 +89,7 @@ public class AuthServiceImpl implements AuthService {
     private final AuthProperties authProperties;
     private final CurrentUserService currentUserService;
     private final AuthRateLimitService authRateLimitService;
+    private final ExtensionProperties extensionProperties;
 
     @Value("${app.jwt.secret}")
     private String otpHmacSecret;
@@ -159,6 +166,33 @@ public class AuthServiceImpl implements AuthService {
 
         authRateLimitService.recordLoginSuccess(email);
         return buildAuthResponse(user);
+    }
+
+    @Override
+    public ExtensionAuthResponse issueExtensionToken() {
+        if (extensionProperties == null || !extensionProperties.isEnabled()) {
+            throw new BrowserExtensionAccessDeniedException("Browser extension access is disabled.");
+        }
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (AuthClientAuthorities.isBrowserExtension(authentication)) {
+            throw new BrowserExtensionAccessDeniedException(AuthClientAuthorities.FORBIDDEN_MESSAGE);
+        }
+
+        User user = currentUserService.getCurrentUser();
+        int limit = extensionProperties.getTokenRateLimitPerMinute();
+        if (limit > 0) {
+            authRateLimitService.consumeOrThrow(
+                    "extension-token", String.valueOf(user.getId()), limit, 60);
+        }
+
+        String accessToken = jwtService.generateExtensionToken(user);
+        log.info("Issued browser-extension access token for userId={}", user.getId());
+        long expiresInSeconds = Math.max(1L, extensionProperties.getAccessExpiryMs() / 1000L);
+        return new ExtensionAuthResponse(
+                accessToken,
+                "Bearer",
+                AuthClientAuthorities.CLIENT_ID_BROWSER_EXTENSION,
+                expiresInSeconds);
     }
 
     @Override

@@ -4,7 +4,7 @@ These workflows are the ones implemented in `AuthServiceImpl`, the security filt
 
 ## Request lifecycle
 
-Every call to `/api/v1/auth/**` follows the same outer path. Public routes skip authentication; protected routes (`/me`, `/logout`, `/logout-all`) require a live access JWT.
+Every call to `/api/v1/auth/**` follows the same outer path. Public routes skip authentication; protected routes (`/me`, `/logout`, `/logout-all`, `/extension-token`) require a live access JWT. `/extension-token` additionally rejects browser-extension JWTs.
 
 ```mermaid
 sequenceDiagram
@@ -24,6 +24,8 @@ sequenceDiagram
         JWT->>SEC: continue
         alt protected and not authenticated
             SEC-->>C: 401 Unauthorized.
+        else protected, extension client, not job-extraction
+            SEC-->>C: 403 This client is not authorized to access this resource.
         else
             SEC->>CTL: dispatch
             CTL->>SVC: use case
@@ -157,7 +159,7 @@ Default reset expiry: 15 minutes.
 
 ## Logout vs logout-all
 
-Both require a valid access JWT.
+Both require a valid **web** access JWT. A browser-extension JWT is `403` on these paths.
 
 ```mermaid
 flowchart LR
@@ -191,11 +193,34 @@ sequenceDiagram
         F->>S: leave empty
         Note over F,S: Protected routes then 401 Unauthorized.
     else valid
-        F->>S: CustomUserDetails
+        F->>S: CustomUserDetails plus CLIENT_BROWSER_EXTENSION when cid is browser-extension
     end
 ```
 
 Database failures during user load are **not** swallowed; they propagate (typically `500`).
+
+## Browser-extension token
+
+The web frontend, already holding a full-privilege access JWT (no `cid`), calls `POST /api/v1/auth/extension-token`. Auth mints a short-lived JWT with `cid=browser-extension` and **no** refresh token. The caller must not already be an extension client. `app.extension.enabled=false` returns `403` `"Browser extension access is disabled."`
+
+```mermaid
+sequenceDiagram
+    participant W as Web JWT
+    participant C as AuthController
+    participant S as AuthServiceImpl
+    participant J as JwtService
+    W->>C: POST /extension-token Authorization Bearer
+    C->>S: issueExtensionToken
+    S->>S: reject if extension principal or disabled
+    S->>S: consume extension-token per user id
+    S->>J: generateExtensionToken
+    J-->>S: JWT with cid browser-extension
+    S-->>W: ExtensionAuthResponse no refreshToken
+```
+
+That JWT may call `/api/v1/job-extraction/**` and `/api/v1/automated-job-extraction/**`. Other authenticated routes, including `/me` and `/extension-token`, return `403` `"This client is not authorized to access this resource."`
+
+How a website process delivers the JWT to a Chrome extension is outside the auth package. Details: [BROWSER-EXTENSION.md](AUTH-SERVICE-SPECIFIC-DOCS/BROWSER-EXTENSION.md).
 
 ## Hourly cleanup
 

@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.developer.copilot.auth.config.AuthProperties;
+import com.developer.copilot.auth.config.ExtensionProperties;
 import com.developer.copilot.auth.ratelimit.model.RateLimitResult;
 import com.developer.copilot.auth.ratelimit.service.AuthRateLimitService;
 import com.developer.copilot.common.dto.ApiResponse;
@@ -33,17 +34,27 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             "/api/v1/auth/verify-email",
             "/api/v1/auth/resend-otp",
             "/api/v1/auth/forgot-password",
-            "/api/v1/auth/refresh-token");
+            "/api/v1/auth/refresh-token",
+            "/api/v1/auth/extension-token");
 
     private static final long WINDOW_SECONDS = 60L;
 
     private final AuthProperties authProperties;
+    private final ExtensionProperties extensionProperties;
     private final AuthRateLimitService authRateLimitService;
     private final ObjectMapper objectMapper;
 
     public AuthRateLimitFilter(AuthProperties authProperties, AuthRateLimitService authRateLimitService) {
+        this(authProperties, authRateLimitService, new ExtensionProperties());
+    }
+
+    public AuthRateLimitFilter(
+            AuthProperties authProperties,
+            AuthRateLimitService authRateLimitService,
+            ExtensionProperties extensionProperties) {
         this.authProperties = authProperties;
         this.authRateLimitService = authRateLimitService;
+        this.extensionProperties = extensionProperties == null ? new ExtensionProperties() : extensionProperties;
         this.objectMapper = new ObjectMapper()
                 .registerModule(new JavaTimeModule())
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -84,6 +95,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             case "/api/v1/auth/resend-otp" -> authProperties.getResendRateLimitPerMinute();
             case "/api/v1/auth/forgot-password" -> authProperties.getForgotRateLimitPerMinute();
             case "/api/v1/auth/refresh-token" -> authProperties.getRefreshRateLimitPerMinute();
+            case "/api/v1/auth/extension-token" -> extensionProperties.getTokenRateLimitPerMinute();
             default -> 0;
         };
     }
@@ -96,6 +108,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             case "/api/v1/auth/resend-otp" -> "resend-ip";
             case "/api/v1/auth/forgot-password" -> "forgot-ip";
             case "/api/v1/auth/refresh-token" -> "refresh-ip";
+            case "/api/v1/auth/extension-token" -> "extension-token-ip";
             default -> "auth-ip";
         };
     }

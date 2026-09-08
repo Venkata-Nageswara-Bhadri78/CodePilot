@@ -4,9 +4,9 @@ This document describes only mechanisms present in the auth package and the secu
 
 ## Authentication model
 
-Two credentials:
+Two credentials, plus a restricted variant of the access JWT:
 
-1. **Access JWT** — short-lived HS256 token in `Authorization: Bearer`. Default lifetime `app.auth.access-expiry-ms` = 900_000 ms (15 minutes). `JwtService` does **not** read `app.jwt.expiration` even if that property appears in a local file.
+1. **Access JWT** — short-lived HS256 token in `Authorization: Bearer`. Default lifetime `app.auth.access-expiry-ms` = 900_000 ms (15 minutes). `JwtService` does **not** read `app.jwt.expiration` even if that property appears in a local file. Web tokens omit `cid`. Extension tokens (`POST /api/v1/auth/extension-token`) add `cid=browser-extension` and use `app.extension.access-expiry-ms`; they have **no** refresh UUID.
 2. **Refresh UUID** — opaque token returned at login/refresh. Stored as SHA-256. Sent in JSON, not as a Bearer JWT. Default lifetime 30 days.
 
 Login is a custom BCrypt comparison in `AuthServiceImpl`, not Spring form login and not `AuthenticationManager`.
@@ -20,17 +20,23 @@ flowchart TD
     B -->|no or allowed| C{Authorization starts with Bearer?}
     C -->|no| D[Continue anonymous]
     C -->|yes| E[Parse JWT user id]
-    E --> F{User exists, enabled, emailVerified, signature, expiry, tv match?}
+    E --> F{User exists, enabled, emailVerified, signature, expiry, tv, trusted cid?}
     F -->|no - JwtException| D
-    F -->|no - user state| D
+    F -->|no - user state or cid| D
     F -->|yes| G[SecurityContext CustomUserDetails]
-    D --> H{Path permitAll?}
-    G --> I[Controller]
-    H -->|yes| I
-    H -->|no| J[JsonAuthenticationEntryPoint 401 Unauthorized.]
+    G --> G2{cid is browser-extension?}
+    G2 -->|yes| G3[Add CLIENT_BROWSER_EXTENSION]
+    G2 -->|no| H{Authorization}
+    G3 --> H
+    D --> H
+    H -->|path permitAll| I[Controller]
+    H -->|job-extraction and authenticated| I
+    H -->|other and web principal| I
+    H -->|other and extension principal| K[JsonAccessDeniedHandler 403]
+    H -->|protected and anonymous| J[JsonAuthenticationEntryPoint 401 Unauthorized.]
 ```
 
-Invalid JWTs do not produce a dedicated “bad token” body from the filter; the request continues unauthenticated. Protected routes then return `"Unauthorized."`
+Invalid JWTs (including unknown `cid` or an extension JWT while `app.extension.enabled=false`) do not produce a dedicated “bad token” body from the filter; the request continues unauthenticated. Protected routes then return `"Unauthorized."`
 
 The filter requires **both** `enabled` and `emailVerified`. A token issued before those flags could theoretically exist only if generated another way; login and refresh already refuse unverified/disabled users.
 
@@ -42,11 +48,14 @@ The filter requires **both** `enabled` and `emailVerified`. A token issued befor
 
 - **Permit all:** `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/verify-email`, `/api/v1/auth/resend-otp`, `/api/v1/auth/forgot-password`, `/api/v1/auth/reset-password`, `/api/v1/auth/refresh-token`, `/error`.
 - **Swagger paths:** permit all unless active profile is `prod` or `production`.
-- **Everything else:** authenticated.
+- **Job extraction:** `/api/v1/job-extraction/**` and `/api/v1/automated-job-extraction/**` — any authenticated user (web frontend **or** browser-extension JWT).
+- **Everything else:** authenticated **and not** `CLIENT_BROWSER_EXTENSION`. Browser-extension JWTs receive `403` `"This client is not authorized to access this resource."`
 
-Auth controllers do not use `@PreAuthorize` or `hasRole`. `Role.USER` and `Role.ADMIN` are stored, copied into the JWT `role` claim, and exposed as `ROLE_USER` / `ROLE_ADMIN` on `CustomUserDetails`. Other packages may use those authorities; auth’s own endpoints do not.
+Auth controllers do not use `@PreAuthorize` or `hasRole`. `Role.USER` and `Role.ADMIN` are stored, copied into the JWT `role` claim, and exposed as `ROLE_USER` / `ROLE_ADMIN` on `CustomUserDetails`. The extension restriction is a **client** authority (`CLIENT_BROWSER_EXTENSION`) copied from the signed JWT `cid` claim, not from request headers.
 
 `/logout` additionally checks that the refresh token’s user id equals the JWT user.
+
+`POST /api/v1/auth/extension-token` mints the restricted JWT. It requires a web-frontend access token. Extension tokens cannot mint another extension token.
 
 ## Session and CSRF
 
@@ -56,7 +65,7 @@ Auth controllers do not use `@PreAuthorize` or `hasRole`. `Role.USER` and `Role.
 
 `cors.allowed-origins` (Java defaults: localhost `5173`, `5174`, `3000` on `localhost` and `127.0.0.1`). Methods GET/POST/PUT/PATCH/DELETE/OPTIONS. Headers `*`. Exposed: `Authorization`, `Content-Type`, `Retry-After`. `allowCredentials=true`.
 
-A configured `*` is dropped so credentialed CORS cannot pair with a wildcard.
+When `app.extension.id` is set, `chrome-extension://<id>` is added to that list. CORS is **not** the authorization boundary. A wildcard `*` is dropped so credentialed CORS cannot pair with a wildcard.
 
 ## Secrets and credential protection
 
@@ -87,6 +96,7 @@ See [RATE-LIMITING.md](AUTH-SERVICE-SPECIFIC-DOCS/RATE-LIMITING.md).
 
 - Per-IP fixed/sliding windows on selected POSTs.
 - Per-email limits on register/login/verify/resend/forgot.
+- Per-user and per-IP limits on `POST /api/v1/auth/extension-token`.
 - Mail cooldown (default 60s) for OTP resend and password-reset mail.
 - Failed-login window (default 10 failures / 15 minutes) still returns the generic login 401.
 - `X-Forwarded-For`: first hop is used as client IP. Only accurate if a trusted proxy overwrites that header.
@@ -109,15 +119,18 @@ See [RATE-LIMITING.md](AUTH-SERVICE-SPECIFIC-DOCS/RATE-LIMITING.md).
 | Login failure | `401` `"Invalid email or password."` |
 | Bad refresh | `401` with refresh-specific messages |
 | `CurrentUserService` without `CustomUserDetails` | `401` `"User is not authenticated."` |
+| Browser-extension JWT on a non-job-extraction route | `403` `"This client is not authorized to access this resource."` |
+| Extension mint while `app.extension.enabled=false` | `403` `"Browser extension access is disabled."` |
+| Extension JWT while `app.extension.enabled=false` | `401` `"Unauthorized."` (`isTokenValid` fails; treated as anonymous) |
 | Role mismatch | Not enforced on auth endpoints |
-
-There is no auth-specific `403` handler. Disabled/unverified users fail authentication rather than authorization.
 
 ## Sensitive information in responses and logs
 
 - OTP and reset tokens are not in JSON success bodies (reset token is only in email).
 - Login/register debug logs avoid printing emails in some paths; failed login uses `log.debug`. Email delivery failures log without the recipient in `EmailServiceImpl` (`"Failed to send verification email"`).
 - Unhandled exceptions map to `"Something went wrong."` (`500`), not stack traces.
+- `issueExtensionToken` logs `Issued browser-extension access token for userId=` at INFO (user id only).
+- `JsonAccessDeniedHandler` logs WARN with HTTP method and URI (not the token).
 - OpenAPI is an attack map: disabled in `application-prod.properties` / `application-production.properties`, and Swagger matchers are not `permitAll` on those profiles.
 
 ## Production considerations supported by code
@@ -125,10 +138,10 @@ There is no auth-specific `403` handler. Disabled/unverified users fail authenti
 1. Set `APP_JWT_SECRET` (and do not commit a real secret).
 2. Run with `prod` or `production` so Swagger is off and `AuthSecretsGuard` runs.
 3. Enable `app.auth.redis.enabled=true` when more than one app instance must share rate limits; otherwise counters are per JVM.
-4. Configure `cors.allowed-origins` to the real SPA origins; never `*`.
+4. Configure `cors.allowed-origins` to the real SPA origins; never `*`. Set `app.extension.id` to the shipped Chrome extension ID (CORS only).
 5. Put a trusted proxy in front if you rely on `X-Forwarded-For`.
 6. Keep SMTP credentials out of source control (`application.properties.example` uses placeholders).
 
 ## What the JWT filter does not do
 
-It does not write 401 itself. It does not refresh tokens. It does not check `Role`. Database outages while loading the user are propagated, not turned into anonymous requests.
+It does not write 401 itself. It does not refresh tokens. It does not check `Role`. It does grant `CLIENT_BROWSER_EXTENSION` from a trusted `cid` claim. Database outages while loading the user are propagated, not turned into anonymous requests.

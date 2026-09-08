@@ -14,6 +14,7 @@ flowchart TB
         RL[AuthRateLimitFilter]
         JWT[JwtAuthenticationFilter]
         EP[JsonAuthenticationEntryPoint]
+        AD[JsonAccessDeniedHandler]
     end
     subgraph app [Application]
         AS[AuthServiceImpl]
@@ -56,19 +57,20 @@ flowchart TB
     JOB --> PR
     JOB --> RR
     EP -.->|unauthenticated protected route| Client
+    AD -.->|authenticated but forbidden| Client
 ```
 
-Filter order is “both run before `UsernamePasswordAuthenticationFilter`.” Rate limiting is applied first on the selected public POST paths; the JWT filter then optionally populates the security context when `Authorization: Bearer` is present.
+Filter order is “both run before `UsernamePasswordAuthenticationFilter`.” Rate limiting is applied first on the selected POST paths (public auth routes plus `/extension-token`); the JWT filter then optionally populates the security context when `Authorization: Bearer` is present.
 
 ## Request path
 
 1. **CORS** — `CorsConfigurationSource` from `SecurityConfig` / `CorsProperties`.
-2. **`AuthRateLimitFilter`** — POST to login, register, verify-email, resend-otp, forgot-password, or refresh-token: per-IP consume. On deny, writes `429` itself (does not reach the controller).
-3. **`JwtAuthenticationFilter`** — if a Bearer token is present, load user by id, require `enabled` and `emailVerified`, validate signature/expiry/`tv`. Invalid tokens are swallowed; the chain continues unauthenticated.
-4. **Authorization** — `permitAll` for the public auth paths and `/error`; Swagger paths if not `prod`/`production`; everything else `authenticated()`.
-5. **Controller** — Bean Validation on DTOs, then `AuthService`.
-6. **Service** — additional per-email rate limits, business rules, JPA writes. Mail is registered `afterCommit`.
-7. **Errors** — `GlobalExceptionHandler` and `RateLimitExceptionHandler` map exceptions to `ApiResponse`. Unauthenticated protected calls never reach the controller; `JsonAuthenticationEntryPoint` writes `401` `"Unauthorized."`
+2. **`AuthRateLimitFilter`** — POST to login, register, verify-email, resend-otp, forgot-password, refresh-token, or extension-token: per-IP consume. On deny, writes `429` itself (does not reach the controller).
+3. **`JwtAuthenticationFilter`** — if a Bearer token is present, load user by id, require `enabled` and `emailVerified`, validate signature/expiry/`tv`/trusted `cid`. Invalid tokens are swallowed; the chain continues unauthenticated. A trusted `cid=browser-extension` adds authority `CLIENT_BROWSER_EXTENSION`.
+4. **Authorization** — `permitAll` for the public auth paths and `/error`; Swagger paths if not `prod`/`production`; `/api/v1/job-extraction/**` and `/api/v1/automated-job-extraction/**` `authenticated()`; everything else authenticated **and not** `CLIENT_BROWSER_EXTENSION`.
+5. **Controller** — Bean Validation on DTOs (none on `/extension-token`), then `AuthService`.
+6. **Service** — additional per-email or per-user rate limits, business rules, JPA writes. Mail is registered `afterCommit`.
+7. **Errors** — `GlobalExceptionHandler` and `RateLimitExceptionHandler` map exceptions to `ApiResponse`. Unauthenticated protected calls never reach the controller; `JsonAuthenticationEntryPoint` writes `401` `"Unauthorized."` Authenticated but forbidden callers get `JsonAccessDeniedHandler` `403`.
 
 ## Component groups
 
@@ -77,27 +79,30 @@ Filter order is “both run before `UsernamePasswordAuthenticationFilter`.” Ra
 | Component | Role |
 | --- | --- |
 | `AuthController` | `/api/v1/auth` endpoints. Builds `ApiResponse` envelopes. Does not contain business rules. |
-| `TestController` | `GET /api/v1/test` when Spring profile is `dev`. Hidden from OpenAPI. Requires authentication like any other non-public path. |
+| `TestController` | `GET /api/v1/test` when Spring profile is `dev`. Hidden from OpenAPI. Requires a **web** access JWT (`anyRequest` excludes `CLIENT_BROWSER_EXTENSION`). |
 
 ### Security
 
 | Component | Role |
 | --- | --- |
-| `SecurityConfig` | Stateless session, CSRF off, CORS, authorize matchers, filter registration. |
+| `SecurityConfig` | Stateless session, CSRF off, CORS, authorize matchers, filter registration. Job-extraction paths `authenticated()`; other routes `webFrontendOnly()`. |
 | `SecurityBeansConfig` | `BCryptPasswordEncoder` and `AuthenticationManager` bean. Login does **not** call `AuthenticationManager`; it compares passwords in `AuthServiceImpl`. |
-| `JwtAuthenticationFilter` | Bearer parsing and `SecurityContext` population. |
-| `JwtService` | Create/parse HS256 JWTs; reject short or placeholder secrets at startup. |
-| `CustomUserDetails` | `UserDetails` wrapper. `getUsername()` returns **email**. Authority is `ROLE_` + `Role` name. |
+| `JwtAuthenticationFilter` | Bearer parsing and `SecurityContext` population. Adds `CLIENT_BROWSER_EXTENSION` when the JWT `cid` is `browser-extension`. |
+| `JwtService` | Create/parse HS256 JWTs (`generateToken`, `generateExtensionToken`); reject short or placeholder secrets at startup; reject unknown `cid`. |
+| `AuthClientAuthorities` | Claim `cid`, client id `browser-extension`, authority `CLIENT_BROWSER_EXTENSION`, forbidden message. |
+| `CustomUserDetails` | `UserDetails` wrapper. `getUsername()` returns **email**. Authority is `ROLE_` + `Role` name. The filter may add `CLIENT_BROWSER_EXTENSION` on top. |
 | `CustomUserDetailsService` | `UserDetailsService` lookup by email. Not on the JWT filter path (the filter loads by user id). |
 | `JsonAuthenticationEntryPoint` | JSON `401` for missing authentication. |
+| `JsonAccessDeniedHandler` | JSON `403` `"This client is not authorized to access this resource."` |
 | `AuthSecretsGuard` | `prod` / `production` only: refuse boot unless `APP_JWT_SECRET` is set in the environment. |
 | `CorsProperties` | Allowed origins; strips `*`. |
+| `ExtensionProperties` | Extension kill switch, CORS id, token lifetime, mint rate limits. |
 
 ### Application services
 
 | Component | Role |
 | --- | --- |
-| `AuthService` / `AuthServiceImpl` | All auth use cases. Normalizes email/username to lowercase. Uses UTC `Clock`. |
+| `AuthService` / `AuthServiceImpl` | All auth use cases including `issueExtensionToken`. Normalizes email/username to lowercase. Uses UTC `Clock`. |
 | `EmailService` / `EmailServiceImpl` | MIME HTML mail. Requires `app.mail.from` and `app.mail.sender-name`. |
 | `EmailTemplateService` | Thymeleaf `otp-email` and `password-reset`. |
 | `AuthMapper` | `User` → `UserResponse` (no password, flags, or `tokenVersion`). |
@@ -131,7 +136,7 @@ Entities extend `BaseEntity` (`createdAt` / `updatedAt` via JPA auditing in `com
 | --- | --- |
 | `ApiResponse` | Uniform success/error JSON. |
 | `GlobalExceptionHandler` | Maps auth exceptions to HTTP statuses. |
-| `CurrentUserService` | Resolves the authenticated `User` for `/me`, `/logout`, `/logout-all`. |
+| `CurrentUserService` | Resolves the authenticated `User` for `/me`, `/logout`, `/logout-all`, `/extension-token`. |
 | JPA auditing | Populates `createdAt` / `updatedAt`. |
 
 ## Dependency direction
@@ -157,6 +162,7 @@ Controllers do not talk to repositories. Redis is not used to store sessions or 
 
 - `AuthConfig` — `@EnableScheduling`, UTC `Clock`.
 - `AuthProperties` — OTP/reset/refresh lifetimes, rate-limit numbers, mail cooldown, max OTP attempts, max active refresh tokens.
+- `ExtensionProperties` — `app.extension.*` (enabled, CORS id, extension JWT lifetime, mint limits).
 - `EmailProperties` — sender address and display name (`prefix app.mail`).
 - `AuthOpenApiConfig` — OpenAPI group `authentication` for `/api/v1/auth/**`, excluded on `prod` / `production`.
 - `AuthRedisProperties` — host, port, database, timeout, key prefix, enabled flag.

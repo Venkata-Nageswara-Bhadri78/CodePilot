@@ -1,6 +1,7 @@
 package com.developer.copilot.auth.controller;
 
 import com.developer.copilot.auth.dto.AuthResponse;
+import com.developer.copilot.auth.dto.ExtensionAuthResponse;
 import com.developer.copilot.auth.dto.UserResponse;
 import com.developer.copilot.auth.enums.Role;
 import com.developer.copilot.auth.service.AuthService;
@@ -128,6 +129,21 @@ class AuthControllerTest {
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/auth/me"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.email").value("john@example.com"));
+    }
+
+    @Test
+    void issueExtensionToken_success_returns200WithoutRefreshToken() throws Exception {
+        when(authService.issueExtensionToken())
+                .thenReturn(new ExtensionAuthResponse("ext-token", "Bearer", "browser-extension", 900L));
+
+        mockMvc.perform(post("/api/v1/auth/extension-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Browser extension access token issued."))
+                .andExpect(jsonPath("$.data.accessToken").value("ext-token"))
+                .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.data.client").value("browser-extension"))
+                .andExpect(jsonPath("$.data.expiresIn").value(900))
+                .andExpect(jsonPath("$.data.refreshToken").doesNotExist());
     }
 
     @Test

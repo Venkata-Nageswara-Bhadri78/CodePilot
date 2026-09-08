@@ -36,6 +36,8 @@ sequenceDiagram
     end
 ```
 
+Browser-extension JWTs (`cid=browser-extension`) are denied by `authorizeHttpRequests` for `/api/v1/internal/**` before `InternalApiKeyFilter` runs. They never reach the internal key layer.
+
 `InternalApiKeyFilter` is **not** a Spring Security filter and is **not** a `@Component`. It is constructed and registered only through `InternalApiSecurityConfig`, scoped to the internal prefix so public routes never see it.
 
 ## Authentication vs authorization

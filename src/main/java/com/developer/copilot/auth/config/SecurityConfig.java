@@ -1,5 +1,6 @@
 package com.developer.copilot.auth.config;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -9,9 +10,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
+import org.springframework.security.authorization.AuthenticatedAuthorizationManager;
+import org.springframework.security.authorization.AuthorityAuthorizationManager;
+import org.springframework.security.authorization.AuthorizationManager;
+import org.springframework.security.authorization.AuthorizationManagers;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -20,12 +26,13 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import com.developer.copilot.auth.jwt.JwtAuthenticationFilter;
 import com.developer.copilot.auth.ratelimit.config.AuthRateLimitConfig;
 import com.developer.copilot.auth.ratelimit.filter.AuthRateLimitFilter;
+import com.developer.copilot.auth.security.AuthClientAuthorities;
 
 import lombok.RequiredArgsConstructor;
 
 @Configuration
-@Import({JsonAuthenticationEntryPoint.class, AuthRateLimitConfig.class})
-@EnableConfigurationProperties({CorsProperties.class, AuthProperties.class})
+@Import({JsonAuthenticationEntryPoint.class, JsonAccessDeniedHandler.class, AuthRateLimitConfig.class})
+@EnableConfigurationProperties({CorsProperties.class, AuthProperties.class, ExtensionProperties.class})
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -38,9 +45,16 @@ public class SecurityConfig {
             "/webjars/**"
     };
 
+    private static final String[] JOB_EXTRACTION_PATHS = {
+            "/api/v1/job-extraction/**",
+            "/api/v1/automated-job-extraction/**"
+    };
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final CorsProperties corsProperties;
+    private final ExtensionProperties extensionProperties;
     private final JsonAuthenticationEntryPoint jsonAuthenticationEntryPoint;
+    private final JsonAccessDeniedHandler jsonAccessDeniedHandler;
     private final AuthRateLimitFilter authRateLimitFilter;
     private final Environment environment;
 
@@ -52,7 +66,8 @@ public class SecurityConfig {
         .csrf(csrf -> csrf.disable())
         .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .exceptionHandling(ex -> ex
-                .authenticationEntryPoint(jsonAuthenticationEntryPoint))
+                .authenticationEntryPoint(jsonAuthenticationEntryPoint)
+                .accessDeniedHandler(jsonAccessDeniedHandler))
         .authorizeHttpRequests(auth -> {
             if (!isProductionProfile()) {
                 auth.requestMatchers(SWAGGER_PATHS).permitAll();
@@ -67,7 +82,8 @@ public class SecurityConfig {
                 "/api/v1/auth/refresh-token",
                 "/error"
             ).permitAll()
-            .anyRequest().authenticated();
+            .requestMatchers(JOB_EXTRACTION_PATHS).authenticated()
+            .anyRequest().access(webFrontendOnly());
         })
         .addFilterBefore(authRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -80,7 +96,9 @@ public class SecurityConfig {
 
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOrigins(corsProperties.resolvedAllowedOrigins());
+        List<String> allowedOrigins = new ArrayList<>(corsProperties.resolvedAllowedOrigins());
+        extensionProperties.resolvedOrigin().ifPresent(allowedOrigins::add);
+        configuration.setAllowedOrigins(allowedOrigins);
 
         configuration.setAllowedMethods(
                 List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
@@ -104,5 +122,16 @@ public class SecurityConfig {
         return Arrays.stream(environment.getActiveProfiles())
                 .map(profile -> profile.toLowerCase(Locale.ROOT))
                 .anyMatch(profile -> profile.equals("prod") || profile.equals("production"));
+    }
+
+    /**
+     * Web frontend tokens (no {@code CLIENT_BROWSER_EXTENSION} authority) keep existing access.
+     * Extension tokens are authenticated but must not reach any other service.
+     */
+    private static AuthorizationManager<RequestAuthorizationContext> webFrontendOnly() {
+        return AuthorizationManagers.allOf(
+                AuthenticatedAuthorizationManager.authenticated(),
+                AuthorizationManagers.not(
+                        AuthorityAuthorizationManager.hasAuthority(AuthClientAuthorities.BROWSER_EXTENSION)));
     }
 }

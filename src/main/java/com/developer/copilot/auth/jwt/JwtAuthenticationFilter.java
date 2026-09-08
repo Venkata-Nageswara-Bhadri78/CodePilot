@@ -1,9 +1,13 @@
 package com.developer.copilot.auth.jwt;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.springframework.dao.DataAccessException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -12,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.repository.UserRepository;
+import com.developer.copilot.auth.security.AuthClientAuthorities;
 import com.developer.copilot.auth.security.CustomUserDetails;
 
 import io.jsonwebtoken.JwtException;
@@ -57,12 +62,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         && Boolean.TRUE.equals(user.getEmailVerified())
                         && jwtService.isTokenValid(jwt, user)) {
                     UserDetails userDetails = new CustomUserDetails(user);
+                    List<GrantedAuthority> authorities = new ArrayList<>(userDetails.getAuthorities());
+                    if (jwtService.isBrowserExtensionClient(jwt)) {
+                        authorities.add(new SimpleGrantedAuthority(AuthClientAuthorities.BROWSER_EXTENSION));
+                        log.debug("Authenticated browser-extension client for userId={}", userId);
+                    }
 
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(
                                     userDetails,
                                     null,
-                                    userDetails.getAuthorities());
+                                    authorities);
 
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);

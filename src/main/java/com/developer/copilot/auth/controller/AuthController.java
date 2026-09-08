@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.developer.copilot.auth.dto.AuthResponse;
+import com.developer.copilot.auth.dto.ExtensionAuthResponse;
 import com.developer.copilot.auth.dto.ForgotPasswordRequest;
 import com.developer.copilot.auth.dto.LoginRequest;
 import com.developer.copilot.auth.dto.LogoutRequest;
@@ -42,7 +43,8 @@ import org.springframework.web.bind.annotation.RequestBody;
                 + "Accounts stay disabled until verify-email. Login failures always return "
                 + "\"Invalid email or password.\" Missing JWT on protected routes returns \"Unauthorized.\" "
                 + "POST /logout kills that refresh only; POST /logout-all and reset-password also bump tokenVersion "
-                + "so old access JWTs die immediately.")
+                + "so old access JWTs die immediately. An already-authenticated web session can mint a restricted "
+                + "browser-extension access JWT at POST /extension-token (job extraction only; no refresh token).")
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -107,6 +109,37 @@ public class AuthController {
                 .build();
 
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+            summary = "Issue a browser-extension access token",
+            description = "Requires a live web-frontend access JWT (not an extension token). Returns a short-lived "
+                    + "JWT whose cid claim is browser-extension. That token may call only job-extraction endpoints. "
+                    + "No refresh token is issued. logout-all / reset-password still invalidate it via tokenVersion.",
+            security = @SecurityRequirement(name = BEARER_AUTH))
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200",
+                    description = "Browser extension access token issued."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401",
+                    description = "Unauthorized.",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403",
+                    description = "Extension client, or extension access disabled.",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "Too many requests",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
+    @PostMapping("/extension-token")
+    public ResponseEntity<ApiResponse<ExtensionAuthResponse>> issueExtensionToken() {
+        ExtensionAuthResponse authResponse = authService.issueExtensionToken();
+
+        return ResponseEntity.ok(
+                ApiResponse.<ExtensionAuthResponse>builder()
+                        .success(true)
+                        .message("Browser extension access token issued.")
+                        .data(authResponse)
+                        .timestamp(LocalDateTime.now())
+                        .build());
     }
 
     @Operation(
