@@ -12,12 +12,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.developer.copilot.auth.security.AuthClientAuthorities;
+
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = AuthController.class)
@@ -89,5 +94,38 @@ class AuthSecurityTest {
                                 }
                                 """))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void extensionToken_withoutAuthorization_returns401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/extension-token"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @WithMockUser(username = "john@example.com")
+    void extensionToken_withWebUser_returns200() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/extension-token"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void me_withExtensionClient_returns403() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .with(user("john@example.com").authorities(
+                                new SimpleGrantedAuthority("ROLE_USER"),
+                                new SimpleGrantedAuthority(AuthClientAuthorities.BROWSER_EXTENSION))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(AuthClientAuthorities.FORBIDDEN_MESSAGE));
+    }
+
+    @Test
+    void extensionToken_withExtensionClient_returns403() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/extension-token")
+                        .with(user("john@example.com").authorities(
+                                new SimpleGrantedAuthority("ROLE_USER"),
+                                new SimpleGrantedAuthority(AuthClientAuthorities.BROWSER_EXTENSION))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(AuthClientAuthorities.FORBIDDEN_MESSAGE));
     }
 }

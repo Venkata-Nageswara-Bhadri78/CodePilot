@@ -9,12 +9,14 @@ import com.developer.copilot.auth.dto.RegisterRequest;
 import com.developer.copilot.auth.dto.ResendOtpRequest;
 import com.developer.copilot.auth.dto.ResetPasswordRequest;
 import com.developer.copilot.auth.dto.UserResponse;
+import com.developer.copilot.auth.dto.ExtensionAuthResponse;
 import com.developer.copilot.auth.dto.VerifyOtpRequest;
 
 
 public interface AuthService {
     void register(RegisterRequest registerRequest);
     AuthResponse login(LoginRequest request);
+    ExtensionAuthResponse issueExtensionToken();
     UserResponse me();
     void verifyOtp(VerifyOtpRequest request);
     void resendOtp(ResendOtpRequest request);

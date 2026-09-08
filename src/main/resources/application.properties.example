@@ -89,6 +89,14 @@ app.auth.redis.database=0
 app.auth.redis.timeout-ms=2000
 app.auth.redis.key-prefix=auth
 
+# Browser extension client (exactly one Chrome extension).
+# Authorization is the signed JWT cid=browser-extension claim, not this origin and not a static header.
+# Set app.extension.id to the Chrome extension ID to allow chrome-extension://<id> CORS.
+app.extension.enabled=true
+app.extension.id=
+app.extension.access-expiry-ms=900000
+app.extension.token-rate-limit-per-minute=10
+
 # Job-extraction Redis (distributed parse rate limits + short preview cache). Off by default.
 app.jobextraction.redis.enabled=false
 app.jobextraction.redis.host=localhost

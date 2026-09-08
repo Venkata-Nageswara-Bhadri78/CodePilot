@@ -22,6 +22,7 @@ Limited **POST** paths (exact `requestURI`):
 | `/api/v1/auth/resend-otp` | `resend-ip` | 3 |
 | `/api/v1/auth/forgot-password` | `forgot-ip` | 3 |
 | `/api/v1/auth/refresh-token` | `refresh-ip` | 10 |
+| `/api/v1/auth/extension-token` | `extension-token-ip` | 10 |
 
 Not limited by this filter: `/reset-password`, `/logout`, `/logout-all`, `/me`, `/api/v1/test`.
 
@@ -42,6 +43,7 @@ After validation, `consumeOrThrow(bucket, email, limit, 60)`:
 | Verify | `verify-email` | 10 |
 | Resend | `resend-email` | 3 |
 | Forgot | `forgot-email` | 3 |
+| Extension token | `extension-token` (user id) | 10 (`app.extension.token-rate-limit-per-minute`) |
 
 Throws `RateLimitExceededException` → `429` + `Retry-After` via advice. Email is already normalized lowercase.
 

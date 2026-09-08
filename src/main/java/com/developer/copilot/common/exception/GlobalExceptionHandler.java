@@ -19,6 +19,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
 
+import com.developer.copilot.auth.exception.BrowserExtensionAccessDeniedException;
 import com.developer.copilot.auth.exception.EmailDeliveryException;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
 import com.developer.copilot.auth.exception.InvalidOtpException;
@@ -131,6 +132,20 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(EmailNotVerifiedException.class)
     public ResponseEntity<ApiResponse<Void>> handleEmailNotVerified(EmailNotVerifiedException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(response);
+    }
+
+    @ExceptionHandler(BrowserExtensionAccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBrowserExtensionAccessDenied(
+            BrowserExtensionAccessDeniedException ex) {
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .success(false)
                 .message(ex.getMessage())

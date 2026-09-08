@@ -4,7 +4,7 @@ These workflows are the ones implemented in `AuthServiceImpl`, the security filt
 
 ## Request lifecycle
 
-Every call to `/api/v1/auth/**` follows the same outer path. Public routes skip authentication; protected routes (`/me`, `/logout`, `/logout-all`) require a live access JWT.
+Every call to `/api/v1/auth/**` follows the same outer path. Public routes skip authentication; protected routes (`/me`, `/logout`, `/logout-all`, `/extension-token`) require a live access JWT. `/extension-token` additionally rejects browser-extension JWTs.
 
 ```mermaid
 sequenceDiagram
@@ -24,6 +24,8 @@ sequenceDiagram
         JWT->>SEC: continue
         alt protected and not authenticated
             SEC-->>C: 401 Unauthorized.
+        else protected, extension client, not job-extraction
+            SEC-->>C: 403 This client is not authorized to access this resource.
         else
             SEC->>CTL: dispatch
             CTL->>SVC: use case
@@ -191,11 +193,15 @@ sequenceDiagram
         F->>S: leave empty
         Note over F,S: Protected routes then 401 Unauthorized.
     else valid
-        F->>S: CustomUserDetails
+        F->>S: CustomUserDetails plus CLIENT_BROWSER_EXTENSION when cid is browser-extension
     end
 ```
 
 Database failures during user load are **not** swallowed; they propagate (typically `500`).
+
+## Browser-extension token
+
+The web frontend, already holding a full-privilege access JWT, calls `POST /api/v1/auth/extension-token`. Auth mints a short-lived JWT with `cid=browser-extension` and no refresh token. The website hands that token to the extension over `externally_connectable` / `chrome.runtime` messaging. The extension then calls only job-extraction endpoints with `Authorization: Bearer`.
 
 ## Hourly cleanup
 

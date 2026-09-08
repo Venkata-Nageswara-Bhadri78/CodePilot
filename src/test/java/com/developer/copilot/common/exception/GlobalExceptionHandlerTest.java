@@ -31,6 +31,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
 
+import com.developer.copilot.auth.exception.BrowserExtensionAccessDeniedException;
 import com.developer.copilot.auth.exception.EmailDeliveryException;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
@@ -244,6 +245,16 @@ class GlobalExceptionHandlerTest {
                 handler.handleEmailNotVerified(new EmailNotVerifiedException());
 
         assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+    }
+
+    @Test
+    void handleBrowserExtensionAccessDenied_mapsTo403() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleBrowserExtensionAccessDenied(
+                        new BrowserExtensionAccessDeniedException("This client is not authorized to access this resource."));
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals("This client is not authorized to access this resource.", response.getBody().getMessage());
     }
 
     @Test

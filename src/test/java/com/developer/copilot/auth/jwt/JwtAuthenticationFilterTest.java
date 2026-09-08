@@ -24,9 +24,12 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+
+import com.developer.copilot.auth.security.AuthClientAuthorities;
 
 @ExtendWith(MockitoExtension.class)
 class JwtAuthenticationFilterTest {
@@ -74,6 +77,24 @@ class JwtAuthenticationFilterTest {
         assertNotNull(SecurityContextHolder.getContext().getAuthentication());
         Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         assertNotNull(((CustomUserDetails) principal).getUser());
+        verify(filterChain).doFilter(request, response);
+    }
+
+    @Test
+    void doFilterInternal_extensionToken_addsBrowserExtensionAuthority() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer extension-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        when(jwtService.extractUserId("extension-token")).thenReturn(1L);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(jwtService.isTokenValid("extension-token", user)).thenReturn(true);
+        when(jwtService.isBrowserExtensionClient("extension-token")).thenReturn(true);
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        assertNotNull(SecurityContextHolder.getContext().getAuthentication());
+        assertTrue(AuthClientAuthorities.isBrowserExtension(SecurityContextHolder.getContext().getAuthentication()));
         verify(filterChain).doFilter(request, response);
     }
 

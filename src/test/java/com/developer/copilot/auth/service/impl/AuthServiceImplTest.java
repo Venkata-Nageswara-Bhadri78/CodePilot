@@ -1,7 +1,9 @@
 package com.developer.copilot.auth.service.impl;
 
 import com.developer.copilot.auth.config.AuthProperties;
+import com.developer.copilot.auth.config.ExtensionProperties;
 import com.developer.copilot.auth.dto.AuthResponse;
+import com.developer.copilot.auth.dto.ExtensionAuthResponse;
 import com.developer.copilot.auth.dto.ForgotPasswordRequest;
 import com.developer.copilot.auth.dto.LoginRequest;
 import com.developer.copilot.auth.dto.LogoutRequest;
@@ -15,6 +17,7 @@ import com.developer.copilot.auth.entity.PasswordResetToken;
 import com.developer.copilot.auth.entity.RefreshToken;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.enums.Role;
+import com.developer.copilot.auth.exception.BrowserExtensionAccessDeniedException;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
 import com.developer.copilot.auth.exception.InvalidOtpException;
 import com.developer.copilot.auth.exception.InvalidPasswordResetTokenException;
@@ -33,6 +36,8 @@ import com.developer.copilot.auth.repository.RefreshTokenRepository;
 import com.developer.copilot.auth.repository.UserRepository;
 import com.developer.copilot.auth.service.EmailService;
 import com.developer.copilot.auth.util.CredentialDigests;
+import com.developer.copilot.auth.security.AuthClientAuthorities;
+import com.developer.copilot.auth.security.CustomUserDetails;
 import com.developer.copilot.common.security.CurrentUserService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +46,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -107,6 +114,7 @@ class AuthServiceImplTest {
         ReflectionTestUtils.setField(authService, "authProperties", properties);
         ReflectionTestUtils.setField(authService, "otpHmacSecret", HMAC_SECRET);
         ReflectionTestUtils.setField(authService, "authRateLimitService", new AuthRateLimitServiceImpl(properties, null));
+        ReflectionTestUtils.setField(authService, "extensionProperties", new ExtensionProperties());
     }
 
     @AfterEach
@@ -609,6 +617,47 @@ class AuthServiceImplTest {
         assertEquals(1L, response.getId());
         assertEquals("johndoe", response.getUsername());
         assertEquals("john@example.com", response.getEmail());
+    }
+
+    @Test
+    void issueExtensionToken_returnsScopedTokenWithoutRefresh() {
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+        when(jwtService.generateExtensionToken(user)).thenReturn("extension-jwt");
+
+        ExtensionAuthResponse response = authService.issueExtensionToken();
+
+        assertEquals("extension-jwt", response.getAccessToken());
+        assertEquals("Bearer", response.getTokenType());
+        assertEquals(AuthClientAuthorities.CLIENT_ID_BROWSER_EXTENSION, response.getClient());
+        assertEquals(900L, response.getExpiresIn());
+        verify(jwtService).generateExtensionToken(user);
+        verify(jwtService, never()).generateToken(user);
+    }
+
+    @Test
+    void issueExtensionToken_whenDisabled_throws() {
+        ExtensionProperties disabled = new ExtensionProperties();
+        disabled.setEnabled(false);
+        ReflectionTestUtils.setField(authService, "extensionProperties", disabled);
+
+        assertThrows(BrowserExtensionAccessDeniedException.class, authService::issueExtensionToken);
+        verify(jwtService, never()).generateExtensionToken(any());
+    }
+
+    @Test
+    void issueExtensionToken_extensionClient_throws() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        new CustomUserDetails(user),
+                        null,
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER"),
+                                new SimpleGrantedAuthority(AuthClientAuthorities.BROWSER_EXTENSION))));
+
+        BrowserExtensionAccessDeniedException ex =
+                assertThrows(BrowserExtensionAccessDeniedException.class, authService::issueExtensionToken);
+        assertEquals(AuthClientAuthorities.FORBIDDEN_MESSAGE, ex.getMessage());
+        verify(jwtService, never()).generateExtensionToken(any());
     }
 
     @Test

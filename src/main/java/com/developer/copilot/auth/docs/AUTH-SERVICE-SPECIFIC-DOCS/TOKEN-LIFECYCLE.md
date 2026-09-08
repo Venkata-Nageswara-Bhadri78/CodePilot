@@ -24,11 +24,17 @@ The refresh value is not a JWT. `/refresh-token` is public; anyone who has the U
 - **`tv`:** `tokenVersion` (null treated as 0).
 - **`iat` / `exp`:** now and now + `access-expiry-ms`.
 
+Web frontend tokens **omit** `cid`. Browser-extension tokens add **`cid`:** `browser-extension` (`JwtService.generateExtensionToken`). Unknown `cid` values fail validation so they cannot inherit web privileges.
+
 Startup refuses secrets shorter than 32 characters or placeholder-like values.
 
 Validation (`isTokenValid`): parse with `verifyWith` (rejects `alg=none`), user id equals `sub`, `exp` not in the past, `tv` equals the user’s current `tokenVersion` (missing `tv` → 0).
 
-The filter also requires the user row to exist, `enabled == true`, and `emailVerified == true`. It authenticates with `extractUserId` only. It does not compare the JWT `email` or `role` claims to the database; those claims are informational for clients/other layers. Identity is `sub` + live user row + `tv`.
+The filter also requires the user row to exist, `enabled == true`, and `emailVerified == true`. For extension tokens it adds `CLIENT_BROWSER_EXTENSION` to the `Authentication` authorities. It authenticates with `extractUserId` only. It does not compare the JWT `email` or `role` claims to the database; those claims are informational for clients/other layers. Identity is `sub` + live user row + `tv`. Client authorization is the signed `cid` claim.
+
+## Browser-extension access JWT
+
+Issued only from `POST /api/v1/auth/extension-token` with a web-frontend access JWT. Same `sub` / `email` / `role` / `tv`, plus `cid=browser-extension`. Lifetime `app.extension.access-expiry-ms` (default 15 minutes). **No refresh UUID.** `logout-all` and reset-password still invalidate it via `tv`. `app.extension.enabled=false` refuses minting and treats existing extension JWTs as invalid.
 
 ## `tokenVersion`
 

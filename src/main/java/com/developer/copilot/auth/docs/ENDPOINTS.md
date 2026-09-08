@@ -27,6 +27,7 @@ Rate limits: selected POSTs also have a **per-IP** limit in `AuthRateLimitFilter
 | --- | --- | --- | --- | --- |
 | POST | `/api/v1/auth/register` | Public | Yes | Yes |
 | POST | `/api/v1/auth/login` | Public | Yes | Yes + failure window |
+| POST | `/api/v1/auth/extension-token` | Bearer (web frontend JWT only) | Yes | Per-user |
 | POST | `/api/v1/auth/verify-email` | Public | Yes | Yes |
 | POST | `/api/v1/auth/resend-otp` | Public | Yes | Yes + mail cooldown |
 | POST | `/api/v1/auth/forgot-password` | Public | Yes | Yes + mail cooldown |
@@ -104,6 +105,38 @@ OTP is never in the JSON.
 **Errors:** `400` validation; `401` `"Invalid email or password."` for unknown email, wrong password, unverified, disabled, or lockout; `429` rate limit.
 
 **Side effects:** new refresh row (may revoke oldest active tokens if over `maxActiveRefreshTokens`); new access JWT; clears failed-login counter on success.
+
+---
+
+## POST `/api/v1/auth/extension-token`
+
+Mints a **restricted** access JWT for the Chrome browser-extension client. Requires a live **web-frontend** access JWT. Extension tokens cannot call this endpoint.
+
+**Auth:** Bearer (web). Not `permitAll`.
+
+**Body:** none.
+
+**Success:** `200` `"Browser extension access token issued."` with `ExtensionAuthResponse`:
+
+```json
+{
+  "success": true,
+  "message": "Browser extension access token issued.",
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiJ9...",
+    "tokenType": "Bearer",
+    "client": "browser-extension",
+    "expiresIn": 900
+  },
+  "timestamp": "2026-01-01T12:00:00"
+}
+```
+
+No refresh token is issued. The JWT includes signed `cid=browser-extension` plus the same `sub` / `email` / `role` / `tv` as a web access token.
+
+**Errors:** `401` `"Unauthorized."`; `403` if the caller is already an extension client or `app.extension.enabled=false`; `429` rate limit.
+
+**Authorization of the minted token:** only `POST /api/v1/job-extraction/**` and `POST /api/v1/automated-job-extraction/**`. Other APIs return `403` `"This client is not authorized to access this resource."`
 
 ---
 

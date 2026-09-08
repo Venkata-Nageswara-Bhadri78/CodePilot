@@ -1,6 +1,7 @@
 package com.developer.copilot.auth.ratelimit.filter;
 
 import com.developer.copilot.auth.config.AuthProperties;
+import com.developer.copilot.auth.config.ExtensionProperties;
 import com.developer.copilot.auth.ratelimit.service.impl.AuthRateLimitServiceImpl;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.Test;
@@ -73,5 +74,31 @@ class AuthRateLimitFilterTest {
         filter.doFilterInternal(request, response, chain);
 
         verify(chain).doFilter(request, response);
+    }
+
+    @Test
+    void extensionToken_isLimitedPerIp() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        ExtensionProperties extensionProperties = new ExtensionProperties();
+        extensionProperties.setTokenRateLimitPerMinute(2);
+        AuthRateLimitFilter filter = new AuthRateLimitFilter(
+                properties, new AuthRateLimitServiceImpl(properties, null), extensionProperties);
+        FilterChain chain = mock(FilterChain.class);
+
+        for (int i = 0; i < 2; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/extension-token");
+            request.setRemoteAddr("10.0.0.1");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            filter.doFilterInternal(request, response, chain);
+            assertEquals(200, response.getStatus() == 0 ? 200 : response.getStatus());
+        }
+
+        MockHttpServletRequest blocked = new MockHttpServletRequest("POST", "/api/v1/auth/extension-token");
+        blocked.setRemoteAddr("10.0.0.1");
+        MockHttpServletResponse blockedResponse = new MockHttpServletResponse();
+        filter.doFilterInternal(blocked, blockedResponse, chain);
+
+        assertEquals(429, blockedResponse.getStatus());
+        verify(chain, times(2)).doFilter(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 }

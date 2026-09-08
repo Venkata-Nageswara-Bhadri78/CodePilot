@@ -7,13 +7,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.developer.copilot.auth.config.AuthProperties;
+import com.developer.copilot.auth.config.ExtensionProperties;
 import com.developer.copilot.auth.ratelimit.filter.AuthRateLimitFilter;
 import com.developer.copilot.auth.ratelimit.service.AuthRateLimitService;
 import com.developer.copilot.auth.ratelimit.service.impl.AuthRateLimitServiceImpl;
 import com.developer.copilot.auth.redis.service.AuthRedisService;
 
 @Configuration
-@EnableConfigurationProperties(AuthProperties.class)
+@EnableConfigurationProperties({AuthProperties.class, ExtensionProperties.class})
 public class AuthRateLimitConfig {
 
     @Bean
@@ -26,8 +27,9 @@ public class AuthRateLimitConfig {
     @Bean
     public AuthRateLimitFilter authRateLimitFilter(
             AuthProperties authProperties,
-            AuthRateLimitService authRateLimitService) {
-        return new AuthRateLimitFilter(authProperties, authRateLimitService);
+            AuthRateLimitService authRateLimitService,
+            ExtensionProperties extensionProperties) {
+        return new AuthRateLimitFilter(authProperties, authRateLimitService, extensionProperties);
     }
 
     /**
