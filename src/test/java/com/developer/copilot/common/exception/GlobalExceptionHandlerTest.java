@@ -230,6 +230,9 @@ class GlobalExceptionHandlerTest {
         assertEquals("6", handler.handleJobExtractionRateLimitExceeded(
                 new com.developer.copilot.jobextraction.manualextraction.ratelimit.exception.RateLimitExceededException(6))
                 .getHeaders().getFirst("Retry-After"));
+        assertEquals("9", handler.handleAutomatedJobExtractionRateLimitExceeded(
+                new com.developer.copilot.jobextraction.automatedjobextraction.ratelimit.exception.RateLimitExceededException(9))
+                .getHeaders().getFirst("Retry-After"));
         assertEquals("8", handler.handleCommonRateLimitExceeded(
                 new com.developer.copilot.common.ratelimit.exception.RateLimitExceededException(8))
                 .getHeaders().getFirst("Retry-After"));
