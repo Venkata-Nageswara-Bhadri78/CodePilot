@@ -40,7 +40,7 @@ import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
 import com.developer.copilot.common.storage.exception.StorageObjectNotFoundException;
-import com.developer.copilot.jobextraction.exception.EmailNotVerifiedException;
+import com.developer.copilot.jobextraction.manualextraction.exception.EmailNotVerifiedException;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobValidationException;
 import com.developer.copilot.user.config.ResumeProperties;
@@ -228,7 +228,7 @@ class GlobalExceptionHandlerTest {
                 new com.developer.copilot.chatassistant.ratelimit.exception.RateLimitExceededException(5))
                 .getHeaders().getFirst("Retry-After"));
         assertEquals("6", handler.handleJobExtractionRateLimitExceeded(
-                new com.developer.copilot.jobextraction.ratelimit.exception.RateLimitExceededException(6))
+                new com.developer.copilot.jobextraction.manualextraction.ratelimit.exception.RateLimitExceededException(6))
                 .getHeaders().getFirst("Retry-After"));
         assertEquals("8", handler.handleCommonRateLimitExceeded(
                 new com.developer.copilot.common.ratelimit.exception.RateLimitExceededException(8))
