@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authorization.AuthenticatedAuthorizationManager;
 import org.springframework.security.authorization.AuthorityAuthorizationManager;
 import org.springframework.security.authorization.AuthorizationManager;
@@ -82,6 +83,11 @@ public class SecurityConfig {
                 "/api/v1/auth/refresh-token",
                 "/error"
             ).permitAll()
+            .requestMatchers(
+                    HttpMethod.POST,
+                    "/api/v1/job-extraction/parse",
+                    "/api/v1/automated-job-extraction/parse")
+            .authenticated()
             .requestMatchers(JOB_EXTRACTION_PATHS).authenticated()
             .anyRequest().access(webFrontendOnly());
         })
