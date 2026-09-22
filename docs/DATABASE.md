@@ -19,7 +19,6 @@ erDiagram
     USER_PROFILE ||--o{ ADDITIONAL_INFO : has
     USER_PROFILE ||--o{ PROFILE_LINK : has
     RESUME ||--o| RESUME_PARSED_DATA : parsed
-    JOB ||--o{ JOB_SKILL : skills
     JOB ||--o| CHAT_SESSION : one_chat
     CHAT_SESSION ||--o{ CHAT_MESSAGE : turns
 

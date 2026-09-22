@@ -251,13 +251,13 @@ class JobServiceImplTest {
     }
 
     @Test
-    void createJob_joinedExtractionSkills_persistsAsSubmitted() {
+    void createJob_extractionStyleSkills_persistsAsSubmitted() {
         stubCurrentUser();
         when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
         when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         JobRequest request = baseCreateRequest();
-        request.setSkills(String.join(", ", List.of("React", "Node.js")));
+        request.setSkills("React, Node.js");
 
         JobResponse response = jobService.createJob(request);
         assertEquals("React, Node.js", response.getSkills());
@@ -302,7 +302,7 @@ class JobServiceImplTest {
     }
 
     @Test
-    void patchJob_omittingSkills_leavesList() {
+    void patchJob_omittingSkills_leavesField() {
         stubCurrentUser();
         when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
         when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -316,7 +316,7 @@ class JobServiceImplTest {
     }
 
     @Test
-    void patchJob_explicitSkillsReplaceList() {
+    void patchJob_explicitSkillsReplaceField() {
         stubCurrentUser();
         when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
         when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -350,7 +350,7 @@ class JobServiceImplTest {
     }
 
     @Test
-    void updateJob_omittingSkills_clearsList() {
+    void updateJob_omittingSkills_clearsField() {
         stubCurrentUser();
         when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
         when(jobRepository.existsByUserIdAndSourceUrlHashAndIdNot(eq(1L), any(), eq(100L))).thenReturn(false);
@@ -369,7 +369,7 @@ class JobServiceImplTest {
     }
 
     @Test
-    void updateJob_explicitEmptySkills_clearsList() {
+    void updateJob_explicitEmptySkills_clearsField() {
         stubCurrentUser();
         when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
         when(jobRepository.existsByUserIdAndSourceUrlHashAndIdNot(eq(1L), any(), eq(100L))).thenReturn(false);

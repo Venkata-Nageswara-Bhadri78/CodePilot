@@ -85,7 +85,7 @@ A `TEXT` column on `jobs` storing all skills as one comma-separated string, for 
 
 HTTP and persistence use the same string. Null on create/PUT becomes `""`. On general `PATCH`, omitted `skills` **leaves** the value; an explicit empty string clears it. Bean validation caps the whole field at 15_000 characters (`JobLimits.MAX_SKILLS_LENGTH`).
 
-`JobSkillsCollectionMigrator` copies leftover `job_skills` rows into this column on startup (joined with `", "`) and then drops `job_skills`. It only writes when `jobs.skills` is null or empty, so it is safe to run more than once until the old table is gone.
+Existing `job_skills` collection rows are not copied by the application. Copy any leftover values into `jobs.skills` before dropping that table.
 
 ## Repository operations
 

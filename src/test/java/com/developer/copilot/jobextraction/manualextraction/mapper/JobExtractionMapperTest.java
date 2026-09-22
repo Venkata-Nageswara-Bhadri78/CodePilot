@@ -2,7 +2,6 @@ package com.developer.copilot.jobextraction.manualextraction.mapper;
 
 import com.developer.copilot.ai.dto.response.JobExtractionAiResponse;
 import com.developer.copilot.jobextraction.manualextraction.dto.response.JobExtractionResultResponse;
-import com.developer.copilot.jobextraction.manualextraction.mapper.JobExtractionMapper;
 
 import org.junit.jupiter.api.Test;
 
@@ -49,7 +48,7 @@ class JobExtractionMapperTest {
         assertEquals("Tech", result.getIndustry());
         assertEquals("LinkedIn", result.getSourcePlatform());
         assertEquals("Great role", result.getDescription());
-        assertEquals(List.of("Java", "Spring"), result.getSkills());
+        assertEquals("Java, Spring", result.getSkills());
         assertFalse(result.isRequiresManualReview());
         assertEquals(0, result.getResumeToJobScore());
     }
@@ -99,8 +98,9 @@ class JobExtractionMapperTest {
         JobExtractionResultResponse result =
                 mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
 
-        assertEquals(50, result.getSkills().size());
-        assertEquals(255, result.getSkills().get(0).length());
+        String[] parts = result.getSkills().split(", ");
+        assertEquals(50, parts.length);
+        assertEquals(255, parts[0].length());
     }
 
     @Test
@@ -130,7 +130,7 @@ class JobExtractionMapperTest {
                 mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
 
         aiSkills.add("Hacked");
-        assertEquals(java.util.List.of("Java"), result.getSkills());
+        assertEquals("Java", result.getSkills());
     }
 
     @Test
@@ -162,7 +162,7 @@ class JobExtractionMapperTest {
     }
 
     @Test
-    void toResultResponse_NullSkills_MapsToEmptyMutableList() {
+    void toResultResponse_NullSkills_MapsToEmptyString() {
         JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
                 .title("Engineer")
                 .company("Acme")
@@ -172,9 +172,7 @@ class JobExtractionMapperTest {
         JobExtractionResultResponse result =
                 mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
 
-        assertNotNull(result.getSkills());
-        assertTrue(result.getSkills().isEmpty());
-        assertDoesNotThrow(() -> result.getSkills().add("Java"));
+        assertEquals("", result.getSkills());
     }
 
     @Test
@@ -233,7 +231,7 @@ class JobExtractionMapperTest {
         assertEquals("", result.getTitle());
         assertEquals("", result.getWorkMode());
         assertEquals("Apply at the company site", result.getDescription());
-        assertEquals(List.of("Java"), result.getSkills());
+        assertEquals("Java", result.getSkills());
         assertEquals("javascript: in the paste is fine", result.getOriginalDescription());
         assertTrue(result.isRequiresManualReview());
     }

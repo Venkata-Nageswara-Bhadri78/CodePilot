@@ -54,7 +54,7 @@ There is no `@SpringBootTest` slice that boots Redis or a live model for this pa
 
 - Happy path: tracking params stripped, canonical URL sent to AI and returned, paste echoed as `originalDescription`
 - Hash passed to `existsByUserIdAndSourceUrlHash` matches `sha256Hex(normalized)`
-- Null AI skills → empty list
+- Null AI skills → empty string
 - Blank title/company → `requiresManualReview`
 - Invalid URL, `javascript:`/`data:`/`ftp:`/missing host → exception, AI not called; `javascript:` not in message
 - Duplicate before AI; product 409 message
@@ -71,7 +71,7 @@ There is no `@SpringBootTest` slice that boots Redis or a live model for this pa
 
 ### Mapper
 
-Field mapping, clip lengths, skill cap, control-character strip, defensive copy of skills list, HTML kept, `javascript:`/`data:` URI fields blanked, `originalDescription` not blanked for `javascript:` in the paste.
+Field mapping, clip lengths, skill cap then join to comma-separated string, control-character strip, HTML kept, `javascript:`/`data:` URI fields blanked, `originalDescription` not blanked for `javascript:` in the paste.
 
 ### Cache
 

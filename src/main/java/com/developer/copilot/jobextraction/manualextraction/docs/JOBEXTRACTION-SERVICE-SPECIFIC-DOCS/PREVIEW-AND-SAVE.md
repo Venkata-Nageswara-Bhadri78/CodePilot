@@ -51,10 +51,10 @@ If parse returns `409`, skip extraction UI: this user already has that canonical
 | `department` | `department` | |
 | `industry` | `industry` | |
 | `sourcePlatform` | `sourcePlatform` | |
-| `skills` | `skills` | Always an array on preview. |
+| `skills` | `skills` | Comma-separated string. Empty string when none. Copy onto JobRequest as-is. |
 | `requiresManualReview` | **omit** | Not a `JobRequest` field. |
 
-Lengths after mapping match `JobExtractionLimits` / `JobRequest` `@Size` (title 255, workMode 50, description 50000, skills 50×255, URL 2000, …).
+Lengths after mapping match `JobExtractionLimits` / `JobRequest` `@Size` (title 255, workMode 50, description 50000, skills joined string max 15000, URL 2000, …).
 
 ## `requiresManualReview`
 

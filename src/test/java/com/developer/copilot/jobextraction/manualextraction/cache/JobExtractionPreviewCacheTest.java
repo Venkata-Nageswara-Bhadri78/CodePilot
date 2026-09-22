@@ -10,7 +10,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Duration;
-import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -34,7 +33,7 @@ class JobExtractionPreviewCacheTest {
         JobExtractionResultResponse preview = JobExtractionResultResponse.builder()
                 .title("T")
                 .company("C")
-                .skills(List.of("Java"))
+                .skills("Java")
                 .build();
 
         cache.put(1L, "hash-a", preview);

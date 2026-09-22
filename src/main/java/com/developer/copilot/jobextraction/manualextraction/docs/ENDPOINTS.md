@@ -77,7 +77,7 @@ Unknown JSON properties are ignored (they do not fail the request). Extra fields
 | `department` | AI, clipped to 100 | |
 | `industry` | AI, clipped to 100 | Empty unless the paste names an industry. |
 | `sourcePlatform` | AI, clipped to 50 | Empty unless the paste names the platform. |
-| `skills` | AI | Never null. Max 50 items, each 255 chars. Blank items dropped. |
+| `skills` | AI | Comma-separated string. Empty string when none. Internally clipped to 50 items × 255 chars, then joined with `", "`. |
 | `requiresManualReview` | Computed here | `true` if title or company is blank **or** was truncated. Not produced by the model. **Omit on save.** |
 
 **Example success (shape)**
@@ -101,7 +101,7 @@ Unknown JSON properties are ignored (they do not fail the request). Extra fields
     "department": "",
     "industry": "",
     "sourcePlatform": "",
-    "skills": ["Java"],
+    "skills": "Java",
     "requiresManualReview": false
   },
   "timestamp": "2026-01-15T10:30:00"

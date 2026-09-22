@@ -108,7 +108,7 @@ All **web JWT**. Foreign job ids look like **404**. Duplicate canonical URL → 
 | PATCH | `/{id}/industry` | |
 | PATCH | `/{id}/source-platform` | |
 | PATCH | `/{id}/source-url` | Re-normalize; uniqueness |
-| PATCH | `/{id}/skills` | `[]` clears skills |
+| PATCH | `/{id}/skills` | `""` clears skills |
 | PATCH | `/{id}/description` | |
 | PATCH | `/{id}/original-description` | |
 

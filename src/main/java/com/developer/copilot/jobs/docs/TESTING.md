@@ -15,7 +15,6 @@ Use this map to see what is already locked in and where to add tests for new beh
 | Ownership | `JobOwnershipIsolationTest` | Foreign id → `JobNotFoundException` on every owned operation; list uses caller `userId` |
 | Exceptions | `JobsExceptionMappingTest` | Handler status codes including jobs `429` + `Retry-After` |
 | Mapper | `JobMapperTest` | URL not set by mapper; PUT vs PATCH skills string; summary omits descriptions; create defaults notes/status/score |
-| Collection migration | `JobSkillsCollectionMigratorTest` | Copies legacy `job_skills` rows into `jobs.skills` and drops the table |
 | Sort | `JobSortSupportTest` | Allow-list, salary/hash/user path rejected, non-`asc` is desc |
 | Query | `JobQuerySupportTest` | Paging bounds, LIKE escape, blank search → null |
 | Rate-limit filter | `JobsRateLimitFilterTest` | IP limit, user limit across IPs, search vs list, mutate bucket, other paths skipped |

@@ -75,10 +75,9 @@ AI strings are clipped so save `@Size` will pass:
 | title, company, location, education | 255 |
 | employmentType, experience, salary, department, industry | 100 |
 | workMode, sourcePlatform | 50 |
-| each skill | 255 |
-| skill count | 50 |
+| skills string | 15_000 (joined; each AI item clipped to 255, max 50 items) |
 
-Null AI `skills` → empty list (never null). Blank skills after clip are omitted. Extra skills beyond 50 are dropped. Skill-list clipping does not set `requiresManualReview`.
+Null AI `skills` → empty string. Blank skills after clip are omitted. Extra skills beyond 50 are dropped before join. Skill clipping does not set `requiresManualReview`.
 
 Truncating **workMode** (or other non-title/company fields) does not set `requiresManualReview`.
 

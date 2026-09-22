@@ -38,7 +38,7 @@ Skills:
 entity.setSkills(request.skills != null ? request.skills : "")
 ```
 
-Omitting `skills` or sending `null` wipes skills. Tests: `updateJob_omittingSkills_clearsList`, `updateJob_explicitEmptySkills_clearsList`.
+Omitting `skills` or sending `null` wipes skills. Tests: `updateJob_omittingSkills_clearsField`, `updateJob_explicitEmptySkills_clearsField`.
 
 Use PUT when the client has the whole form (same shape as create). Do not use PUT to change salary alone unless you resend every mandatory field, every optional field you want to keep, and the intended skills string.
 
@@ -50,7 +50,7 @@ Before mapping, the service rejects blank (non-null) title, company, and origina
 
 Skills:
 
-- omitted → value unchanged (`patchJob_omittingSkills_leavesList`)
+- omitted → value unchanged (`patchJob_omittingSkills_leavesField`)
 - `"skills": "Go"` → replace
 - `"skills": ""` → clear
 

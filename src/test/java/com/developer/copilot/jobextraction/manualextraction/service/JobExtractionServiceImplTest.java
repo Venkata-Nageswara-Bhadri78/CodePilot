@@ -113,7 +113,7 @@ class JobExtractionServiceImplTest {
         assertEquals("Stripe", result.getCompany());
         assertEquals("https://stripe.com/jobs/senior-engineer", result.getSourceUrl());
         assertEquals("Full pasted job posting text.", result.getOriginalDescription());
-        assertEquals(List.of("React", "Node.js"), result.getSkills());
+        assertEquals("React, Node.js", result.getSkills());
         assertFalse(result.isRequiresManualReview());
 
         verify(aiService, times(1)).extractJobInfo(any(JobExtractionAiRequest.class));
@@ -173,7 +173,7 @@ class JobExtractionServiceImplTest {
     }
 
     @Test
-    void extractJobInfo_AiReturnsNullSkills_MapsToEmptyList() {
+    void extractJobInfo_AiReturnsNullSkills_MapsToEmptyString() {
         mockAuthenticatedUser();
         when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
         when(aiService.extractJobInfo(any(JobExtractionAiRequest.class)))
@@ -186,8 +186,7 @@ class JobExtractionServiceImplTest {
 
         JobExtractionResultResponse result = jobExtractionService.extractJobInfo(request);
 
-        assertNotNull(result.getSkills());
-        assertTrue(result.getSkills().isEmpty());
+        assertEquals("", result.getSkills());
     }
 
     @Test
