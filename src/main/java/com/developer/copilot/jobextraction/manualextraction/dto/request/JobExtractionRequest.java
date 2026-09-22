@@ -43,4 +43,9 @@ public class JobExtractionRequest {
             requiredMode = Schema.RequiredMode.REQUIRED,
             maxLength = JobExtractionLimits.MAX_DESCRIPTION_LENGTH)
     private String rawJobText;
+
+    @Schema(description = "Optional resume id to score against this posting. Omit to use the "
+                    + "user's high-priority resume. Must belong to the current user when sent.",
+            example = "12")
+    private Long resume;
 }

@@ -9,9 +9,13 @@ import com.developer.copilot.jobs.dto.JobPatchRequest;
 import com.developer.copilot.jobs.dto.JobRequest;
 import com.developer.copilot.jobs.dto.JobResponse;
 import com.developer.copilot.jobs.dto.request.UpdateLocationRequest;
+import com.developer.copilot.jobs.dto.request.UpdateNotesRequest;
+import com.developer.copilot.jobs.dto.request.UpdateResumeRequest;
+import com.developer.copilot.jobs.dto.request.UpdateJobStatusRequest;
 import com.developer.copilot.jobs.dto.request.UpdateSkillsRequest;
 import com.developer.copilot.jobs.dto.request.UpdateSourceUrlRequest;
 import com.developer.copilot.jobs.entity.JobEntity;
+import com.developer.copilot.jobs.entity.JobStatus;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
 import com.developer.copilot.jobs.exception.JobValidationException;
@@ -41,6 +45,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,6 +62,9 @@ class JobServiceImplTest {
 
     @Spy
     private UrlNormalizationUtil urlNormalizationUtil = new UrlNormalizationUtil();
+
+    @Mock
+    private JobResumeBindingService jobResumeBindingService;
 
     @InjectMocks
     private JobServiceImpl jobService;
@@ -89,6 +97,9 @@ class JobServiceImplTest {
 
     private void stubCurrentUser() {
         when(currentUserService.getCurrentUser()).thenReturn(testUser);
+        lenient().when(jobResumeBindingService.resolveResumeId(any(), nullable(Long.class))).thenReturn(null);
+        lenient().when(jobResumeBindingService.scoreOrDefault(nullable(Long.class), any())).thenReturn(0);
+        lenient().when(jobResumeBindingService.scoreOrThrow(nullable(Long.class), any())).thenReturn(0);
     }
 
     private JobRequest baseCreateRequest() {
@@ -119,6 +130,10 @@ class JobServiceImplTest {
         assertEquals(100L, response.getId());
         assertEquals("Amazon", response.getCompany());
         assertEquals("https://amazon.jobs/en/jobs/12345", response.getSourceUrl());
+        assertEquals("", response.getNotes());
+        assertEquals(0, response.getResumeToJobScore());
+        assertEquals(com.developer.copilot.jobs.entity.JobStatus.APPLIED, response.getJobStatus());
+        assertNull(response.getResume());
         verify(jobRepository).save(argThat(job -> job.getSourceUrlHash() != null
                 && job.getSourceUrlHash().length() == 64));
         verify(currentUserService).getCurrentUser();
@@ -537,5 +552,106 @@ class JobServiceImplTest {
 
         assertThrows(JobNotFoundException.class, () -> jobService.deleteJob(999L));
         verify(jobRepository, never()).delete(any(JobEntity.class));
+    }
+
+    @Test
+    void createJob_explicitResume_storesIdAndProvidedScore() {
+        stubCurrentUser();
+        when(jobResumeBindingService.resolveResumeId(eq(testUser), eq(12L))).thenReturn(12L);
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        JobRequest request = baseCreateRequest();
+        request.setResume(12L);
+        request.setResumeToJobScore(81);
+
+        JobResponse response = jobService.createJob(request);
+
+        assertEquals(12L, response.getResume());
+        assertEquals(81, response.getResumeToJobScore());
+        verify(jobResumeBindingService, never()).scoreOrDefault(any(), any());
+    }
+
+    @Test
+    void createJob_noScore_computesViaBindingService() {
+        stubCurrentUser();
+        when(jobResumeBindingService.resolveResumeId(eq(testUser), nullable(Long.class))).thenReturn(7L);
+        when(jobResumeBindingService.scoreOrDefault(eq(7L), any(JobEntity.class))).thenReturn(64);
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        JobResponse response = jobService.createJob(baseCreateRequest());
+
+        assertEquals(7L, response.getResume());
+        assertEquals(64, response.getResumeToJobScore());
+    }
+
+    @Test
+    void updateNotes_replacesValue() {
+        stubCurrentUser();
+        when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
+        when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        JobResponse response = jobService.updateNotes(100L, UpdateNotesRequest.builder().notes("Follow up Friday").build());
+
+        assertEquals("Follow up Friday", response.getNotes());
+        assertEquals("Amazon", response.getCompany());
+    }
+
+    @Test
+    void updateJobStatus_customRequiresText() {
+        stubCurrentUser();
+        when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
+
+        assertThrows(JobValidationException.class, () -> jobService.updateJobStatus(100L,
+                UpdateJobStatusRequest.builder().jobStatus(JobStatus.CUSTOM).customStatus("  ").build()));
+        verify(jobRepository, never()).save(any(JobEntity.class));
+    }
+
+    @Test
+    void updateJobStatus_predefinedClearsCustomText() {
+        stubCurrentUser();
+        testJob.setJobStatus(JobStatus.CUSTOM);
+        testJob.setCustomStatus("Waiting on comp");
+        when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
+        when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        JobResponse response = jobService.updateJobStatus(100L,
+                UpdateJobStatusRequest.builder().jobStatus(JobStatus.INTERVIEWS).build());
+
+        assertEquals(JobStatus.INTERVIEWS, response.getJobStatus());
+        assertNull(response.getCustomStatus());
+    }
+
+    @Test
+    void updateResume_rescores() {
+        stubCurrentUser();
+        when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
+        when(jobResumeBindingService.resolveResumeId(eq(testUser), eq(9L))).thenReturn(9L);
+        when(jobResumeBindingService.scoreOrThrow(eq(9L), any(JobEntity.class))).thenReturn(55);
+        when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        JobResponse response = jobService.updateResume(100L, UpdateResumeRequest.builder().resume(9L).build());
+
+        assertEquals(9L, response.getResume());
+        assertEquals(55, response.getResumeToJobScore());
+    }
+
+    @Test
+    void patchJob_statusAndNotes_doNotRescore() {
+        stubCurrentUser();
+        when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
+        when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        JobPatchRequest request = JobPatchRequest.builder()
+                .notes("Called recruiter")
+                .jobStatus(JobStatus.SCREENING_CALL)
+                .build();
+
+        JobResponse response = jobService.patchJob(100L, request);
+
+        assertEquals("Called recruiter", response.getNotes());
+        assertEquals(JobStatus.SCREENING_CALL, response.getJobStatus());
+        verify(jobResumeBindingService, never()).scoreOrThrow(any(), any());
     }
 }

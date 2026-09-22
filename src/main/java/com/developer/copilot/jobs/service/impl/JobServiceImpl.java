@@ -9,13 +9,16 @@ import com.developer.copilot.jobs.dto.JobResponse;
 import com.developer.copilot.jobs.dto.JobSummaryResponse;
 import com.developer.copilot.jobs.dto.request.*;
 import com.developer.copilot.jobs.entity.JobEntity;
+import com.developer.copilot.jobs.entity.JobStatus;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
 import com.developer.copilot.jobs.exception.JobValidationException;
 import com.developer.copilot.jobs.mapper.JobMapper;
 import com.developer.copilot.jobs.repository.JobRepository;
+import com.developer.copilot.jobs.service.JobResumeBindingService;
 import com.developer.copilot.jobs.service.JobService;
 import com.developer.copilot.jobs.util.JobQuerySupport;
+import com.developer.copilot.jobs.util.ResumeToJobScoreSupport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -36,6 +39,7 @@ public class JobServiceImpl implements JobService {
     private final CurrentUserService currentUserService;
     private final JobMapper jobMapper;
     private final UrlNormalizationUtil urlNormalizationUtil;
+    private final JobResumeBindingService jobResumeBindingService;
 
     @Override
     @Transactional
@@ -43,6 +47,7 @@ public class JobServiceImpl implements JobService {
         User currentUser = currentUserService.getCurrentUser();
         JobEntity jobEntity = jobMapper.toEntity(request, currentUser);
         applySourceUrl(jobEntity, request.getSourceUrl(), currentUser.getId(), null);
+        bindResumeOnCreate(jobEntity, currentUser, request);
         JobEntity savedJob = saveJob(jobEntity);
         return jobMapper.toJobResponse(savedJob);
     }
@@ -76,6 +81,7 @@ public class JobServiceImpl implements JobService {
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
         jobMapper.updateEntityFromRequest(job, request);
         applySourceUrl(job, request.getSourceUrl(), currentUser.getId(), job.getId());
+        bindResumeIfRequested(job, currentUser, request.getResume(), request.getResumeToJobScore());
         JobEntity updatedJob = saveJob(job);
         return jobMapper.toJobResponse(updatedJob);
     }
@@ -96,6 +102,12 @@ public class JobServiceImpl implements JobService {
 
         if (request.getSourceUrl() != null) {
             applySourceUrl(job, request.getSourceUrl(), currentUser.getId(), job.getId());
+        }
+        if (request.getJobStatus() != null) {
+            applyJobStatus(job, request.getJobStatus(), request.getCustomStatus());
+        }
+        if (request.getResume() != null) {
+            bindResumeAndRescore(job, currentUser, request.getResume());
         }
 
         JobEntity updatedJob = saveJob(job);
@@ -248,6 +260,33 @@ public class JobServiceImpl implements JobService {
         return jobMapper.toJobResponse(saveJob(job));
     }
 
+    @Override
+    @Transactional
+    public JobResponse updateResume(Long id, UpdateResumeRequest request) {
+        User currentUser = currentUserService.getCurrentUser();
+        JobEntity job = getJobEntityForCurrentUser(id, currentUser);
+        bindResumeAndRescore(job, currentUser, request.getResume());
+        return jobMapper.toJobResponse(saveJob(job));
+    }
+
+    @Override
+    @Transactional
+    public JobResponse updateNotes(Long id, UpdateNotesRequest request) {
+        User currentUser = currentUserService.getCurrentUser();
+        JobEntity job = getJobEntityForCurrentUser(id, currentUser);
+        job.setNotes(request.getNotes() != null ? request.getNotes() : "");
+        return jobMapper.toJobResponse(saveJob(job));
+    }
+
+    @Override
+    @Transactional
+    public JobResponse updateJobStatus(Long id, UpdateJobStatusRequest request) {
+        User currentUser = currentUserService.getCurrentUser();
+        JobEntity job = getJobEntityForCurrentUser(id, currentUser);
+        applyJobStatus(job, request.getJobStatus(), request.getCustomStatus());
+        return jobMapper.toJobResponse(saveJob(job));
+    }
+
     private JobEntity getJobEntityForCurrentUser(Long id, User currentUser) {
         return jobRepository.findByIdAndUserId(id, currentUser.getId())
                 .orElseThrow(() -> new JobNotFoundException("Job not found with id: " + id));
@@ -305,5 +344,47 @@ public class JobServiceImpl implements JobService {
         if (value != null && value.isBlank()) {
             throw new JobValidationException(fieldName + " cannot be blank.");
         }
+    }
+
+    private void bindResumeOnCreate(JobEntity job, User currentUser, JobRequest request) {
+        Long resumeId = jobResumeBindingService.resolveResumeId(currentUser, request.getResume());
+        job.setResume(resumeId);
+        if (resumeId != null && ResumeToJobScoreSupport.isValid(request.getResumeToJobScore())) {
+            job.setResumeToJobScore(request.getResumeToJobScore());
+        } else {
+            job.setResumeToJobScore(jobResumeBindingService.scoreOrDefault(resumeId, job));
+        }
+    }
+
+    private void bindResumeIfRequested(JobEntity job, User currentUser, Long requestedResume, Integer providedScore) {
+        if (requestedResume == null) {
+            return;
+        }
+        Long resumeId = jobResumeBindingService.resolveResumeId(currentUser, requestedResume);
+        job.setResume(resumeId);
+        if (resumeId != null && ResumeToJobScoreSupport.isValid(providedScore)) {
+            job.setResumeToJobScore(providedScore);
+            return;
+        }
+        job.setResumeToJobScore(jobResumeBindingService.scoreOrThrow(resumeId, job));
+    }
+
+    private void bindResumeAndRescore(JobEntity job, User currentUser, Long requestedResume) {
+        Long resumeId = jobResumeBindingService.resolveResumeId(currentUser, requestedResume);
+        job.setResume(resumeId);
+        job.setResumeToJobScore(jobResumeBindingService.scoreOrThrow(resumeId, job));
+    }
+
+    private void applyJobStatus(JobEntity job, JobStatus status, String customStatus) {
+        if (status == JobStatus.CUSTOM) {
+            if (customStatus == null || customStatus.isBlank()) {
+                throw new JobValidationException("Custom status text is required when jobStatus is CUSTOM.");
+            }
+            job.setJobStatus(JobStatus.CUSTOM);
+            job.setCustomStatus(customStatus.trim());
+            return;
+        }
+        job.setJobStatus(status);
+        job.setCustomStatus(null);
     }
 }

@@ -43,6 +43,7 @@ public class JobExtractionMapper {
                 .industry(clip(aiResponse.getIndustry(), JobExtractionLimits.MAX_INDUSTRY_LENGTH).value())
                 .sourcePlatform(clip(aiResponse.getSourcePlatform(), JobExtractionLimits.MAX_SOURCE_PLATFORM_LENGTH).value())
                 .skills(clipSkills(aiResponse.getSkills()))
+                .resumeToJobScore(sanitizeScore(aiResponse.getResumeToJobScore()))
                 .requiresManualReview(isBlank(title.value()) || isBlank(company.value())
                         || title.truncated() || company.truncated())
                 .build();
@@ -107,6 +108,13 @@ public class JobExtractionMapper {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private int sanitizeScore(Integer score) {
+        if (score == null || score < 0 || score > 100) {
+            return 0;
+        }
+        return score;
     }
 
     private record Clip(String value, boolean truncated) {

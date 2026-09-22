@@ -86,6 +86,31 @@ class JobSecurityTest {
     }
 
     @Test
+    void updateResume_withoutAuthorization_returns401() throws Exception {
+        mockMvc.perform(patch("/api/v1/jobs/1/resume")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"resume\":12}"))
+                .andExpect(status().isUnauthorized());
+        verify(jobService, never()).updateResume(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void updateNotes_withoutAuthorization_returns401() throws Exception {
+        mockMvc.perform(patch("/api/v1/jobs/1/notes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"notes\":\"hi\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void updateJobStatus_withoutAuthorization_returns401() throws Exception {
+        mockMvc.perform(patch("/api/v1/jobs/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"jobStatus\":\"INTERVIEWS\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void garbageBearerToken_returns401_andDoesNotCallService() throws Exception {
         mockMvc.perform(get("/api/v1/jobs")
                         .header("Authorization", "Bearer not-a-jwt"))

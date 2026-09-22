@@ -86,6 +86,18 @@ public class JobExtractionResultResponse {
             schema = @Schema(example = "Java", maxLength = JobExtractionLimits.MAX_SKILL_LENGTH))
     private List<String> skills;
 
+    @Schema(description = "Id of the resume used for scoring. Null when the user has no usable resume. "
+            + "Send this as JobRequest.resume on POST /api/v1/jobs.",
+            example = "12")
+    private Long resume;
+
+    @Schema(description = "AI resume-to-job match score, 0–100. Send as JobRequest.resumeToJobScore on save. "
+            + "0 when no resume was available or there was no overlap.",
+            example = "78",
+            minimum = "0",
+            maximum = "100")
+    private Integer resumeToJobScore;
+
     @Schema(description = "True when title or company is blank, or was truncated to fit jobs @Size. "
             + "Highlight those fields before POST /api/v1/jobs. Omit this flag on save.")
     private boolean requiresManualReview;

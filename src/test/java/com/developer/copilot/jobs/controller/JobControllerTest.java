@@ -320,4 +320,80 @@ class JobControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Request body is missing or malformed JSON."));
     }
+
+    @Test
+    void createJob_resumeToJobScoreOver100_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/jobs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/jobs/1",
+                                  "originalDescription": "Job description text",
+                                  "title": "Software Engineer",
+                                  "company": "Acme Corp",
+                                  "resumeToJobScore": 101
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+        verify(jobService, never()).createJob(any());
+    }
+
+    @Test
+    void updateNotes_emptyString_isAccepted() throws Exception {
+        when(jobService.updateNotes(eq(1L), any())).thenReturn(JobResponse.builder().id(1L).notes("").build());
+
+        mockMvc.perform(patch("/api/v1/jobs/1/notes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "notes": ""
+                                }
+                                """))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void updateNotes_oversized_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/jobs/1/notes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "notes": "%s"
+                                }
+                                """.formatted("x".repeat(JobLimits.MAX_NOTES_LENGTH + 1))))
+                .andExpect(status().isBadRequest());
+        verify(jobService, never()).updateNotes(any(), any());
+    }
+
+    @Test
+    void updateResume_missingId_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/jobs/1/resume")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+        verify(jobService, never()).updateResume(any(), any());
+    }
+
+    @Test
+    void updateJobStatus_missingStatus_returns400() throws Exception {
+        mockMvc.perform(patch("/api/v1/jobs/1/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+        verify(jobService, never()).updateJobStatus(any(), any());
+    }
+
+    @Test
+    void getAllJobs_sortByJobStatus_reachesService() throws Exception {
+        when(jobService.getAllJobs(any(), any())).thenReturn(
+                new org.springframework.data.domain.PageImpl<>(
+                        java.util.List.of(),
+                        org.springframework.data.domain.PageRequest.of(0, 10),
+                        0));
+
+        mockMvc.perform(get("/api/v1/jobs")
+                        .param("sortBy", "jobStatus")
+                        .param("sortDir", "asc"))
+                .andExpect(status().isOk());
+    }
 }

@@ -54,5 +54,9 @@ class JobSortSupportTest {
         assertTrue(JobSortSupport.allowedSortFields().contains("createdAt"));
         assertTrue(JobSortSupport.allowedSortFields().contains("title"));
         assertTrue(JobSortSupport.allowedSortFields().contains("sourceUrl"));
+        assertTrue(JobSortSupport.allowedSortFields().contains("jobStatus"));
+        assertTrue(JobSortSupport.allowedSortFields().contains("resumeToJobScore"));
+        assertFalse(JobSortSupport.allowedSortFields().contains("notes"));
+        assertFalse(JobSortSupport.allowedSortFields().contains("salary"));
     }
 }

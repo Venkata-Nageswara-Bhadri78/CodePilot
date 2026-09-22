@@ -13,8 +13,11 @@ import com.developer.copilot.jobs.dto.request.UpdateEmploymentTypeRequest;
 import com.developer.copilot.jobs.dto.request.UpdateExperienceRequest;
 import com.developer.copilot.jobs.dto.request.UpdateIndustryRequest;
 import com.developer.copilot.jobs.dto.request.UpdateLocationRequest;
+import com.developer.copilot.jobs.dto.request.UpdateNotesRequest;
 import com.developer.copilot.jobs.dto.request.UpdateOriginalDescriptionRequest;
+import com.developer.copilot.jobs.dto.request.UpdateResumeRequest;
 import com.developer.copilot.jobs.dto.request.UpdateSalaryRequest;
+import com.developer.copilot.jobs.dto.request.UpdateJobStatusRequest;
 import com.developer.copilot.jobs.dto.request.UpdateSkillsRequest;
 import com.developer.copilot.jobs.dto.request.UpdateSourcePlatformRequest;
 import com.developer.copilot.jobs.dto.request.UpdateSourceUrlRequest;
@@ -62,6 +65,9 @@ class JobOwnershipIsolationTest {
     @Spy
     private UrlNormalizationUtil urlNormalizationUtil = new UrlNormalizationUtil();
 
+    @Mock
+    private JobResumeBindingService jobResumeBindingService;
+
     @InjectMocks
     private JobServiceImpl jobService;
 
@@ -102,6 +108,9 @@ class JobOwnershipIsolationTest {
         assertThrows(JobNotFoundException.class, () -> jobService.updateSkills(100L, UpdateSkillsRequest.builder().skills(List.of("Java")).build()));
         assertThrows(JobNotFoundException.class, () -> jobService.updateDescription(100L, UpdateDescriptionRequest.builder().description("x").build()));
         assertThrows(JobNotFoundException.class, () -> jobService.updateOriginalDescription(100L, UpdateOriginalDescriptionRequest.builder().originalDescription("x").build()));
+        assertThrows(JobNotFoundException.class, () -> jobService.updateResume(100L, UpdateResumeRequest.builder().resume(12L).build()));
+        assertThrows(JobNotFoundException.class, () -> jobService.updateNotes(100L, UpdateNotesRequest.builder().notes("x").build()));
+        assertThrows(JobNotFoundException.class, () -> jobService.updateJobStatus(100L, UpdateJobStatusRequest.builder().jobStatus(com.developer.copilot.jobs.entity.JobStatus.INTERVIEWS).build()));
 
         verify(jobRepository, never()).save(any());
         verify(jobRepository, never()).delete(any());

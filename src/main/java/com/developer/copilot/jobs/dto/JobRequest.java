@@ -1,8 +1,11 @@
 package com.developer.copilot.jobs.dto;
 
 import com.developer.copilot.jobs.util.JobLimits;
+import com.developer.copilot.jobs.util.ResumeToJobScoreSupport;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.*;
@@ -79,4 +82,18 @@ public class JobRequest {
             schema = @Schema(example = "Java", maxLength = 255))
     @Schema(example = "[\"Java\", \"Spring Boot\"]")
     private List<@Size(max = 255, message = "Each skill cannot exceed 255 characters.") String> skills;
+
+    @Schema(description = "Id of the resume to bind. Omit to use the user's high-priority resume. "
+                    + "Must belong to the current user when sent.",
+            example = "12")
+    private Long resume;
+
+    @Schema(description = "AI resume-to-job score from extraction preview, 0–100. "
+                    + "Omit to let the backend compute it. Ignored when no resume is bound.",
+            example = "78",
+            minimum = "0",
+            maximum = "100")
+    @Min(value = ResumeToJobScoreSupport.MIN_SCORE, message = "resumeToJobScore must be between 0 and 100.")
+    @Max(value = ResumeToJobScoreSupport.MAX_SCORE, message = "resumeToJobScore must be between 0 and 100.")
+    private Integer resumeToJobScore;
 }

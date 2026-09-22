@@ -25,6 +25,8 @@ import com.developer.copilot.jobextraction.manualextraction.resilience.JobExtrac
 import com.developer.copilot.jobextraction.manualextraction.service.JobExtractionService;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.repository.JobRepository;
+import com.developer.copilot.jobs.service.JobResumeBindingService;
+import com.developer.copilot.jobs.util.ResumeToJobScoreSupport;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +53,7 @@ public class JobExtractionServiceImpl implements JobExtractionService {
     private final JobExtractionPreviewCache previewCache;
     private final JobExtractionAiGuard aiGuard;
     private final JobExtractionMetrics metrics;
+    private final JobResumeBindingService jobResumeBindingService;
 
     @Override
     public JobExtractionResultResponse extractJobInfo(JobExtractionRequest request) {
@@ -76,13 +79,18 @@ public class JobExtractionServiceImpl implements JobExtractionService {
             throw new DuplicateJobException("This post was already added to your records.");
         }
 
+        Long resumeId = jobResumeBindingService.resolveResumeId(currentUser, request.getResume());
+        String resumeContext = jobResumeBindingService.loadResumeContextQuietly(resumeId);
+
         JobExtractionAiRequest aiRequest = JobExtractionAiRequest.builder()
                 .jobUrl(normalizedUrl)
                 .rawJobText(request.getRawJobText())
+                .resumeContext(resumeContext)
                 .build();
 
+        String cacheKey = urlHash + "_r" + (resumeId == null ? "none" : resumeId);
         AtomicBoolean loaded = new AtomicBoolean(false);
-        JobExtractionResultResponse result = previewCache.computeIfAbsent(currentUser.getId(), urlHash, () -> {
+        JobExtractionResultResponse result = previewCache.computeIfAbsent(currentUser.getId(), cacheKey, () -> {
             loaded.set(true);
             JobExtractionAiResponse aiResponse;
             try {
@@ -91,7 +99,15 @@ public class JobExtractionServiceImpl implements JobExtractionService {
                 metrics.recordAiFailure();
                 throw ex;
             }
-            return jobExtractionMapper.toResultResponse(aiResponse, normalizedUrl, request.getRawJobText());
+            JobExtractionResultResponse mapped =
+                    jobExtractionMapper.toResultResponse(aiResponse, normalizedUrl, request.getRawJobText());
+            mapped.setResume(resumeId);
+            if (resumeId == null) {
+                mapped.setResumeToJobScore(ResumeToJobScoreSupport.DEFAULT_SCORE);
+            } else {
+                mapped.setResumeToJobScore(ResumeToJobScoreSupport.sanitize(mapped.getResumeToJobScore()));
+            }
+            return mapped;
         });
 
         if (!loaded.get()) {

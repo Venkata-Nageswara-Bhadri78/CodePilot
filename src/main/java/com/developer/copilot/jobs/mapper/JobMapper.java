@@ -6,6 +6,7 @@ import com.developer.copilot.jobs.dto.JobRequest;
 import com.developer.copilot.jobs.dto.JobResponse;
 import com.developer.copilot.jobs.dto.JobSummaryResponse;
 import com.developer.copilot.jobs.entity.JobEntity;
+import com.developer.copilot.jobs.entity.JobStatus;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -37,6 +38,9 @@ public class JobMapper {
                 .industry(request.getIndustry())
                 .sourcePlatform(request.getSourcePlatform())
                 .skills(request.getSkills() != null ? new ArrayList<>(request.getSkills()) : new ArrayList<>())
+                .notes("")
+                .resumeToJobScore(0)
+                .jobStatus(JobStatus.APPLIED)
                 .build();
     }
 
@@ -89,6 +93,9 @@ public class JobMapper {
             entity.getSkills().clear();
             entity.getSkills().addAll(patch.getSkills());
         }
+        if (patch.getNotes() != null) {
+            entity.setNotes(patch.getNotes());
+        }
     }
 
     public JobResponse toJobResponse(JobEntity entity) {
@@ -113,6 +120,11 @@ public class JobMapper {
                 .industry(entity.getIndustry())
                 .sourcePlatform(entity.getSourcePlatform())
                 .skills(entity.getSkills() != null ? new ArrayList<>(entity.getSkills()) : Collections.emptyList())
+                .resume(entity.getResume())
+                .resumeToJobScore(entity.getResumeToJobScore() != null ? entity.getResumeToJobScore() : 0)
+                .notes(entity.getNotes() != null ? entity.getNotes() : "")
+                .jobStatus(resolveStatus(entity))
+                .customStatus(entity.getCustomStatus())
                 .createdAt(entity.getCreatedAt())
                 .updatedAt(entity.getUpdatedAt())
                 .build();
@@ -134,8 +146,17 @@ public class JobMapper {
                 .salary(entity.getSalary())
                 .sourcePlatform(entity.getSourcePlatform())
                 .skills(entity.getSkills() != null ? new ArrayList<>(entity.getSkills()) : Collections.emptyList())
+                .resume(entity.getResume())
+                .resumeToJobScore(entity.getResumeToJobScore() != null ? entity.getResumeToJobScore() : 0)
+                .notes(entity.getNotes() != null ? entity.getNotes() : "")
+                .jobStatus(resolveStatus(entity))
+                .customStatus(entity.getCustomStatus())
                 .createdAt(entity.getCreatedAt())
                 .build();
+    }
+
+    private static JobStatus resolveStatus(JobEntity entity) {
+        return entity.getJobStatus() != null ? entity.getJobStatus() : JobStatus.APPLIED;
     }
 
 }

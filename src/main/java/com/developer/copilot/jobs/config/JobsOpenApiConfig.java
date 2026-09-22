@@ -37,6 +37,8 @@ public class JobsOpenApiConfig {
                         + "PUT is a full replace: mandatory fields are required again and omitting skills clears them. "
                         + "PATCH sends only dirty fields; PATCH /{id}/skills accepts [] to clear. "
                         + "Optional field routes accept empty string to clear. "
+                        + "New jobs default resume to the user's high-priority resume, resumeToJobScore 0-100, "
+                        + "notes to empty, and jobStatus to APPLIED. PATCH /{id}/resume recalculates the score. "
                         + "Foreign or missing ids return 404. Duplicate source URLs return 409 "
                         + "\"This post was already added to your records.\" "
                         + "List search is a contains-match on title, company, location, industry, and sourcePlatform. "

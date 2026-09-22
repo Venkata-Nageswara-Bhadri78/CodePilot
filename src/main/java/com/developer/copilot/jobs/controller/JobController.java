@@ -103,8 +103,8 @@ public class JobController {
             @Parameter(description = "Page size, default 10, max " + JobLimits.MAX_PAGE_SIZE, example = "10")
             @RequestParam(defaultValue = "10") int size,
             @Parameter(description = "Sort field. Allowed: createdAt, updatedAt, title, company, location, "
-                    + "employmentType, workMode, experience, department, education, industry, sourcePlatform, sourceUrl. "
-                    + "salary is not sortable (it is free text).")
+                    + "employmentType, workMode, experience, department, education, industry, sourcePlatform, sourceUrl, "
+                    + "jobStatus, resumeToJobScore. salary and notes are not sortable.")
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @Parameter(description = "Sort direction: asc or desc (any non-asc value is desc)", example = "desc")
             @RequestParam(defaultValue = "desc") String sortDir) {
@@ -610,6 +610,90 @@ public class JobController {
         return ResponseEntity.ok(ApiResponse.<JobResponse>builder()
                 .success(true)
                 .message("Job original description updated successfully.")
+                .data(job)
+                .timestamp(LocalDateTime.now())
+                .build());
+    }
+
+    @Operation(summary = "Switch the resume bound to this job",
+            description = "Stores the resume id and recalculates resumeToJobScore with a score-only AI call. "
+                    + "The resume must be an active resume owned by the current user.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job or resume not found, or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "502", description = "AI scoring failed",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "AI unavailable",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
+    @PatchMapping("/{id}/resume")
+    public ResponseEntity<ApiResponse<JobResponse>> updateResume(
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
+            @Valid @RequestBody UpdateResumeRequest request) {
+
+        JobResponse job = jobService.updateResume(id, request);
+
+        return ResponseEntity.ok(ApiResponse.<JobResponse>builder()
+                .success(true)
+                .message("Job resume updated successfully.")
+                .data(job)
+                .timestamp(LocalDateTime.now())
+                .build());
+    }
+
+    @Operation(summary = "Update job notes",
+            description = "Notes are independent of extraction and scoring. Empty string clears.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
+    @PatchMapping("/{id}/notes")
+    public ResponseEntity<ApiResponse<JobResponse>> updateNotes(
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
+            @Valid @RequestBody UpdateNotesRequest request) {
+
+        JobResponse job = jobService.updateNotes(id, request);
+
+        return ResponseEntity.ok(ApiResponse.<JobResponse>builder()
+                .success(true)
+                .message("Job notes updated successfully.")
+                .data(job)
+                .timestamp(LocalDateTime.now())
+                .build());
+    }
+
+    @Operation(summary = "Update job application status",
+            description = "Manual pipeline status. Defaults to APPLIED on create. "
+                    + "When jobStatus is CUSTOM, customStatus is required.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error or missing customStatus",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Job not found or not owned by the caller",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<ApiResponse<JobResponse>> updateJobStatus(
+            @Parameter(description = JOB_ID_DESCRIPTION, example = "42") @PathVariable Long id,
+            @Valid @RequestBody UpdateJobStatusRequest request) {
+
+        JobResponse job = jobService.updateJobStatus(id, request);
+
+        return ResponseEntity.ok(ApiResponse.<JobResponse>builder()
+                .success(true)
+                .message("Job status updated successfully.")
                 .data(job)
                 .timestamp(LocalDateTime.now())
                 .build());

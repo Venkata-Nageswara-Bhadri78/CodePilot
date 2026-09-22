@@ -79,4 +79,9 @@ public class JobExtractionAiResponse {
     @JsonPropertyDescription("List of required/preferred technical skills, tools, or technologies explicitly "
             + "mentioned in the posting (e.g. ['React', 'Node.js', 'AWS']). Empty list if none are mentioned.")
     private List<String> skills;
+
+    @JsonPropertyDescription("Integer from 0 to 100 inclusive rating how well the candidate resume matches this job. "
+            + "0 if no resume was provided, the resume is empty, or there is no overlap. 100 is an excellent match. "
+            + "Never a string, never a range, never a decimal, never outside 0-100.")
+    private Integer resumeToJobScore;
 }

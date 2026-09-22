@@ -21,6 +21,7 @@ import com.developer.copilot.jobextraction.manualextraction.resilience.JobExtrac
 import com.developer.copilot.jobextraction.manualextraction.service.impl.JobExtractionServiceImpl;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import com.developer.copilot.jobs.repository.JobRepository;
+import com.developer.copilot.jobs.service.JobResumeBindingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +35,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,6 +55,9 @@ class JobExtractionServiceImplTest {
 
     @Mock
     private CurrentUserService currentUserService;
+
+    @Mock
+    private JobResumeBindingService jobResumeBindingService;
 
     private JobExtractionServiceImpl jobExtractionService;
 
@@ -74,11 +79,14 @@ class JobExtractionServiceImplTest {
                 currentUserService,
                 new JobExtractionPreviewCache(null),
                 new JobExtractionAiGuard(),
-                new JobExtractionMetrics());
+                new JobExtractionMetrics(),
+                jobResumeBindingService);
     }
 
     private void mockAuthenticatedUser() {
         when(currentUserService.getCurrentUser()).thenReturn(testUser);
+        lenient().when(jobResumeBindingService.resolveResumeId(any(), nullable(Long.class))).thenReturn(null);
+        lenient().when(jobResumeBindingService.loadResumeContextQuietly(nullable(Long.class))).thenReturn("");
     }
 
     @Test
@@ -113,6 +121,35 @@ class JobExtractionServiceImplTest {
         ArgumentCaptor<JobExtractionAiRequest> captor = ArgumentCaptor.forClass(JobExtractionAiRequest.class);
         verify(aiService).extractJobInfo(captor.capture());
         assertEquals("https://stripe.com/jobs/senior-engineer", captor.getValue().getJobUrl());
+        assertNull(result.getResume());
+        assertEquals(0, result.getResumeToJobScore());
+    }
+
+    @Test
+    void extractJobInfo_selectedResume_isBoundAndScored() {
+        mockAuthenticatedUser();
+        when(jobResumeBindingService.resolveResumeId(eq(testUser), eq(12L))).thenReturn(12L);
+        when(jobResumeBindingService.loadResumeContextQuietly(12L)).thenReturn("Java engineer resume");
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(aiService.extractJobInfo(any(JobExtractionAiRequest.class)))
+                .thenReturn(JobExtractionAiResponse.builder()
+                        .title("Engineer")
+                        .company("Acme")
+                        .resumeToJobScore(88)
+                        .build());
+
+        JobExtractionResultResponse result = jobExtractionService.extractJobInfo(JobExtractionRequest.builder()
+                .sourceUrl("https://acme.com/jobs/1")
+                .rawJobText("Full pasted job posting text.")
+                .resume(12L)
+                .build());
+
+        assertEquals(12L, result.getResume());
+        assertEquals(88, result.getResumeToJobScore());
+
+        ArgumentCaptor<JobExtractionAiRequest> captor = ArgumentCaptor.forClass(JobExtractionAiRequest.class);
+        verify(aiService).extractJobInfo(captor.capture());
+        assertEquals("Java engineer resume", captor.getValue().getResumeContext());
     }
 
     @Test

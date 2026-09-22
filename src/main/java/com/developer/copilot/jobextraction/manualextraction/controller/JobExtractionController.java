@@ -59,7 +59,8 @@ public class JobExtractionController {
                     + "Field map: data.sourceUrl → JobRequest.sourceUrl (canonical); "
                     + "data.originalDescription → originalDescription; description/title/company/location/"
                     + "employmentType/workMode/experience/salary/education/department/industry/sourcePlatform/"
-                    + "skills share names. Omit requiresManualReview on save. "
+                    + "skills share names. data.resume and data.resumeToJobScore go on JobRequest as well. "
+                    + "Omit requiresManualReview, notes, and jobStatus on save (jobs defaults those). "
                     + "requiresManualReview is computed here (blank or truncated title/company), not by the model.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(

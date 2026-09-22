@@ -51,6 +51,7 @@ class JobExtractionMapperTest {
         assertEquals("Great role", result.getDescription());
         assertEquals(List.of("Java", "Spring"), result.getSkills());
         assertFalse(result.isRequiresManualReview());
+        assertEquals(0, result.getResumeToJobScore());
     }
 
     @Test
@@ -235,5 +236,33 @@ class JobExtractionMapperTest {
         assertEquals(List.of("Java"), result.getSkills());
         assertEquals("javascript: in the paste is fine", result.getOriginalDescription());
         assertTrue(result.isRequiresManualReview());
+    }
+
+    @Test
+    void toResultResponse_outOfRangeScore_becomesZero() {
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("Engineer")
+                .company("Acme")
+                .resumeToJobScore(140)
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
+
+        assertEquals(0, result.getResumeToJobScore());
+    }
+
+    @Test
+    void toResultResponse_validScore_isKept() {
+        JobExtractionAiResponse aiResponse = JobExtractionAiResponse.builder()
+                .title("Engineer")
+                .company("Acme")
+                .resumeToJobScore(73)
+                .build();
+
+        JobExtractionResultResponse result =
+                mapper.toResultResponse(aiResponse, "https://acme.com/jobs/1", "raw text");
+
+        assertEquals(73, result.getResumeToJobScore());
     }
 }

@@ -51,4 +51,10 @@ public interface JobService {
     JobResponse updateDescription(Long id, UpdateDescriptionRequest request);
 
     JobResponse updateOriginalDescription(Long id, UpdateOriginalDescriptionRequest request);
+
+    JobResponse updateResume(Long id, UpdateResumeRequest request);
+
+    JobResponse updateNotes(Long id, UpdateNotesRequest request);
+
+    JobResponse updateJobStatus(Long id, UpdateJobStatusRequest request);
 }

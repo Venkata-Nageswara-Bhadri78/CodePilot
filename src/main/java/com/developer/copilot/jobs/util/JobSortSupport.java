@@ -20,7 +20,9 @@ public final class JobSortSupport {
             "education",
             "industry",
             "sourcePlatform",
-            "sourceUrl"
+            "sourceUrl",
+            "jobStatus",
+            "resumeToJobScore"
     );
 
     private JobSortSupport() {
