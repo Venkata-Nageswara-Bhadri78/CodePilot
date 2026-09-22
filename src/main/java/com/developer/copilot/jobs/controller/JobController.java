@@ -36,7 +36,7 @@ import java.time.LocalDateTime;
         description = "Personal job-posting notebook for the signed-in user. "
                 + "Obtain a JWT from POST /api/v1/auth/login, then use the Authorize button. "
                 + "PUT = full form; omitting skills clears them. PATCH = dirty fields only. "
-                + "PATCH /{id}/skills with [] clears skills. Optional field routes accept empty string to clear. "
+                + "PATCH /{id}/skills with \"\" clears skills. Optional field routes accept empty string to clear. "
                 + "Someone else's job id looks like 404.")
 @RestController
 @RequestMapping("/api/v1/jobs")
@@ -153,7 +153,7 @@ public class JobController {
 
     @Operation(summary = "Replace a job",
             description = "Fully replaces an existing job. Recalculates the URL hash when the source URL changes. "
-                    + "Omitting skills clears the list.")
+                    + "Omitting skills clears the field.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Job updated successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error or invalid URL",
@@ -216,7 +216,7 @@ public class JobController {
         return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Delete a job", description = "Permanently deletes a job and its associated skills.")
+    @Operation(summary = "Delete a job", description = "Permanently deletes a job.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Job deleted successfully"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
@@ -540,7 +540,7 @@ public class JobController {
                 .build());
     }
 
-    @Operation(summary = "Replace job skills", description = "Replaces the full skills list. Send an empty array to clear.")
+    @Operation(summary = "Replace job skills", description = "Replaces the comma-separated skills value. Send an empty string to clear.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Updated"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Validation error",

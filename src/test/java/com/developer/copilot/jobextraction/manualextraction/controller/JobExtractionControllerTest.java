@@ -20,8 +20,6 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import java.util.Collections;
-
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -61,7 +59,7 @@ class JobExtractionControllerTest {
                 .sourceUrl("https://example.com/jobs/123")
                 .title("Software Engineer")
                 .company("Acme Corp")
-                .skills(Collections.emptyList())
+                .skills("")
                 .build();
         when(jobExtractionService.extractJobInfo(any())).thenReturn(result);
 
@@ -180,7 +178,7 @@ class JobExtractionControllerTest {
                 .sourceUrl("https://example.com/jobs/123")
                 .title("Software Engineer")
                 .company("Acme Corp")
-                .skills(Collections.emptyList())
+                .skills("")
                 .build();
         when(jobExtractionService.extractJobInfo(any())).thenReturn(result);
 
@@ -204,7 +202,7 @@ class JobExtractionControllerTest {
                 .sourceUrl("https://example.com/jobs/123")
                 .title("T")
                 .company("C")
-                .skills(Collections.emptyList())
+                .skills("")
                 .build();
         when(jobExtractionService.extractJobInfo(any())).thenReturn(result);
 

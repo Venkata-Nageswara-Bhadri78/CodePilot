@@ -14,7 +14,8 @@ import com.developer.copilot.jobextraction.manualextraction.util.JobExtractionLi
  * Combines the AI's extracted fields with the two values the backend already knows with
  * certainty (the canonicalized URL and the raw pasted text) into the outward-facing preview
  * response. AI strings are clipped to {@link JobExtractionLimits} so save via
- * {@code POST /api/v1/jobs} does not fail on {@code @Size}.
+ * {@code POST /api/v1/jobs} does not fail on {@code @Size}. Skills are joined with
+ * {@code ", "} so the preview matches {@code JobRequest.skills}.
  */
 @Component
 public class JobExtractionMapper {
@@ -42,17 +43,17 @@ public class JobExtractionMapper {
                 .department(clip(aiResponse.getDepartment(), JobExtractionLimits.MAX_DEPARTMENT_LENGTH).value())
                 .industry(clip(aiResponse.getIndustry(), JobExtractionLimits.MAX_INDUSTRY_LENGTH).value())
                 .sourcePlatform(clip(aiResponse.getSourcePlatform(), JobExtractionLimits.MAX_SOURCE_PLATFORM_LENGTH).value())
-                .skills(clipSkills(aiResponse.getSkills()))
+                .skills(joinSkills(aiResponse.getSkills()))
                 .resumeToJobScore(sanitizeScore(aiResponse.getResumeToJobScore()))
                 .requiresManualReview(isBlank(title.value()) || isBlank(company.value())
                         || title.truncated() || company.truncated())
                 .build();
     }
 
-    private List<String> clipSkills(List<String> skills) {
+    private String joinSkills(List<String> skills) {
         List<String> clipped = new ArrayList<>();
         if (skills == null) {
-            return clipped;
+            return "";
         }
         for (String skill : skills) {
             if (clipped.size() >= JobExtractionLimits.MAX_SKILL_COUNT) {
@@ -63,7 +64,7 @@ public class JobExtractionMapper {
                 clipped.add(item.value());
             }
         }
-        return clipped;
+        return String.join(", ", clipped);
     }
 
     private Clip clip(String value, int maxLength) {

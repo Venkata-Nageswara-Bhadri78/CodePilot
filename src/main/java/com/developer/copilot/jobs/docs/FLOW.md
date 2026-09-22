@@ -60,7 +60,7 @@ flowchart TD
 
 Normalization strips tracking query parameters, lowercases the host, drops a leading `www.`, drops a trailing slash (except `/`), and sorts remaining query keys. The stored `sourceUrl` is this canonical string; the hash is what uniqueness uses. See [SOURCE-URL-AND-DEDUPLICATION.md](JOBS-SERVICE-SPECIFIC-DOCS/SOURCE-URL-AND-DEDUPLICATION.md).
 
-Null `skills` on create become an empty list. HTML in title (or other text fields) is stored as given; the service does not sanitize markup.
+Null `skills` on create become an empty string. HTML in title (or other text fields) is stored as given; the service does not sanitize markup.
 
 ## List and search
 
@@ -106,16 +106,16 @@ Mapper copies every form field (omitted optional JSON properties become `null` o
 ### Partial update (`PATCH`)
 
 1. If `title`, `company`, or `originalDescription` is present and blank → `JobValidationException`.
-2. Mapper applies only non-null fields. Omitted `skills` leaves the existing list; `"skills": []` replaces with empty.
+2. Mapper applies only non-null fields. Omitted `skills` leaves the existing value; `"skills": ""` replaces with empty.
 3. If `sourceUrl` is present, `applySourceUrl` runs (blank URL → validation error; invalid URL → `InvalidJobUrlException`; duplicate → `409`).
 
 ### Field routes
 
-Each field PATCH loads the owned job, sets one property (or replaces the skills collection), and saves. Source-URL field updates use `applySourceUrl`. Empty string on optional fields is stored as the cleared value.
+Each field PATCH loads the owned job, sets one property (or replaces the skills string), and saves. Source-URL field updates use `applySourceUrl`. Empty string on optional fields is stored as the cleared value.
 
 ### Delete
 
-`jobRepository.delete(job)` after the ownership lookup. The `job_skills` rows go away with the element collection. Chat sessions that reference the job are configured in the chat-assistant module with `ON DELETE CASCADE`; that cascade is not implemented inside the jobs package, but deleting a job can remove related chat data at the database level.
+`jobRepository.delete(job)` after the ownership lookup. Skills are stored on the jobs row, so they are removed with the job. Chat sessions that reference the job are configured in the chat-assistant module with `ON DELETE CASCADE`; that cascade is not implemented inside the jobs package, but deleting a job can remove related chat data at the database level.
 
 ## Source URL apply (shared)
 

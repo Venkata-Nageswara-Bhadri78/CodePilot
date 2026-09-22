@@ -17,6 +17,8 @@ There are no custom `ConstraintValidator` classes in the jobs package. Limits th
 | `MAX_PAGE_INDEX` | 10_000 | List `page` |
 | `MAX_SEARCH_LENGTH` | 100 | `search` query (trimmed) |
 | `MAX_DESCRIPTION_LENGTH` | 50_000 | `originalDescription` and `description` |
+| `MAX_NOTES_LENGTH` | 5_000 | `notes` |
+| `MAX_SKILLS_LENGTH` | 15_000 | comma-separated `skills` |
 
 ## Input validation (DTOs)
 
@@ -37,7 +39,7 @@ There are no custom `ConstraintValidator` classes in the jobs package. Limits th
 | `experience` / `salary` / `department` / `industry` | `@Size(max = 100)` |
 | `education` | `@Size(max = 255)` |
 | `sourcePlatform` | `@Size(max = 50)` |
-| `skills` | each `@Size(max = 255)` |
+| `skills` | `@Size(max = 15_000)` on the whole comma-separated string |
 
 PUT uses the same DTO, so mandatory fields must be sent again.
 
@@ -52,7 +54,7 @@ Same `@Size` rules, **no** `@NotBlank`. Presence means “update this field”. 
 | `UpdateTitleRequest` / `UpdateCompanyRequest` | `@NotBlank` + max 255 |
 | `UpdateOriginalDescriptionRequest` | `@NotBlank` + max 50_000 |
 | `UpdateSourceUrlRequest` | `@NotBlank` + max 2000 |
-| `UpdateSkillsRequest` | `@NotNull` list; each skill max 255 |
+| `UpdateSkillsRequest` | `@NotNull` string; empty string is allowed and clears; max 15_000 |
 | Location, employment type, work mode, experience, salary, education, department, industry, source platform, description | `@NotNull` so the property must be in JSON; empty string is allowed and clears |
 
 ## Query validation (list)
@@ -92,7 +94,7 @@ Tracking query parameters are stripped as part of canonicalization, not as a sep
 
 Uniqueness is checked in the repository **and** by the database constraint.
 
-There is **no** implemented maximum number of jobs per user, **no** maximum skills list length (only per-item size), and **no** enum validation for employment type or work mode — those are free-text strings.
+There is **no** implemented maximum number of jobs per user, **no** maximum number of individual skills (only total string length), and **no** enum validation for employment type or work mode — those are free-text strings.
 
 ## Security-related validation
 

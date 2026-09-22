@@ -45,7 +45,7 @@ From `application.properties.example`:
 | `spring.datasource.url` | JDBC URL (example: `jdbc:mysql://localhost:3306/copilot`) |
 | `spring.datasource.username` | DB user |
 | `spring.datasource.password` | DB password (placeholder in example) |
-| `spring.jpa.hibernate.ddl-auto` | Example uses `update` — creates/updates `jobs` and `job_skills` |
+| `spring.jpa.hibernate.ddl-auto` | Example uses `update` — creates/updates `jobs` including the `skills` column |
 | `spring.jpa.show-sql` / `hibernate.format_sql` | Debug SQL (example `true`) |
 
 Jobs has no separate datasource. JPA auditing is enabled globally (`JpaConfig` `@EnableJpaAuditing`) so `createdAt` / `updatedAt` populate.

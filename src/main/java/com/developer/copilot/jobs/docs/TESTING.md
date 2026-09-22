@@ -8,13 +8,13 @@ Use this map to see what is already locked in and where to add tests for new beh
 
 | Area | Class | What it proves |
 |---|---|---|
-| Controller / validation | `JobControllerTest` | Bean validation, duplicate/not-found mapping, list query rejection, empty location/skills accepted |
+| Controller / validation | `JobControllerTest` | Bean validation, duplicate/not-found mapping, list query rejection, empty location/skills accepted; skills arrays rejected |
 | Security (no JWT) | `JobSecurityTest` | `401` and service never called |
 | Production Swagger | `JobProductionSecurityTest` | API docs / Swagger UI not public `200` on `prod` |
-| Service behavior | `JobServiceImplTest` | URL normalize/hash, duplicates, integrity mapping, PATCH/PUT skills, search escape, unsafe URLs |
+| Service behavior | `JobServiceImplTest` | URL normalize/hash, duplicates, integrity mapping, PATCH/PUT skills string, search escape, unsafe URLs |
 | Ownership | `JobOwnershipIsolationTest` | Foreign id → `JobNotFoundException` on every owned operation; list uses caller `userId` |
 | Exceptions | `JobsExceptionMappingTest` | Handler status codes including jobs `429` + `Retry-After` |
-| Mapper | `JobMapperTest` | URL not set by mapper; skills copy; PUT vs PATCH skills; summary omits descriptions; create defaults notes/status/score |
+| Mapper | `JobMapperTest` | URL not set by mapper; PUT vs PATCH skills string; summary omits descriptions; create defaults notes/status/score |
 | Sort | `JobSortSupportTest` | Allow-list, salary/hash/user path rejected, non-`asc` is desc |
 | Query | `JobQuerySupportTest` | Paging bounds, LIKE escape, blank search → null |
 | Rate-limit filter | `JobsRateLimitFilterTest` | IP limit, user limit across IPs, search vs list, mutate bucket, other paths skipped |
@@ -27,11 +27,12 @@ Use this map to see what is already locked in and where to add tests for new beh
 `JobControllerTest` uses standalone `MockMvc` plus `GlobalExceptionHandler` (no security filter). It covers:
 
 - Create missing title/company → 400, service not called
-- Oversized skill, source URL, original description, title → 400
+- Oversized skills string, source URL, original description, title → 400
 - Duplicate exception → 409 with the official duplicate message
 - Get by id not found → 404
 - Salary too long / blank title on field routes → 400
-- Empty location string and empty skills array → 200
+- Empty location string and empty skills string → 200
+- Skills JSON array on create → 400
 - Invalid `sortBy` including `salary`, `user.password`, `sourceUrlHash` → 400
 - Illegal `size` / `page` / long `search` → 400 before service
 - Valid `sortBy=title&sortDir=asc` reaches the service
@@ -55,7 +56,7 @@ These tests do **not** exercise a happy-path authenticated MVC call (JWT is mock
 - Duplicate pre-check skips `save`
 - `javascript:`, `data:`, `file:` URLs → `InvalidJobUrlException`
 - Unique-constraint `DataIntegrityViolationException` → `DuplicateJobException`; other constraints rethrown
-- Null skills → empty list
+- Null skills → empty string
 - Unauthenticated `CurrentUserService` → `InvalidCredentialsException`, no repository id lookup
 - PATCH blank title rejected; salary-only patch; omit vs replace skills
 - PUT omit/empty skills clears

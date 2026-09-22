@@ -1,10 +1,8 @@
 package com.developer.copilot.jobextraction.manualextraction.dto.response;
 
-import java.util.List;
-
+import com.developer.copilot.jobs.util.JobLimits;
 import com.developer.copilot.jobextraction.manualextraction.util.JobExtractionLimits;
 
-import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -27,8 +25,8 @@ import lombok.Setter;
 @AllArgsConstructor
 @Builder
 @Schema(description = "AI-extracted job fields, clipped to JobRequest sizes, ready for review before "
-        + "saving via POST /api/v1/jobs. skills is always an array. requiresManualReview is computed "
-        + "by this service (blank or truncated title/company), not by the model.")
+        + "saving via POST /api/v1/jobs. skills is a comma-separated string matching JobRequest. "
+        + "requiresManualReview is computed by this service (blank or truncated title/company), not by the model.")
 public class JobExtractionResultResponse {
 
     @Schema(description = "Canonicalized source URL (tracking parameters stripped, deterministic form). "
@@ -79,12 +77,13 @@ public class JobExtractionResultResponse {
     @Schema(description = "Extracted source platform only when the paste names it. Empty string otherwise.")
     private String sourcePlatform;
 
-    @ArraySchema(
-            arraySchema = @Schema(description = "Extracted skills, never null. Capped at "
+    @Schema(description = "Extracted skills as a comma-separated string matching JobRequest.skills. "
+                    + "Empty string when none. Internally clipped to "
                     + JobExtractionLimits.MAX_SKILL_COUNT + " items, each "
-                    + JobExtractionLimits.MAX_SKILL_LENGTH + " chars."),
-            schema = @Schema(example = "Java", maxLength = JobExtractionLimits.MAX_SKILL_LENGTH))
-    private List<String> skills;
+                    + JobExtractionLimits.MAX_SKILL_LENGTH + " chars.",
+            example = "Java, Spring Boot, AWS",
+            maxLength = JobLimits.MAX_SKILLS_LENGTH)
+    private String skills;
 
     @Schema(description = "Id of the resume used for scoring. Null when the user has no usable resume. "
             + "Send this as JobRequest.resume on POST /api/v1/jobs.",

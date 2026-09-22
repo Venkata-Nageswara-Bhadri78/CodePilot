@@ -20,7 +20,6 @@ flowchart TB
     subgraph persist [Persistence]
         Repo[JobRepository]
         Entity[JobEntity]
-        Skills[job_skills]
     end
     subgraph infra [Optional Redis]
         RlSvc[JobsRateLimitServiceImpl]
@@ -37,7 +36,6 @@ flowchart TB
     Service --> Url
     Service --> Repo
     Repo --> Entity
-    Entity --> Skills
     RlSvc --> RedisSvc
     RedisSvc --> RedisRepo
 ```
@@ -69,15 +67,15 @@ OpenAPI grouping (`JobsOpenApiConfig`) is registered only when the active profil
 
 `JobMapper` copies fields between DTOs and `JobEntity`. It **never** writes `sourceUrl` or `sourceUrlHash`; those stay in the service so every create/update path shares the same normalization and uniqueness logic.
 
-`JobLimits` holds compile-time numeric caps (page size, page index, search length, description length) used by both bean validation and query helpers.
+`JobLimits` holds compile-time numeric caps (page size, page index, search length, description length, notes length, skills length) used by both bean validation and query helpers.
 
 ## Persistence layer
 
-`JobRepository` extends `JpaRepository<JobEntity, Long>`. List and search methods use `@EntityGraph(attributePaths = "skills")` so list rows include skills without an extra query per job.
+`JobRepository` extends `JpaRepository<JobEntity, Long>`. Skills are a column on `JobEntity`, so list and search load them with the job row.
 
 All jobs queries used by this service are scoped by `userId`. There is no “get job by id regardless of owner” method on the repository for the controller path.
 
-`JobEntity` extends shared `BaseEntity` (`createdAt` / `updatedAt` via JPA auditing). Skills are an `@ElementCollection` in table `job_skills`, not a separate entity.
+`JobEntity` extends shared `BaseEntity` (`createdAt` / `updatedAt` via JPA auditing). Skills are a `TEXT` column (`jobs.skills`), not a collection table.
 
 ## Rate limiting and Redis
 

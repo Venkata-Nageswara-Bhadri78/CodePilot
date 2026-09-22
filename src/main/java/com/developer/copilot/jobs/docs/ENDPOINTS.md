@@ -51,7 +51,7 @@ Creates a job for the current user.
 | `department` | no | Max 100 |
 | `industry` | no | Max 100 |
 | `sourcePlatform` | no | Max 50 |
-| `skills` | no | Each item max 255. Null → empty list |
+| `skills` | no | Comma-separated string, max 15_000. Null → empty string |
 | `resume` | no | Active resume id owned by the caller. Omit → high-priority resume, or null if the user has none |
 | `resumeToJobScore` | no | Integer 0–100 from the extraction preview. Omit → backend scores (or 0 if no resume). Notes and jobStatus are **not** in this body |
 
@@ -59,7 +59,7 @@ Creates a job for the current user.
 
 **Errors:** `400` validation or invalid URL; `401`; `409` `"This post was already added to your records."`; `429`; `500`.
 
-**Side effects:** insert `jobs` row and any `job_skills` rows.
+**Side effects:** insert `jobs` row.
 
 Example request:
 
@@ -75,7 +75,7 @@ Example request:
   "experience": "2-4 years",
   "salary": "15-20 LPA",
   "sourcePlatform": "LinkedIn",
-  "skills": ["Java", "Spring Boot"]
+  "skills": "Java, Spring Boot"
 }
 ```
 
@@ -143,8 +143,8 @@ Full replace. Same body rules as create (`JobRequest`). Recalculates URL hash wh
 
 Partial update (`JobPatchRequest`). Only JSON fields that are present are applied. Size limits match create. There is no `@NotBlank` on the DTO; blank `title`, `company`, or `originalDescription` is rejected in the service (`400` `"Title cannot be blank."` and similar).
 
-- `"skills": []` clears skills
-- omitting `skills` leaves the current list
+- `"skills": ""` clears skills
+- omitting `skills` leaves the current value
 - empty string on optional fields stores the empty value
 - `sourceUrl` if present is normalized and uniqueness-checked
 
@@ -160,7 +160,7 @@ Partial update (`JobPatchRequest`). Only JSON fields that are present are applie
 
 ## `DELETE /api/v1/jobs/{id}`
 
-Permanently deletes the job and its skills.
+Permanently deletes the job.
 
 **Auth:** JWT required.
 
@@ -192,7 +192,7 @@ All of the following require JWT, use bucket `mutate`, return `200` with `JobRes
 | `PATCH /api/v1/jobs/{id}/industry` | `{ "industry": "..." }` | `@NotNull`; `""` clears; max 100 | Job industry updated successfully. |
 | `PATCH /api/v1/jobs/{id}/source-platform` | `{ "sourcePlatform": "..." }` | `@NotNull`; `""` clears; max 50 | Job source platform updated successfully. |
 | `PATCH /api/v1/jobs/{id}/source-url` | `{ "sourceUrl": "..." }` | `@NotBlank`, max 2000; normalize + dedupe | Job source URL updated successfully. |
-| `PATCH /api/v1/jobs/{id}/skills` | `{ "skills": ["Java"] }` | `@NotNull`; `[]` clears; each skill max 255 | Job skills updated successfully. |
+| `PATCH /api/v1/jobs/{id}/skills` | `{ "skills": "Java, Spring Boot" }` | `@NotNull`; `""` clears; max 15_000 | Job skills updated successfully. |
 | `PATCH /api/v1/jobs/{id}/description` | `{ "description": "..." }` | `@NotNull`; `""` clears; max 50_000 | Job description updated successfully. |
 | `PATCH /api/v1/jobs/{id}/original-description` | `{ "originalDescription": "..." }` | `@NotBlank`; max 50_000 | Job original description updated successfully. |
 | `PATCH /api/v1/jobs/{id}/resume` | `{ "resume": 12 }` | `@NotNull`. Must be an active resume owned by the caller. Recalculates `resumeToJobScore` | Job resume updated successfully. |
@@ -212,7 +212,7 @@ Example clear location:
 Example clear skills:
 
 ```json
-{ "skills": [] }
+{ "skills": "" }
 ```
 
 ---

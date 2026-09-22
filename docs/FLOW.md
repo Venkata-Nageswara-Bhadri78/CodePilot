@@ -138,7 +138,7 @@ flowchart TD
     M2 --> Preview
     Preview --> Edit[User edits]
     Edit --> Save[POST /api/v1/jobs]
-    Save --> Row[jobs + job_skills]
+    Save --> Row[jobs]
 ```
 
 Preview caches (TTL 3 minutes) are keyed by user + URL hash, **not** by pasted text. Duplicate check runs even on cache hits.

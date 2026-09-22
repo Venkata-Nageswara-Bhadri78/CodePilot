@@ -2,7 +2,6 @@ package com.developer.copilot.jobs.dto;
 
 import com.developer.copilot.jobs.util.JobLimits;
 import com.developer.copilot.jobs.util.ResumeToJobScoreSupport;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -10,15 +9,13 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
-import java.util.List;
-
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 @Schema(description = "Request body for creating or fully replacing a saved job posting. "
-        + "On PUT, omitted skills are treated as an empty list (full replace).")
+        + "On PUT, omitted skills are treated as an empty string (full replace).")
 public class JobRequest {
 
     @Schema(description = "The job posting URL. Tracking parameters are stripped on save; "
@@ -77,11 +74,12 @@ public class JobRequest {
     @Size(max = 50, message = "Source platform cannot exceed 50 characters.")
     private String sourcePlatform;
 
-    @ArraySchema(
-            arraySchema = @Schema(description = "Required skills for the role. On PUT, omitting this field clears skills."),
-            schema = @Schema(example = "Java", maxLength = 255))
-    @Schema(example = "[\"Java\", \"Spring Boot\"]")
-    private List<@Size(max = 255, message = "Each skill cannot exceed 255 characters.") String> skills;
+    @Schema(description = "Required skills for the role as a comma-separated string. "
+                    + "On PUT, omitting this field clears skills.",
+            example = "Java, Spring Boot, MySQL, AWS")
+    @Size(max = JobLimits.MAX_SKILLS_LENGTH,
+            message = "Skills cannot exceed " + JobLimits.MAX_SKILLS_LENGTH + " characters.")
+    private String skills;
 
     @Schema(description = "Id of the resume to bind. Omit to use the user's high-priority resume. "
                     + "Must belong to the current user when sent.",

@@ -19,8 +19,8 @@ flowchart LR
 |---|---|---|---|
 | Body | Full `JobRequest` | Sparse `JobPatchRequest` | Single-field DTO |
 | Mandatory title/company/originalDescription/sourceUrl | Required again (`@NotBlank`) | Optional by absence; illegal if sent blank | Title/company/originalDescription/sourceUrl routes require a real value |
-| Skills omitted | **Clears** list | **Leaves** list | N/A except skills route |
-| Skills `[]` | Clears | Clears | Clears |
+| Skills omitted | **Clears** field | **Leaves** field | N/A except skills route |
+| Skills `""` | Clears | Clears | Clears |
 | Optional field omitted | Set to `null` (full replace of every mapped scalar) | Unchanged | Not applicable (missing key is `400`) |
 | Optional field `""` | Stored as empty string | Stored as empty string | Clears when the DTO allows empty string |
 | Source URL | Always re-normalized and uniqueness-checked | Only if `sourceUrl` present | Source-url route always |
@@ -35,13 +35,12 @@ All three require ownership (`404` if not found / not owned) and use the **mutat
 Skills:
 
 ```
-skills.clear()
-if (request.skills != null) addAll
+entity.setSkills(request.skills != null ? request.skills : "")
 ```
 
-Omitting `skills` or sending `null` wipes skills. Tests: `updateJob_omittingSkills_clearsList`, `updateJob_explicitEmptySkills_clearsList`.
+Omitting `skills` or sending `null` wipes skills. Tests: `updateJob_omittingSkills_clearsField`, `updateJob_explicitEmptySkills_clearsField`.
 
-Use PUT when the client has the whole form (same shape as create). Do not use PUT to change salary alone unless you resend every mandatory field, every optional field you want to keep, and the intended skills list.
+Use PUT when the client has the whole form (same shape as create). Do not use PUT to change salary alone unless you resend every mandatory field, every optional field you want to keep, and the intended skills string.
 
 ## PATCH — dirty fields
 
@@ -51,13 +50,13 @@ Before mapping, the service rejects blank (non-null) title, company, and origina
 
 Skills:
 
-- omitted → list unchanged (`patchJob_omittingSkills_leavesList`)
-- `"skills": ["Go"]` → replace
-- `"skills": []` → clear
+- omitted → value unchanged (`patchJob_omittingSkills_leavesField`)
+- `"skills": "Go"` → replace
+- `"skills": ""` → clear
 
 `sourceUrl` in the patch body triggers `applySourceUrl`. Other optional strings can be set to `""` to clear.
 
-There is no “JSON null means clear” special case beyond empty string / empty array; a missing key means “do not touch”.
+There is no “JSON null means clear” special case beyond empty string; a missing key means “do not touch”.
 
 ## Field routes — one attribute
 
@@ -71,7 +70,7 @@ These paths exist so a UI can update one control without assembling `JobPatchReq
 
 - `/location`, `/employment-type`, `/work-mode`, `/experience`, `/salary`, `/education`, `/department`, `/industry`, `/source-platform`, `/description`, `/notes`
 
-**Skills:** body must include `skills` (`@NotNull`). Empty array clears. There is no “omit skills to leave unchanged” on this route — it is always a replace of the collection.
+**Skills:** body must include `skills` (`@NotNull`). Empty string clears. There is no “omit skills to leave unchanged” on this route — it is always a replace of the field.
 
 **Status:** `PATCH /{id}/status` requires `jobStatus`. When the value is `CUSTOM`, `customStatus` is required (max 100). Any other status clears `customStatus`.
 
@@ -83,12 +82,12 @@ Sending a field route **without** the JSON property is `400`, not a no-op.
 
 | Call | Result |
 |---|---|
-| POST without skills | Empty list |
-| PUT without skills | Empty list |
+| POST without skills | Empty string |
+| PUT without skills | Empty string |
 | PATCH without skills key | Unchanged |
-| PATCH `"skills": []` | Empty list |
-| PATCH `/skills` `"skills": []` | Empty list |
-| PATCH `/skills` omitted `skills` key | 400 (`Skills list is required.`) |
+| PATCH `"skills": ""` | Empty string |
+| PATCH `/skills` `"skills": ""` | Empty string |
+| PATCH `/skills` omitted `skills` key | 400 (`Skills is required.`) |
 
 ## Descriptions
 
@@ -99,9 +98,9 @@ Sending a field route **without** the JSON property is `400`, not a no-op.
 ## Client guidance (from implemented behavior)
 
 1. After login, create with `POST` (or save extraction output with the same DTO).
-2. For a full editor save, `PUT` and always send `skills` as the intended complete list.
+2. For a full editor save, `PUT` and always send `skills` as the intended complete comma-separated string.
 3. For autosave of one field, prefer the field route or a PATCH body that contains **only** that field.
-4. To clear optional metadata, send `""` on the field route (or that key on PATCH). To clear skills, send `[]`.
+4. To clear optional metadata, send `""` on the field route (or that key on PATCH). To clear skills, send `""`.
 5. Never use PUT to “patch” unless the client resubmits the whole resource, including skills.
 
-OpenAPI tag text on `JobController` states the same contract: PUT = full form; omitting skills clears them; PATCH = dirty fields; PATCH skills `[]` clears; optional field routes accept empty string to clear; foreign ids look like 404.
+OpenAPI tag text on `JobController` states the same contract: PUT = full form; omitting skills clears them; PATCH = dirty fields; PATCH skills `""` clears; optional field routes accept empty string to clear; foreign ids look like 404.

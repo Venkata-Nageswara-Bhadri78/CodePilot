@@ -35,7 +35,6 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -91,7 +90,7 @@ class JobServiceImplTest {
                 .workMode("Hybrid")
                 .industry("Information Technology")
                 .sourcePlatform("LinkedIn")
-                .skills(new ArrayList<>(List.of("Java", "Spring Boot")))
+                .skills("Java, Spring Boot")
                 .build();
     }
 
@@ -111,7 +110,7 @@ class JobServiceImplTest {
                 .location("Bengaluru, India")
                 .industry("Information Technology")
                 .sourcePlatform("LinkedIn")
-                .skills(List.of("Java", "Spring Boot"))
+                .skills("Java, Spring Boot")
                 .build();
     }
 
@@ -225,7 +224,7 @@ class JobServiceImplTest {
     }
 
     @Test
-    void createJob_nullSkills_persistsEmptyList() {
+    void createJob_nullSkills_persistsEmptyString() {
         stubCurrentUser();
         when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
         when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -234,8 +233,34 @@ class JobServiceImplTest {
         request.setSkills(null);
 
         JobResponse response = jobService.createJob(request);
-        assertNotNull(response.getSkills());
-        assertTrue(response.getSkills().isEmpty());
+        assertEquals("", response.getSkills());
+        verify(jobRepository).save(argThat(job -> "".equals(job.getSkills())));
+    }
+
+    @Test
+    void createJob_commaSeparatedSkills_persistsSingleField() {
+        stubCurrentUser();
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        JobRequest request = baseCreateRequest();
+        request.setSkills("Java, Spring Boot, Microservices, MySQL, AWS, Docker");
+
+        JobResponse response = jobService.createJob(request);
+        assertEquals("Java, Spring Boot, Microservices, MySQL, AWS, Docker", response.getSkills());
+    }
+
+    @Test
+    void createJob_extractionStyleSkills_persistsAsSubmitted() {
+        stubCurrentUser();
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        JobRequest request = baseCreateRequest();
+        request.setSkills("React, Node.js");
+
+        JobResponse response = jobService.createJob(request);
+        assertEquals("React, Node.js", response.getSkills());
     }
 
     @Test
@@ -277,7 +302,7 @@ class JobServiceImplTest {
     }
 
     @Test
-    void patchJob_omittingSkills_leavesList() {
+    void patchJob_omittingSkills_leavesField() {
         stubCurrentUser();
         when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
         when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -287,21 +312,21 @@ class JobServiceImplTest {
                 .build();
 
         JobResponse response = jobService.patchJob(100L, request);
-        assertEquals(List.of("Java", "Spring Boot"), response.getSkills());
+        assertEquals("Java, Spring Boot", response.getSkills());
     }
 
     @Test
-    void patchJob_explicitSkillsReplaceList() {
+    void patchJob_explicitSkillsReplaceField() {
         stubCurrentUser();
         when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
         when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         JobPatchRequest request = JobPatchRequest.builder()
-                .skills(List.of("Go"))
+                .skills("Go")
                 .build();
 
         JobResponse response = jobService.patchJob(100L, request);
-        assertEquals(List.of("Go"), response.getSkills());
+        assertEquals("Go", response.getSkills());
     }
 
     @Test
@@ -313,6 +338,7 @@ class JobServiceImplTest {
 
         assertEquals("Amazon", response.getCompany());
         assertEquals("Software Development Engineer I", response.getTitle());
+        assertEquals("Java, Spring Boot", response.getSkills());
     }
 
     @Test
@@ -324,7 +350,7 @@ class JobServiceImplTest {
     }
 
     @Test
-    void updateJob_omittingSkills_clearsList() {
+    void updateJob_omittingSkills_clearsField() {
         stubCurrentUser();
         when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
         when(jobRepository.existsByUserIdAndSourceUrlHashAndIdNot(eq(1L), any(), eq(100L))).thenReturn(false);
@@ -339,11 +365,11 @@ class JobServiceImplTest {
                 .build();
 
         JobResponse response = jobService.updateJob(100L, request);
-        assertTrue(response.getSkills().isEmpty());
+        assertEquals("", response.getSkills());
     }
 
     @Test
-    void updateJob_explicitEmptySkills_clearsList() {
+    void updateJob_explicitEmptySkills_clearsField() {
         stubCurrentUser();
         when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
         when(jobRepository.existsByUserIdAndSourceUrlHashAndIdNot(eq(1L), any(), eq(100L))).thenReturn(false);
@@ -354,11 +380,11 @@ class JobServiceImplTest {
                 .company("Amazon")
                 .sourceUrl("https://amazon.jobs/en/jobs/12345")
                 .originalDescription("Full pasted job posting text.")
-                .skills(List.of())
+                .skills("")
                 .build();
 
         JobResponse response = jobService.updateJob(100L, request);
-        assertTrue(response.getSkills().isEmpty());
+        assertEquals("", response.getSkills());
     }
 
     @Test
@@ -522,17 +548,30 @@ class JobServiceImplTest {
     }
 
     @Test
-    void updateSkills_emptyList_clearsSkills() {
+    void updateSkills_emptyString_clearsSkills() {
         stubCurrentUser();
         when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
         when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         UpdateSkillsRequest request = UpdateSkillsRequest.builder()
-                .skills(List.of())
+                .skills("")
                 .build();
 
         JobResponse response = jobService.updateSkills(100L, request);
-        assertTrue(response.getSkills().isEmpty());
+        assertEquals("", response.getSkills());
+    }
+
+    @Test
+    void updateSkills_replacesFullCommaSeparatedValue() {
+        stubCurrentUser();
+        when(jobRepository.findByIdAndUserId(100L, 1L)).thenReturn(Optional.of(testJob));
+        when(jobRepository.save(any(JobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        JobResponse response = jobService.updateSkills(100L, UpdateSkillsRequest.builder()
+                .skills("Java, Spring Boot, MySQL, AWS")
+                .build());
+
+        assertEquals("Java, Spring Boot, MySQL, AWS", response.getSkills());
     }
 
     @Test

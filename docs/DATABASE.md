@@ -19,7 +19,6 @@ erDiagram
     USER_PROFILE ||--o{ ADDITIONAL_INFO : has
     USER_PROFILE ||--o{ PROFILE_LINK : has
     RESUME ||--o| RESUME_PARSED_DATA : parsed
-    JOB ||--o{ JOB_SKILL : skills
     JOB ||--o| CHAT_SESSION : one_chat
     CHAT_SESSION ||--o{ CHAT_MESSAGE : turns
 
@@ -61,7 +60,7 @@ erDiagram
 | Identity | auth | `users`, `refresh_token`, `email_verification`, `password_reset_token` |
 | Career profile | user | `user_profiles`, `work_experience`, `education`, `project`, additional-info, profile-link tables |
 | Resumes | user | `resumes`, `resume_parsed_data` |
-| Job notebook | jobs | `jobs`, `job_skills` |
+| Job notebook | jobs | `jobs` |
 | Job chat | chatassistant | `chat_sessions`, `chat_messages` |
 | Extraction | — | **No tables.** Preview only |
 
@@ -91,7 +90,7 @@ Object **bytes** live in MinIO, not in MySQL.
 
 - **JobEntity:** many-to-one `User`. Required `sourceUrl`, `sourceUrlHash` (SHA-256 of canonical URL), `originalDescription`, `title`, `company`.
 - Uniqueness: `uk_job_user_source_url_hash` on `(user_id, source_url_hash)` — same posting twice for one user is rejected; different users may save the same URL.
-- **job_skills:** element collection of skill strings.
+- **skills:** `TEXT` column on `jobs` storing a comma-separated string. There is no `job_skills` table.
 
 Deleting a job cascades the chat session (`ON DELETE CASCADE` on `chat_sessions.job_id`).
 
