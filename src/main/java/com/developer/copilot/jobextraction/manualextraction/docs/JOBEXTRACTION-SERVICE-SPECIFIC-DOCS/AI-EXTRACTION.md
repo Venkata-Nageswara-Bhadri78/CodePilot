@@ -7,7 +7,7 @@ How `jobextraction` uses the `ai` module, what the model is asked to do, and how
 `JobExtractionServiceImpl` builds:
 
 ```text
-JobExtractionAiRequest { jobUrl: canonical URL, rawJobText: paste }
+JobExtractionAiRequest { jobUrl: canonical URL, rawJobText: paste, resumeContext: parsed resume or blank }
 ```
 
 then:
@@ -16,14 +16,14 @@ then:
 aiGuard.call(() -> aiService.extractJobInfo(aiRequest))
 ```
 
-inside `previewCache.computeIfAbsent`, so cache hits skip the model.
+inside `previewCache.computeIfAbsent`, so cache hits skip the model. The cache identity is `userId + urlHash + resolved resume id` so switching resume does not reuse another resume's score.
 
 `JobExtractionAiRequest` is an **in-process** DTO (`@Schema(hidden = true)`). It is not a public HTTP type.
 
 ## What `AiServiceImpl.extractJobInfo` does
 
-1. `PromptTemplateService.buildJobExtractionSystemPrompt()` — literal extractor, no assistant persona; empty fields when facts are absent; pasted block treated as untrusted data, not instructions.
-2. `buildJobExtractionUserMessage(jobUrl, rawJobText)` — sections `JOB URL` and `PASTED JOB POSTING CONTENT`.
+1. `PromptTemplateService.buildJobExtractionSystemPrompt()` — literal extractor, no assistant persona; empty fields when facts are absent; pasted block treated as untrusted data, not instructions; also asks for `resumeToJobScore` 0–100.
+2. `buildJobExtractionUserMessage(jobUrl, rawJobText, resumeContext)` — sections `CANDIDATE RESUME PROFILE`, `JOB URL`, and `PASTED JOB POSTING CONTENT`.
 3. `chatClient.prompt().system(...).user(...).options(...).call().entity(JobExtractionAiResponse.class)` wrapped in `callWithTimeout`.
 4. Options: `app.ai.default-model`, `maxTokens = app.ai.max-completion-tokens` (default 2048), **temperature `0.0`**.
 5. Null entity → `AiServiceException` `AI did not return parsable job information. Please try again.`

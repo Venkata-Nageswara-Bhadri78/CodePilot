@@ -52,8 +52,10 @@ Creates a job for the current user.
 | `industry` | no | Max 100 |
 | `sourcePlatform` | no | Max 50 |
 | `skills` | no | Each item max 255. Null → empty list |
+| `resume` | no | Active resume id owned by the caller. Omit → high-priority resume, or null if the user has none |
+| `resumeToJobScore` | no | Integer 0–100 from the extraction preview. Omit → backend scores (or 0 if no resume). Notes and jobStatus are **not** in this body |
 
-**Success:** `201` `"Job created successfully."` `data` is `JobResponse` (canonical `sourceUrl`, no `sourceUrlHash`).
+**Success:** `201` `"Job created successfully."` `data` is `JobResponse` (canonical `sourceUrl`, no `sourceUrlHash`). New jobs have `notes=""`, `jobStatus=APPLIED`, `customStatus=null`.
 
 **Errors:** `400` validation or invalid URL; `401`; `409` `"This post was already added to your records."`; `429`; `500`.
 
@@ -96,10 +98,10 @@ Paginated list of the current user’s jobs.
 | `search` | omitted | Optional. Trimmed length max 100. Contains-match on title, company, location, industry, `sourcePlatform`. `%` and `_` are literals |
 | `page` | `0` | Integer 0 … 10_000 |
 | `size` | `10` | Integer 1 … 50 |
-| `sortBy` | `createdAt` | One of: `createdAt`, `updatedAt`, `title`, `company`, `location`, `employmentType`, `workMode`, `experience`, `department`, `education`, `industry`, `sourcePlatform`, `sourceUrl`. **Not** `salary` |
+| `sortBy` | `createdAt` | One of: `createdAt`, `updatedAt`, `title`, `company`, `location`, `employmentType`, `workMode`, `experience`, `department`, `education`, `industry`, `sourcePlatform`, `sourceUrl`, `jobStatus`, `resumeToJobScore`. **Not** `salary` or `notes` |
 | `sortDir` | `desc` | `asc` (any case) is ascending; any other value is descending |
 
-**Success:** `200` `"Jobs retrieved successfully."` `data` is a Spring `Page` of `JobSummaryResponse`: `content`, `totalElements`, `totalPages`, `number`, `size`, `sort`. Summaries include skills and omit descriptions and `sourceUrl`.
+**Success:** `200` `"Jobs retrieved successfully."` `data` is a Spring `Page` of `JobSummaryResponse`: `content`, `totalElements`, `totalPages`, `number`, `size`, `sort`. Summaries include skills, bound resume, score, notes, and status, and omit descriptions and `sourceUrl`.
 
 **Errors:** `400` invalid page/size/search/sort; `401`; `429`.
 
@@ -193,8 +195,13 @@ All of the following require JWT, use bucket `mutate`, return `200` with `JobRes
 | `PATCH /api/v1/jobs/{id}/skills` | `{ "skills": ["Java"] }` | `@NotNull`; `[]` clears; each skill max 255 | Job skills updated successfully. |
 | `PATCH /api/v1/jobs/{id}/description` | `{ "description": "..." }` | `@NotNull`; `""` clears; max 50_000 | Job description updated successfully. |
 | `PATCH /api/v1/jobs/{id}/original-description` | `{ "originalDescription": "..." }` | `@NotBlank`; max 50_000 | Job original description updated successfully. |
+| `PATCH /api/v1/jobs/{id}/resume` | `{ "resume": 12 }` | `@NotNull`. Must be an active resume owned by the caller. Recalculates `resumeToJobScore` | Job resume updated successfully. |
+| `PATCH /api/v1/jobs/{id}/notes` | `{ "notes": "..." }` | `@NotNull`; `""` clears; max 5_000. Not sent to AI | Job notes updated successfully. |
+| `PATCH /api/v1/jobs/{id}/status` | `{ "jobStatus": "INTERVIEWS", "customStatus": "..." }` | `jobStatus` `@NotNull`. `customStatus` required when `CUSTOM`, max 100; ignored otherwise | Job status updated successfully. |
 
 Missing JSON property on a field route fails bean validation (`@NotNull` / `@NotBlank`), not “leave unchanged”. These routes are always a write of that one attribute.
+
+`PATCH .../resume` can also return `404` `"Resume not found."`, `502` if score-only AI fails, or `503` if the AI circuit is open.
 
 Example clear location:
 
@@ -214,7 +221,9 @@ Example clear skills:
 
 Returned by create, get-by-id, and all updates:
 
-`id`, `sourceUrl` (canonical), `originalDescription`, `description`, `title`, `company`, `location`, `employmentType`, `workMode`, `experience`, `salary`, `education`, `department`, `industry`, `sourcePlatform`, `skills`, `createdAt`, `updatedAt`.
+`id`, `sourceUrl` (canonical), `originalDescription`, `description`, `title`, `company`, `location`, `employmentType`, `workMode`, `experience`, `salary`, `education`, `department`, `industry`, `sourcePlatform`, `skills`, `resume`, `resumeToJobScore`, `notes`, `jobStatus`, `customStatus`, `createdAt`, `updatedAt`.
+
+`jobStatus` values: `APPLIED`, `SHORTLISTED`, `RECEIVED_CALL`, `SCREENING_CALL`, `INTERVIEWS`, `FINAL_ROUND`, `SELECTED`, `OFFER`, `ACCEPTED`, `REJECTED`, `WITHDRAWN`, `ON_HOLD`, `CUSTOM`. Aliases: `"RECEIVED CALL"`, `"SHOTLISTED"` → `SHORTLISTED`. `customStatus` is only set when `jobStatus` is `CUSTOM`.
 
 ## Common error shapes
 

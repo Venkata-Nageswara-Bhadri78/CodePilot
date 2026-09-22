@@ -1,5 +1,6 @@
 package com.developer.copilot.jobs.dto;
 
+import com.developer.copilot.jobs.entity.JobStatus;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
@@ -44,6 +45,21 @@ public class JobSummaryResponse {
 
     @ArraySchema(arraySchema = @Schema(description = "Required skills"), schema = @Schema(example = "Java"))
     private List<String> skills;
+
+    @Schema(description = "Id of the resume bound to this job", example = "12")
+    private Long resume;
+
+    @Schema(description = "AI match score of the bound resume against this job, 0–100", example = "78")
+    private Integer resumeToJobScore;
+
+    @Schema(description = "User notes. Empty string when none have been added.")
+    private String notes;
+
+    @Schema(description = "Manual application status", example = "APPLIED")
+    private JobStatus jobStatus;
+
+    @Schema(description = "User-entered status label when jobStatus is CUSTOM")
+    private String customStatus;
 
     @Schema(example = "2026-01-15T10:30:00")
     private LocalDateTime createdAt;

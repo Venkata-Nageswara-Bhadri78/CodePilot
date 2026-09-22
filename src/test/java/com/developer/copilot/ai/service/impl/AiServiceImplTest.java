@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -48,9 +49,11 @@ import com.developer.copilot.ai.dto.request.AiMode;
 import com.developer.copilot.ai.dto.request.ChatTurnDto;
 import com.developer.copilot.ai.dto.request.JobChatAiRequest;
 import com.developer.copilot.ai.dto.request.JobExtractionAiRequest;
+import com.developer.copilot.ai.dto.request.ResumeToJobScoreAiRequest;
 import com.developer.copilot.ai.dto.response.AiChatResponse;
 import com.developer.copilot.ai.dto.response.AiStreamChunk;
 import com.developer.copilot.ai.dto.response.JobExtractionAiResponse;
+import com.developer.copilot.ai.dto.response.ResumeToJobScoreAiResponse;
 import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.ai.exception.AiUnavailableException;
 import com.developer.copilot.ai.metrics.AiMetrics;
@@ -538,7 +541,7 @@ class AiServiceImplTest {
     @Test
     void extractJobInfo_returnsStructuredEntity() {
         when(promptTemplateService.buildJobExtractionSystemPrompt()).thenReturn("EXTRACT");
-        when(promptTemplateService.buildJobExtractionUserMessage(anyString(), anyString())).thenReturn("RAW");
+        when(promptTemplateService.buildJobExtractionUserMessage(anyString(), anyString(), nullable(String.class))).thenReturn("RAW");
         when(chatClient.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(anyString())).thenReturn(requestSpec);
         when(requestSpec.user(anyString())).thenReturn(requestSpec);
@@ -561,7 +564,7 @@ class AiServiceImplTest {
     @Test
     void extractJobInfo_nullEntity_throwsAiServiceException() {
         when(promptTemplateService.buildJobExtractionSystemPrompt()).thenReturn("EXTRACT");
-        when(promptTemplateService.buildJobExtractionUserMessage(anyString(), anyString())).thenReturn("RAW");
+        when(promptTemplateService.buildJobExtractionUserMessage(anyString(), anyString(), nullable(String.class))).thenReturn("RAW");
         when(chatClient.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(anyString())).thenReturn(requestSpec);
         when(requestSpec.user(anyString())).thenReturn(requestSpec);
@@ -578,7 +581,7 @@ class AiServiceImplTest {
     @Test
     void extractJobInfo_providerThrow_isGenericAiServiceException() {
         when(promptTemplateService.buildJobExtractionSystemPrompt()).thenReturn("EXTRACT");
-        when(promptTemplateService.buildJobExtractionUserMessage(anyString(), anyString())).thenReturn("RAW");
+        when(promptTemplateService.buildJobExtractionUserMessage(anyString(), anyString(), nullable(String.class))).thenReturn("RAW");
         when(chatClient.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(anyString())).thenReturn(requestSpec);
         when(requestSpec.user(anyString())).thenReturn(requestSpec);
@@ -597,7 +600,7 @@ class AiServiceImplTest {
     @Test
     void extractJobInfo_setsTemperatureZeroAndMaxTokens() {
         when(promptTemplateService.buildJobExtractionSystemPrompt()).thenReturn("EXTRACT");
-        when(promptTemplateService.buildJobExtractionUserMessage(anyString(), anyString())).thenReturn("RAW");
+        when(promptTemplateService.buildJobExtractionUserMessage(anyString(), anyString(), nullable(String.class))).thenReturn("RAW");
         when(chatClient.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(anyString())).thenReturn(requestSpec);
         when(requestSpec.user(anyString())).thenReturn(requestSpec);
@@ -615,7 +618,48 @@ class AiServiceImplTest {
         assertEquals(0.0, options.getTemperature());
         assertEquals(2048, options.getMaxTokens());
         verify(promptTemplateService).buildJobExtractionSystemPrompt();
-        verify(promptTemplateService).buildJobExtractionUserMessage("https://example.com/job", "Engineer role");
+        verify(promptTemplateService).buildJobExtractionUserMessage("https://example.com/job", "Engineer role", null);
+    }
+
+    @Test
+    void scoreResumeToJob_returnsValidatedInteger() {
+        when(promptTemplateService.buildResumeToJobScoreSystemPrompt()).thenReturn("SCORE");
+        when(promptTemplateService.buildResumeToJobScoreUserMessage(anyString(), anyString())).thenReturn("SNAP");
+        when(chatClient.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(anyString())).thenReturn(requestSpec);
+        when(requestSpec.user(anyString())).thenReturn(requestSpec);
+        when(requestSpec.options(any(ChatOptions.Builder.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(callResponseSpec);
+        when(callResponseSpec.entity(ResumeToJobScoreAiResponse.class)).thenReturn(
+                ResumeToJobScoreAiResponse.builder().resumeToJobScore(77).build());
+
+        Integer score = aiService.scoreResumeToJob(ResumeToJobScoreAiRequest.builder()
+                .resumeContext("Java resume")
+                .jobSnapshot("title: Engineer")
+                .build());
+
+        assertEquals(77, score);
+        OpenAiChatOptions options = capturedOptions();
+        assertEquals(0.0, options.getTemperature());
+        assertEquals(64, options.getMaxTokens());
+    }
+
+    @Test
+    void scoreResumeToJob_outOfRange_throws() {
+        when(promptTemplateService.buildResumeToJobScoreSystemPrompt()).thenReturn("SCORE");
+        when(promptTemplateService.buildResumeToJobScoreUserMessage(anyString(), anyString())).thenReturn("SNAP");
+        when(chatClient.prompt()).thenReturn(requestSpec);
+        when(requestSpec.system(anyString())).thenReturn(requestSpec);
+        when(requestSpec.user(anyString())).thenReturn(requestSpec);
+        when(requestSpec.options(any(ChatOptions.Builder.class))).thenReturn(requestSpec);
+        when(requestSpec.call()).thenReturn(callResponseSpec);
+        when(callResponseSpec.entity(ResumeToJobScoreAiResponse.class)).thenReturn(
+                ResumeToJobScoreAiResponse.builder().resumeToJobScore(140).build());
+
+        assertThrows(AiServiceException.class, () -> aiService.scoreResumeToJob(ResumeToJobScoreAiRequest.builder()
+                .resumeContext("Java resume")
+                .jobSnapshot("title: Engineer")
+                .build()));
     }
 
     @Test

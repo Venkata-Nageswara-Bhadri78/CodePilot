@@ -27,13 +27,13 @@ The service does **not** own login, JWT issuance, email verification, AI extract
 
 | Capability | Behavior |
 |---|---|
-| Create | Normalizes the source URL, rejects duplicates for this user, stores the job and optional skills |
+| Create | Normalizes the source URL, rejects duplicates for this user, binds a resume (explicit or high-priority), stores score/notes/status defaults, stores the job and optional skills |
 | List | Returns a Spring `Page` of summaries for the current user only |
 | Search | Case-insensitive contains-match on title, company, location, industry, and source platform. `%` and `_` are treated as literals |
 | Get by id | Full job details, including descriptions and the canonical source URL |
 | Full replace (`PUT`) | Re-submits the entire form. Omitting `skills` clears the list |
 | Partial update (`PATCH`) | Applies only provided fields. Blank title, company, or original description is rejected |
-| Field routes | Dedicated PATCH paths for each attribute; empty string clears optional fields; `PATCH .../skills` with `[]` clears skills |
+| Field routes | Dedicated PATCH paths for each attribute; empty string clears optional fields; `PATCH .../skills` with `[]` clears skills; `PATCH .../resume` rescores; `PATCH .../notes` and `PATCH .../status` are independent of AI |
 | Delete | Permanently removes the job and its skills collection |
 | Duplicate detection | Same canonical URL (hash) cannot exist twice for one user; a different user may save the same posting |
 

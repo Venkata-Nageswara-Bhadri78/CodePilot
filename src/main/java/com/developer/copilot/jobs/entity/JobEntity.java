@@ -103,4 +103,54 @@ public class JobEntity extends BaseEntity {
     @Column(name = "skill")
     @Builder.Default
     private List<String> skills = new ArrayList<>();
+
+    /**
+     * Unique identifier of the resume selected for this job ({@code resumes.id}).
+     * Stored as a plain id so deleting a resume does not block job rows.
+     * Null when the user has no usable resume.
+     */
+    @Column(name = "resume")
+    private Long resume;
+
+    /**
+     * AI match score of the selected resume against this job. Strictly 0–100.
+     */
+    @Column(name = "resume_to_job_score")
+    @Builder.Default
+    private Integer resumeToJobScore = 0;
+
+    /**
+     * Free-form user notes. Independent of extraction and scoring. Empty on create.
+     */
+    @Lob
+    @Column(columnDefinition = "TEXT")
+    @Builder.Default
+    private String notes = "";
+
+    /**
+     * Manual application pipeline status. Defaults to {@link JobStatus#APPLIED}.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "job_status", length = 32)
+    @Builder.Default
+    private JobStatus jobStatus = JobStatus.APPLIED;
+
+    /**
+     * User-entered label used only when {@link #jobStatus} is {@link JobStatus#CUSTOM}.
+     */
+    @Column(name = "custom_status", length = 100)
+    private String customStatus;
+
+    @PrePersist
+    void applyNewFieldDefaults() {
+        if (notes == null) {
+            notes = "";
+        }
+        if (resumeToJobScore == null) {
+            resumeToJobScore = 0;
+        }
+        if (jobStatus == null) {
+            jobStatus = JobStatus.APPLIED;
+        }
+    }
 }

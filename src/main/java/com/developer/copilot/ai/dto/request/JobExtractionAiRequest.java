@@ -30,4 +30,7 @@ public class JobExtractionAiRequest {
     @Size(max = 100000, message = "Raw job text cannot exceed 100000 characters.")
     @Schema(description = "Full raw text pasted from the job posting page", maxLength = 100000)
     private String rawJobText;
+
+    @Schema(description = "Parsed text of the selected or high-priority resume. Blank when none is available.")
+    private String resumeContext;
 }

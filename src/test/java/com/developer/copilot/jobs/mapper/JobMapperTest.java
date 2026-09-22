@@ -43,6 +43,10 @@ class JobMapperTest {
         assertNull(entity.getSourceUrlHash());
         assertEquals("SE", entity.getTitle());
         assertEquals(user, entity.getUser());
+        assertEquals("", entity.getNotes());
+        assertEquals(0, entity.getResumeToJobScore());
+        assertEquals(com.developer.copilot.jobs.entity.JobStatus.APPLIED, entity.getJobStatus());
+        assertNull(entity.getResume());
     }
 
     @Test
@@ -95,6 +99,28 @@ class JobMapperTest {
         assertEquals(List.of("Java"), entity.getSkills());
         assertEquals("10 LPA", entity.getSalary());
         assertEquals("SE", entity.getTitle());
+    }
+
+    @Test
+    void updateEntityFromPatch_notesApplied_putDoesNotClearNotes() {
+        JobEntity entity = JobEntity.builder()
+                .title("SE")
+                .notes("keep me")
+                .jobStatus(com.developer.copilot.jobs.entity.JobStatus.INTERVIEWS)
+                .skills(new ArrayList<>(List.of("Java")))
+                .build();
+
+        mapper.updateEntityFromRequest(entity, JobRequest.builder()
+                .title("SE")
+                .company("Acme")
+                .originalDescription("text")
+                .build());
+
+        assertEquals("keep me", entity.getNotes());
+        assertEquals(com.developer.copilot.jobs.entity.JobStatus.INTERVIEWS, entity.getJobStatus());
+
+        mapper.updateEntityFromPatch(entity, JobPatchRequest.builder().notes("updated").build());
+        assertEquals("updated", entity.getNotes());
     }
 
     @Test

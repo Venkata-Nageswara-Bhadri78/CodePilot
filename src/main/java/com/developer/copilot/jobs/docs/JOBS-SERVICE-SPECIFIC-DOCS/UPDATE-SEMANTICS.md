@@ -65,13 +65,17 @@ These paths exist so a UI can update one control without assembling `JobPatchReq
 
 **Cannot be cleared** (blank rejected at bean validation):
 
-- `/title`, `/company`, `/original-description`, `/source-url`
+- `/title`, `/company`, `/original-description`, `/source-url`, `/resume`
 
 **Cleared with empty string** (`@NotNull` still requires the key):
 
-- `/location`, `/employment-type`, `/work-mode`, `/experience`, `/salary`, `/education`, `/department`, `/industry`, `/source-platform`, `/description`
+- `/location`, `/employment-type`, `/work-mode`, `/experience`, `/salary`, `/education`, `/department`, `/industry`, `/source-platform`, `/description`, `/notes`
 
 **Skills:** body must include `skills` (`@NotNull`). Empty array clears. There is no “omit skills to leave unchanged” on this route — it is always a replace of the collection.
+
+**Status:** `PATCH /{id}/status` requires `jobStatus`. When the value is `CUSTOM`, `customStatus` is required (max 100). Any other status clears `customStatus`.
+
+**Resume:** `PATCH /{id}/resume` stores the resume id and recalculates `resumeToJobScore` with a score-only AI call. PUT/PATCH of posting fields do **not** overwrite notes or jobStatus. PUT/PATCH `resume` (when sent) rebinds and may rescore.
 
 Sending a field route **without** the JSON property is `400`, not a no-op.
 

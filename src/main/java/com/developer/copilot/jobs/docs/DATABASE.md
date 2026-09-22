@@ -33,6 +33,11 @@ erDiagram
         varchar education
         varchar industry
         varchar source_platform
+        bigint resume
+        int resume_to_job_score
+        text notes
+        varchar job_status
+        varchar custom_status
         datetime created_at
         datetime updated_at
     }
@@ -59,6 +64,10 @@ Purpose: one saved posting for one user.
 | Cleaned text | `description`, `TEXT`, optional |
 | Core fields | `title` and `company` mandatory (`nullable = false`) |
 | Optional strings | location, employmentType, workMode, experience, salary, department, education, industry, sourcePlatform |
+| Bound resume | `resume` (`Long`), stores `resumes.id`. No FK so deleting a resume cannot block job rows |
+| Match score | `resumeToJobScore`, integer 0–100, default `0` |
+| Notes | `notes`, `TEXT`, empty string on create. Never part of AI scoring |
+| Status | `jobStatus` enum string, default `APPLIED`; `customStatus` used only for `CUSTOM` |
 | Audit | `createdAt` / `updatedAt` from `BaseEntity` and `@EnableJpaAuditing` |
 | Uniqueness | `@UniqueConstraint` name `uk_job_user_source_url_hash` on `(user_id, source_url_hash)` |
 

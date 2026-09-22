@@ -1,5 +1,6 @@
 package com.developer.copilot.jobs.dto;
 
+import com.developer.copilot.jobs.entity.JobStatus;
 import com.developer.copilot.jobs.util.JobLimits;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -66,4 +67,20 @@ public class JobPatchRequest {
 
     @ArraySchema(schema = @Schema(maxLength = 255))
     private List<@Size(max = 255, message = "Each skill cannot exceed 255 characters.") String> skills;
+
+    @Schema(description = "Resume id to switch to. Recalculates resumeToJobScore. Omit to leave unchanged.")
+    private Long resume;
+
+    @Size(max = JobLimits.MAX_NOTES_LENGTH,
+            message = "Notes cannot exceed " + JobLimits.MAX_NOTES_LENGTH + " characters.")
+    @Schema(description = "User notes. Empty string clears. Omit to leave unchanged. Not used by AI scoring.")
+    private String notes;
+
+    @Schema(description = "Manual job status. Omit to leave unchanged.")
+    private JobStatus jobStatus;
+
+    @Size(max = JobLimits.MAX_CUSTOM_STATUS_LENGTH,
+            message = "Custom status cannot exceed " + JobLimits.MAX_CUSTOM_STATUS_LENGTH + " characters.")
+    @Schema(description = "Required when jobStatus is CUSTOM. Ignored for other statuses.")
+    private String customStatus;
 }

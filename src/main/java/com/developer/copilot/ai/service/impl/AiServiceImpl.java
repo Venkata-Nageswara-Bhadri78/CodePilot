@@ -23,9 +23,11 @@ import com.developer.copilot.ai.dto.request.AiMode;
 import com.developer.copilot.ai.dto.request.ChatTurnDto;
 import com.developer.copilot.ai.dto.request.JobChatAiRequest;
 import com.developer.copilot.ai.dto.request.JobExtractionAiRequest;
+import com.developer.copilot.ai.dto.request.ResumeToJobScoreAiRequest;
 import com.developer.copilot.ai.dto.response.AiChatResponse;
 import com.developer.copilot.ai.dto.response.AiStreamChunk;
 import com.developer.copilot.ai.dto.response.JobExtractionAiResponse;
+import com.developer.copilot.ai.dto.response.ResumeToJobScoreAiResponse;
 import com.developer.copilot.ai.exception.AiResumePendingException;
 import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.ai.exception.AiUnavailableException;
@@ -197,7 +199,8 @@ public class AiServiceImpl implements AiService {
             String systemPrompt = promptTemplateService.buildJobExtractionSystemPrompt();
             String userMessage = promptTemplateService.buildJobExtractionUserMessage(
                     request.getJobUrl(),
-                    request.getRawJobText()
+                    request.getRawJobText(),
+                    request.getResumeContext()
             );
 
             JobExtractionAiResponse result = callWithTimeout(() -> chatClient.prompt()
@@ -224,6 +227,51 @@ public class AiServiceImpl implements AiService {
                         : new AiServiceException(formatFriendlyErrorMessage(ex), ex);
             }
             log.error("AI job extraction failed: {}", ex.getMessage(), ex);
+            throw new AiServiceException(formatFriendlyErrorMessage(ex), ex);
+        }
+    }
+
+    @Override
+    public Integer scoreResumeToJob(ResumeToJobScoreAiRequest request) {
+        log.info("Scoring resume against structured job, resumeContextLength={}, jobSnapshotLength={}",
+                request.getResumeContext() != null ? request.getResumeContext().length() : 0,
+                request.getJobSnapshot() != null ? request.getJobSnapshot().length() : 0);
+
+        try {
+            String systemPrompt = promptTemplateService.buildResumeToJobScoreSystemPrompt();
+            String userMessage = promptTemplateService.buildResumeToJobScoreUserMessage(
+                    request.getResumeContext(),
+                    request.getJobSnapshot()
+            );
+
+            ResumeToJobScoreAiResponse result = callWithTimeout(() -> chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(userMessage)
+                    .options(OpenAiChatOptions.builder()
+                            .model(aiProperties.getDefaultModel())
+                            .maxTokens(64)
+                            .temperature(0.0))
+                    .call()
+                    .entity(ResumeToJobScoreAiResponse.class));
+
+            if (result == null || result.getResumeToJobScore() == null) {
+                throw new AiServiceException("AI did not return a parsable resume-to-job score. Please try again.");
+            }
+
+            Integer score = result.getResumeToJobScore();
+            if (score < 0 || score > 100) {
+                throw new AiServiceException("AI returned a resume-to-job score outside 0-100.");
+            }
+            return score;
+
+        } catch (AiServiceException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            if (isDomainException(ex)) {
+                throw ex instanceof RuntimeException runtime ? runtime
+                        : new AiServiceException(formatFriendlyErrorMessage(ex), ex);
+            }
+            log.error("AI resume-to-job scoring failed: {}", ex.getMessage(), ex);
             throw new AiServiceException(formatFriendlyErrorMessage(ex), ex);
         }
     }
