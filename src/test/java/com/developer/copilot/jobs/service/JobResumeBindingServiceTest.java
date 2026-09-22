@@ -20,7 +20,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -116,7 +115,7 @@ class JobResumeBindingServiceTest {
         when(aiService.scoreResumeToJob(any(ResumeToJobScoreAiRequest.class)))
                 .thenThrow(new AiServiceException("model down"));
 
-        assertEquals(0, service.scoreOrDefault(5L, JobEntity.builder().title("SE").skills(List.of("Java")).build()));
+        assertEquals(0, service.scoreOrDefault(5L, JobEntity.builder().title("SE").skills("Java").build()));
     }
 
     @Test
@@ -139,7 +138,7 @@ class JobResumeBindingServiceTest {
                 .company("Acme")
                 .notes("secret note")
                 .description("Build APIs")
-                .skills(List.of("Java"))
+                .skills("Java")
                 .build();
 
         String snapshot = service.buildJobSnapshot(job);

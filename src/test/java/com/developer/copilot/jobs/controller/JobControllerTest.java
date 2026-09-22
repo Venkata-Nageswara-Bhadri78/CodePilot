@@ -75,8 +75,8 @@ class JobControllerTest {
     }
 
     @Test
-    void createJob_oversizedSkill_returns400() throws Exception {
-        String oversizedSkill = "x".repeat(256);
+    void createJob_oversizedSkills_returns400() throws Exception {
+        String oversizedSkills = "x".repeat(JobLimits.MAX_SKILLS_LENGTH + 1);
 
         mockMvc.perform(post("/api/v1/jobs")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -86,10 +86,11 @@ class JobControllerTest {
                                   "originalDescription": "Job description text",
                                   "title": "Software Engineer",
                                   "company": "Acme Corp",
-                                  "skills": ["Java", "%s"]
+                                  "skills": "%s"
                                 }
-                                """.formatted(oversizedSkill)))
+                                """.formatted(oversizedSkills)))
                 .andExpect(status().isBadRequest());
+        verify(jobService, never()).createJob(any());
     }
 
     @Test
@@ -213,17 +214,34 @@ class JobControllerTest {
     }
 
     @Test
-    void updateSkills_emptyList_isAccepted() throws Exception {
-        when(jobService.updateSkills(eq(1L), any())).thenReturn(JobResponse.builder().id(1L).skills(java.util.List.of()).build());
+    void updateSkills_emptyString_isAccepted() throws Exception {
+        when(jobService.updateSkills(eq(1L), any())).thenReturn(JobResponse.builder().id(1L).skills("").build());
 
         mockMvc.perform(patch("/api/v1/jobs/1/skills")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "skills": []
+                                  "skills": ""
                                 }
                                 """))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void createJob_skillsArray_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/jobs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/jobs/1",
+                                  "originalDescription": "Job description text",
+                                  "title": "Software Engineer",
+                                  "company": "Acme Corp",
+                                  "skills": ["Java", "Spring Boot"]
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+        verify(jobService, never()).createJob(any());
     }
 
     @Test

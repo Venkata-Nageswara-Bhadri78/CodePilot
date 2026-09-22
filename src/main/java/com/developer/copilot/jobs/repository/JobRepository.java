@@ -3,7 +3,6 @@ package com.developer.copilot.jobs.repository;
 import com.developer.copilot.jobs.entity.JobEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,7 +13,6 @@ public interface JobRepository extends JpaRepository<JobEntity, Long> {
 
     Optional<JobEntity> findByIdAndUserId(Long id, Long userId);
 
-    @EntityGraph(attributePaths = "skills")
     Page<JobEntity> findAllByUserId(Long userId, Pageable pageable);
 
     /**
@@ -29,7 +27,6 @@ public interface JobRepository extends JpaRepository<JobEntity, Long> {
      */
     boolean existsByUserIdAndSourceUrlHashAndIdNot(Long userId, String sourceUrlHash, Long id);
 
-    @EntityGraph(attributePaths = "skills")
     @Query("SELECT j FROM JobEntity j WHERE j.user.id = :userId AND " +
            "(:search IS NULL OR :search = '' OR " +
            "LOWER(j.title) LIKE LOWER(CONCAT('%', :search, '%')) ESCAPE '\\' OR " +

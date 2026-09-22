@@ -2,12 +2,9 @@ package com.developer.copilot.jobs.dto;
 
 import com.developer.copilot.jobs.entity.JobStatus;
 import com.developer.copilot.jobs.util.JobLimits;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Size;
 import lombok.*;
-
-import java.util.List;
 
 @Getter
 @Setter
@@ -16,7 +13,7 @@ import java.util.List;
 @Builder
 @Schema(description = "Partial update payload; only provided fields are applied. "
         + "Empty string on optional fields is stored as the cleared state. "
-        + "\"skills\": [] clears skills; omitting skills leaves the current list.")
+        + "\"skills\": \"\" clears skills; omitting skills leaves the current value.")
 public class JobPatchRequest {
 
     @Schema(description = "Replacement source URL; must be absolute http/https",
@@ -65,8 +62,11 @@ public class JobPatchRequest {
     @Size(max = 50, message = "Source platform cannot exceed 50 characters.")
     private String sourcePlatform;
 
-    @ArraySchema(schema = @Schema(maxLength = 255))
-    private List<@Size(max = 255, message = "Each skill cannot exceed 255 characters.") String> skills;
+    @Schema(description = "Replacement comma-separated skills. Empty string clears. Omit to leave unchanged.",
+            example = "Java, Spring Boot, AWS")
+    @Size(max = JobLimits.MAX_SKILLS_LENGTH,
+            message = "Skills cannot exceed " + JobLimits.MAX_SKILLS_LENGTH + " characters.")
+    private String skills;
 
     @Schema(description = "Resume id to switch to. Recalculates resumeToJobScore. Omit to leave unchanged.")
     private Long resume;

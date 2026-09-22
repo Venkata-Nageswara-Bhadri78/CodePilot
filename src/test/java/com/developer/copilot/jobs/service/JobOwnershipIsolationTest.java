@@ -36,7 +36,6 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageRequest;
 
-import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -105,7 +104,7 @@ class JobOwnershipIsolationTest {
         assertThrows(JobNotFoundException.class, () -> jobService.updateIndustry(100L, UpdateIndustryRequest.builder().industry("x").build()));
         assertThrows(JobNotFoundException.class, () -> jobService.updateSourcePlatform(100L, UpdateSourcePlatformRequest.builder().sourcePlatform("x").build()));
         assertThrows(JobNotFoundException.class, () -> jobService.updateSourceUrl(100L, UpdateSourceUrlRequest.builder().sourceUrl("https://example.com/jobs/2").build()));
-        assertThrows(JobNotFoundException.class, () -> jobService.updateSkills(100L, UpdateSkillsRequest.builder().skills(List.of("Java")).build()));
+        assertThrows(JobNotFoundException.class, () -> jobService.updateSkills(100L, UpdateSkillsRequest.builder().skills("Java").build()));
         assertThrows(JobNotFoundException.class, () -> jobService.updateDescription(100L, UpdateDescriptionRequest.builder().description("x").build()));
         assertThrows(JobNotFoundException.class, () -> jobService.updateOriginalDescription(100L, UpdateOriginalDescriptionRequest.builder().originalDescription("x").build()));
         assertThrows(JobNotFoundException.class, () -> jobService.updateResume(100L, UpdateResumeRequest.builder().resume(12L).build()));

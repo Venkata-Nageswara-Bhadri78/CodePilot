@@ -1,12 +1,10 @@
 package com.developer.copilot.jobs.dto;
 
 import com.developer.copilot.jobs.entity.JobStatus;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Getter
 @Setter
@@ -43,8 +41,9 @@ public class JobSummaryResponse {
     @Schema(example = "LinkedIn")
     private String sourcePlatform;
 
-    @ArraySchema(arraySchema = @Schema(description = "Required skills"), schema = @Schema(example = "Java"))
-    private List<String> skills;
+    @Schema(description = "Required skills as a comma-separated string. Empty string when none are set.",
+            example = "Java, Spring Boot, MySQL, AWS")
+    private String skills;
 
     @Schema(description = "Id of the resume bound to this job", example = "12")
     private Long resume;

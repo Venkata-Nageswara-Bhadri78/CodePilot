@@ -9,9 +9,6 @@ import com.developer.copilot.jobs.entity.JobEntity;
 import com.developer.copilot.jobs.entity.JobStatus;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.Collections;
-
 @Component
 public class JobMapper {
 
@@ -37,7 +34,7 @@ public class JobMapper {
                 .department(request.getDepartment())
                 .industry(request.getIndustry())
                 .sourcePlatform(request.getSourcePlatform())
-                .skills(request.getSkills() != null ? new ArrayList<>(request.getSkills()) : new ArrayList<>())
+                .skills(emptyIfNull(request.getSkills()))
                 .notes("")
                 .resumeToJobScore(0)
                 .jobStatus(JobStatus.APPLIED)
@@ -63,11 +60,7 @@ public class JobMapper {
         entity.setDepartment(request.getDepartment());
         entity.setIndustry(request.getIndustry());
         entity.setSourcePlatform(request.getSourcePlatform());
-
-        entity.getSkills().clear();
-        if (request.getSkills() != null) {
-            entity.getSkills().addAll(request.getSkills());
-        }
+        entity.setSkills(emptyIfNull(request.getSkills()));
     }
 
     public void updateEntityFromPatch(JobEntity entity, JobPatchRequest patch) {
@@ -90,8 +83,7 @@ public class JobMapper {
         if (patch.getIndustry() != null) entity.setIndustry(patch.getIndustry());
         if (patch.getSourcePlatform() != null) entity.setSourcePlatform(patch.getSourcePlatform());
         if (patch.getSkills() != null) {
-            entity.getSkills().clear();
-            entity.getSkills().addAll(patch.getSkills());
+            entity.setSkills(patch.getSkills());
         }
         if (patch.getNotes() != null) {
             entity.setNotes(patch.getNotes());
@@ -119,7 +111,7 @@ public class JobMapper {
                 .department(entity.getDepartment())
                 .industry(entity.getIndustry())
                 .sourcePlatform(entity.getSourcePlatform())
-                .skills(entity.getSkills() != null ? new ArrayList<>(entity.getSkills()) : Collections.emptyList())
+                .skills(emptyIfNull(entity.getSkills()))
                 .resume(entity.getResume())
                 .resumeToJobScore(entity.getResumeToJobScore() != null ? entity.getResumeToJobScore() : 0)
                 .notes(entity.getNotes() != null ? entity.getNotes() : "")
@@ -145,7 +137,7 @@ public class JobMapper {
                 .experience(entity.getExperience())
                 .salary(entity.getSalary())
                 .sourcePlatform(entity.getSourcePlatform())
-                .skills(entity.getSkills() != null ? new ArrayList<>(entity.getSkills()) : Collections.emptyList())
+                .skills(emptyIfNull(entity.getSkills()))
                 .resume(entity.getResume())
                 .resumeToJobScore(entity.getResumeToJobScore() != null ? entity.getResumeToJobScore() : 0)
                 .notes(entity.getNotes() != null ? entity.getNotes() : "")
@@ -157,6 +149,10 @@ public class JobMapper {
 
     private static JobStatus resolveStatus(JobEntity entity) {
         return entity.getJobStatus() != null ? entity.getJobStatus() : JobStatus.APPLIED;
+    }
+
+    private static String emptyIfNull(String value) {
+        return value != null ? value : "";
     }
 
 }

@@ -5,9 +5,6 @@ import com.developer.copilot.auth.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.util.ArrayList;
-import java.util.List;
-
 @Entity
 @Table(
         name = "jobs",
@@ -93,16 +90,13 @@ public class JobEntity extends BaseEntity {
     private String sourcePlatform;
 
     /**
-     * Required Skills
+     * Required skills stored as a single comma-separated value, e.g.
+     * {@code Java, Spring Boot, MySQL, AWS}. Empty string when none are set.
      */
-    @ElementCollection(fetch = FetchType.LAZY)
-    @CollectionTable(
-            name = "job_skills",
-            joinColumns = @JoinColumn(name = "job_id")
-    )
-    @Column(name = "skill")
+    @Lob
+    @Column(columnDefinition = "TEXT")
     @Builder.Default
-    private List<String> skills = new ArrayList<>();
+    private String skills = "";
 
     /**
      * Unique identifier of the resume selected for this job ({@code resumes.id}).
@@ -145,6 +139,9 @@ public class JobEntity extends BaseEntity {
     void applyNewFieldDefaults() {
         if (notes == null) {
             notes = "";
+        }
+        if (skills == null) {
+            skills = "";
         }
         if (resumeToJobScore == null) {
             resumeToJobScore = 0;

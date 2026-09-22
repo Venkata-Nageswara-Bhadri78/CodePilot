@@ -7,7 +7,6 @@ Jobs persists to MySQL through JPA. Schema updates in the example configuration 
 ```mermaid
 erDiagram
     users ||--o{ jobs : owns
-    jobs ||--o{ job_skills : has
 
     users {
         bigint id PK
@@ -33,6 +32,7 @@ erDiagram
         varchar education
         varchar industry
         varchar source_platform
+        text skills
         bigint resume
         int resume_to_job_score
         text notes
@@ -40,11 +40,6 @@ erDiagram
         varchar custom_status
         datetime created_at
         datetime updated_at
-    }
-
-    job_skills {
-        bigint job_id FK
-        varchar skill
     }
 ```
 
@@ -64,6 +59,7 @@ Purpose: one saved posting for one user.
 | Cleaned text | `description`, `TEXT`, optional |
 | Core fields | `title` and `company` mandatory (`nullable = false`) |
 | Optional strings | location, employmentType, workMode, experience, salary, department, education, industry, sourcePlatform |
+| Skills | `skills`, `TEXT`, comma-separated string, empty string when none are set |
 | Bound resume | `resume` (`Long`), stores `resumes.id`. No FK so deleting a resume cannot block job rows |
 | Match score | `resumeToJobScore`, integer 0–100, default `0` |
 | Notes | `notes`, `TEXT`, empty string on create. Never part of AI scoring |
@@ -79,24 +75,24 @@ Lifecycle:
 
 - **Insert** — create path sets owner, fields, canonical URL, hash, then `save`
 - **Update** — dirty fields + optional URL re-hash; `updatedAt` changes via auditing
-- **Delete** — `jobRepository.delete(job)`; element-collection skills are removed with the job
+- **Delete** — `jobRepository.delete(job)` removes the jobs row. Skills live on that row, so they are deleted with it.
 
 There is no soft delete and no expiry column.
 
-## `job_skills`
+## `jobs.skills`
 
-`@ElementCollection` with `@CollectionTable(name = "job_skills", joinColumns = job_id)` and column `skill`. Fetch is `LAZY`. List queries that need skills use `@EntityGraph(attributePaths = "skills")`.
+A `TEXT` column on `jobs` storing all skills as one comma-separated string, for example `Java, Spring Boot, Microservices, MySQL, AWS, Docker`. There is no `job_skills` table and no JPA relationship. The value is loaded with the job row; list queries do not need an entity graph.
 
-There is no uniqueness on skill text and no documented maximum list size in code — only each skill string `@Size(max = 255)`.
+HTTP and persistence use the same string. Null on create/PUT becomes `""`. On general `PATCH`, omitted `skills` **leaves** the value; an explicit empty string clears it. Bean validation caps the whole field at 15_000 characters (`JobLimits.MAX_SKILLS_LENGTH`).
 
-On `PUT`, omitted or null `skills` **clears** the collection. On general `PATCH`, omitted `skills` **leaves** the collection; an explicit empty array clears it.
+`JobSkillsCollectionMigrator` copies leftover `job_skills` rows into this column on startup (joined with `", "`) and then drops `job_skills`. It only writes when `jobs.skills` is null or empty, so it is safe to run more than once until the old table is gone.
 
 ## Repository operations
 
 | Method | Use |
 |---|---|
 | `findByIdAndUserId` | All get/update/delete-by-id paths |
-| `findAllByUserId` | List without search (entity graph includes skills) |
+| `findAllByUserId` | List without search |
 | `searchJobsByUserId` | List with prepared search string |
 | `existsByUserIdAndSourceUrlHash` | Duplicate check on create |
 | `existsByUserIdAndSourceUrlHashAndIdNot` | Duplicate check on update |

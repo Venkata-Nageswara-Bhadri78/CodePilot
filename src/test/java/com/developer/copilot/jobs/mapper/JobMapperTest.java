@@ -8,11 +8,7 @@ import com.developer.copilot.jobs.dto.JobSummaryResponse;
 import com.developer.copilot.jobs.entity.JobEntity;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -34,7 +30,7 @@ class JobMapperTest {
                 .company("Acme")
                 .sourceUrl("https://example.com/jobs/1")
                 .originalDescription("text")
-                .skills(new ArrayList<>(List.of("Java")))
+                .skills("Java")
                 .build();
 
         JobEntity entity = mapper.toEntity(request, user);
@@ -47,35 +43,32 @@ class JobMapperTest {
         assertEquals(0, entity.getResumeToJobScore());
         assertEquals(com.developer.copilot.jobs.entity.JobStatus.APPLIED, entity.getJobStatus());
         assertNull(entity.getResume());
+        assertEquals("Java", entity.getSkills());
     }
 
     @Test
-    void toEntity_skillsCopiedIntoNewList() {
-        List<String> skills = new ArrayList<>(List.of("Java"));
+    void toEntity_nullSkills_persistsEmptyString() {
         JobRequest request = JobRequest.builder()
                 .title("SE")
                 .company("Acme")
                 .originalDescription("text")
-                .skills(skills)
+                .skills(null)
                 .build();
 
         JobEntity entity = mapper.toEntity(request, new User());
-        skills.add("Go");
-
-        assertEquals(List.of("Java"), entity.getSkills());
-        assertNotSame(skills, entity.getSkills());
+        assertEquals("", entity.getSkills());
     }
 
     @Test
     void updateEntityFromRequest_nullsAreNoOp() {
         mapper.updateEntityFromRequest(null, new JobRequest());
-        mapper.updateEntityFromRequest(JobEntity.builder().skills(new ArrayList<>()).build(), null);
+        mapper.updateEntityFromRequest(JobEntity.builder().skills("").build(), null);
     }
 
     @Test
-    void updateEntityFromRequest_omittedSkills_clearsList() {
+    void updateEntityFromRequest_omittedSkills_clearsField() {
         JobEntity entity = JobEntity.builder()
-                .skills(new ArrayList<>(List.of("Java")))
+                .skills("Java")
                 .build();
         JobRequest request = JobRequest.builder()
                 .title("SE")
@@ -89,16 +82,27 @@ class JobMapperTest {
     }
 
     @Test
-    void updateEntityFromPatch_omittedSkills_leavesList() {
+    void updateEntityFromPatch_omittedSkills_leavesField() {
         JobEntity entity = JobEntity.builder()
                 .title("SE")
-                .skills(new ArrayList<>(List.of("Java")))
+                .skills("Java")
                 .build();
 
         mapper.updateEntityFromPatch(entity, JobPatchRequest.builder().salary("10 LPA").build());
-        assertEquals(List.of("Java"), entity.getSkills());
+        assertEquals("Java", entity.getSkills());
         assertEquals("10 LPA", entity.getSalary());
         assertEquals("SE", entity.getTitle());
+    }
+
+    @Test
+    void updateEntityFromPatch_emptySkills_clearsField() {
+        JobEntity entity = JobEntity.builder()
+                .title("SE")
+                .skills("Java, Spring Boot")
+                .build();
+
+        mapper.updateEntityFromPatch(entity, JobPatchRequest.builder().skills("").build());
+        assertEquals("", entity.getSkills());
     }
 
     @Test
@@ -107,7 +111,7 @@ class JobMapperTest {
                 .title("SE")
                 .notes("keep me")
                 .jobStatus(com.developer.copilot.jobs.entity.JobStatus.INTERVIEWS)
-                .skills(new ArrayList<>(List.of("Java")))
+                .skills("Java")
                 .build();
 
         mapper.updateEntityFromRequest(entity, JobRequest.builder()
@@ -132,16 +136,22 @@ class JobMapperTest {
                 .sourceUrl("https://example.com/jobs/1")
                 .originalDescription("secret paste")
                 .description("cleaned")
-                .skills(List.of("Java"))
+                .skills("Java")
                 .build();
 
         JobSummaryResponse summary = mapper.toJobSummaryResponse(entity);
         JobResponse full = mapper.toJobResponse(entity);
 
         assertEquals("SE", summary.getTitle());
-        assertEquals(List.of("Java"), summary.getSkills());
+        assertEquals("Java", summary.getSkills());
         assertEquals("secret paste", full.getOriginalDescription());
         assertEquals("https://example.com/jobs/1", full.getSourceUrl());
+    }
+
+    @Test
+    void toJobResponse_nullSkills_returnsEmptyString() {
+        JobResponse response = mapper.toJobResponse(JobEntity.builder().title("SE").skills(null).build());
+        assertEquals("", response.getSkills());
     }
 
     @Test

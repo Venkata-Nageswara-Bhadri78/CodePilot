@@ -47,10 +47,10 @@ Document those services separately. For jobs, the important fact is: keep `findB
 
 | Library | Why |
 |---|---|
-| `spring-boot-starter-data-jpa` | `JobRepository`, `JobEntity`, transactions, entity graph |
+| `spring-boot-starter-data-jpa` | `JobRepository`, `JobEntity`, transactions |
 | `mysql-connector-j` | MySQL dialect/driver used by the app datasource |
 
-Hibernate maps `@ElementCollection` skills and the unique constraint name used in `saveJob`.
+Hibernate maps `jobs.skills` as TEXT and the unique constraint name used in `saveJob`. `JobSkillsCollectionMigrator` uses `JdbcTemplate` to copy leftover `job_skills` rows.
 
 ## Redis
 

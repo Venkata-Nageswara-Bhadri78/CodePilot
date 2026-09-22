@@ -19,7 +19,7 @@ The service owns:
 - Paginated listing with optional contains-search and a whitelist of sort fields
 - Strict http/https URL normalization, SHA-256 hashing, and per-user duplicate detection
 - Per-IP and per-user rate limits on `/api/v1/jobs/**`
-- Mapping between HTTP DTOs and the `jobs` / `job_skills` tables
+- Mapping between HTTP DTOs and the `jobs` table
 
 The service does **not** own login, JWT issuance, email verification, AI extraction, or chat sessions. It requires a valid access JWT from the auth service. Other modules may *read* job rows (for extraction duplicate checks, AI context, or chat) but they do not replace this API for persistence.
 
@@ -31,10 +31,10 @@ The service does **not** own login, JWT issuance, email verification, AI extract
 | List | Returns a Spring `Page` of summaries for the current user only |
 | Search | Case-insensitive contains-match on title, company, location, industry, and source platform. `%` and `_` are treated as literals |
 | Get by id | Full job details, including descriptions and the canonical source URL |
-| Full replace (`PUT`) | Re-submits the entire form. Omitting `skills` clears the list |
+| Full replace (`PUT`) | Re-submits the entire form. Omitting `skills` clears the field |
 | Partial update (`PATCH`) | Applies only provided fields. Blank title, company, or original description is rejected |
-| Field routes | Dedicated PATCH paths for each attribute; empty string clears optional fields; `PATCH .../skills` with `[]` clears skills; `PATCH .../resume` rescores; `PATCH .../notes` and `PATCH .../status` are independent of AI |
-| Delete | Permanently removes the job and its skills collection |
+| Field routes | Dedicated PATCH paths for each attribute; empty string clears optional fields; `PATCH .../skills` with `""` clears skills; `PATCH .../resume` rescores; `PATCH .../notes` and `PATCH .../status` are independent of AI |
+| Delete | Permanently removes the job row, including its skills string |
 | Duplicate detection | Same canonical URL (hash) cannot exist twice for one user; a different user may save the same posting |
 
 ## Service boundaries
@@ -47,7 +47,7 @@ flowchart LR
     Extract[Job extraction<br/>read-only duplicate check]
     Ai[AI service<br/>read job text]
     Chat[Chat assistant<br/>read job by owner]
-    Db[(MySQL<br/>jobs / job_skills)]
+    Db[(MySQL<br/>jobs)]
     Redis[(Redis<br/>rate-limit counters)]
 
     Client -->|Bearer JWT| Jobs
@@ -69,7 +69,7 @@ Inbound HTTP is only `JobController` under `/api/v1/jobs`. Persistence is `JobEn
 | `JobService` / `JobServiceImpl` | Ownership lookups, URL apply/dedupe, transactions |
 | `JobMapper` | DTO ↔ entity. Does **not** set `sourceUrl` / `sourceUrlHash` |
 | `JobRepository` | User-scoped queries, uniqueness checks, search |
-| `JobEntity` + `job_skills` | Persisted model |
+| `JobEntity` | Persisted model |
 | `JobsRateLimitFilter` | Per-IP then per-user budgets by HTTP bucket |
 | Jobs Redis module | Optional distributed counters for those budgets |
 
@@ -94,7 +94,7 @@ See [SECURITY.md](SECURITY.md).
 
 ## Infrastructure
 
-- **MySQL** — `jobs` table and `job_skills` collection table. Unique constraint `uk_job_user_source_url_hash` on `(user_id, source_url_hash)`.
+- **MySQL** — `jobs` table. Unique constraint `uk_job_user_source_url_hash` on `(user_id, source_url_hash)`. Skills are the `skills` TEXT column.
 - **Redis** — optional (`app.jobs.redis.enabled`, default `false`). Used only for rate-limit counters. When Redis is off or unreachable, an in-memory sliding window is used on that process.
 
 See [DATABASE.md](DATABASE.md) and [REDIS-INFRASTRUCTURE.md](REDIS-INFRASTRUCTURE.md).

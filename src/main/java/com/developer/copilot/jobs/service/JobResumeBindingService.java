@@ -20,9 +20,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
 /**
  * Binds a job to one of the caller's resumes and scores that resume against the job.
  * Isolated so {@code JobServiceImpl} stays the owner of persistence while resume lookup
@@ -129,12 +126,7 @@ public class JobResumeBindingService {
         append(sb, "department", job.getDepartment());
         append(sb, "industry", job.getIndustry());
         append(sb, "sourcePlatform", job.getSourcePlatform());
-        List<String> skills = job.getSkills();
-        if (skills != null && !skills.isEmpty()) {
-            sb.append("skills: ")
-                    .append(skills.stream().filter(StringUtils::hasText).collect(Collectors.joining(", ")))
-                    .append('\n');
-        }
+        append(sb, "skills", job.getSkills());
         String description = StringUtils.hasText(job.getDescription())
                 ? job.getDescription()
                 : job.getOriginalDescription();

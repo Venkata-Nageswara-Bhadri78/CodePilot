@@ -235,10 +235,7 @@ public class JobServiceImpl implements JobService {
     public JobResponse updateSkills(Long id, UpdateSkillsRequest request) {
         User currentUser = currentUserService.getCurrentUser();
         JobEntity job = getJobEntityForCurrentUser(id, currentUser);
-        job.getSkills().clear();
-        if (request.getSkills() != null) {
-            job.getSkills().addAll(request.getSkills());
-        }
+        job.setSkills(request.getSkills() != null ? request.getSkills() : "");
         return jobMapper.toJobResponse(saveJob(job));
     }
 

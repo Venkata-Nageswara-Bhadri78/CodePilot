@@ -35,7 +35,7 @@ public class JobsOpenApiConfig {
                 .description("Personal job-posting notebook for the signed-in user. "
                         + "Obtain a JWT from POST /api/v1/auth/login (Authentication group), then Authorize. "
                         + "PUT is a full replace: mandatory fields are required again and omitting skills clears them. "
-                        + "PATCH sends only dirty fields; PATCH /{id}/skills accepts [] to clear. "
+                        + "PATCH sends only dirty fields; PATCH /{id}/skills accepts \"\" to clear. "
                         + "Optional field routes accept empty string to clear. "
                         + "New jobs default resume to the user's high-priority resume, resumeToJobScore 0-100, "
                         + "notes to empty, and jobStatus to APPLIED. PATCH /{id}/resume recalculates the score. "
