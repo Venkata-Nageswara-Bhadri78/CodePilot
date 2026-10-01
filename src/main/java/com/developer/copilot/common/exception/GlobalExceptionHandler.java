@@ -35,6 +35,7 @@ import com.developer.copilot.ai.exception.AiResumePendingException;
 import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.ai.exception.AiUnavailableException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
+import com.developer.copilot.chatassistant.exception.CustomPromptNotFoundException;
 import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.common.metrics.CopilotMetrics;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
@@ -334,6 +335,19 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
+                .body(response);
+    }
+
+    @ExceptionHandler(CustomPromptNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCustomPromptNotFound(CustomPromptNotFoundException ex) {
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .success(false)
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
                 .body(response);
     }
 

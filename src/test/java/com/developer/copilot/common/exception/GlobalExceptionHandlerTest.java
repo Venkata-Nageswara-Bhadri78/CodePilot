@@ -37,6 +37,7 @@ import com.developer.copilot.auth.exception.InvalidCredentialsException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.auth.ratelimit.exception.RateLimitExceededException;
 import com.developer.copilot.chatassistant.exception.ChatConflictException;
+import com.developer.copilot.chatassistant.exception.CustomPromptNotFoundException;
 import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
@@ -333,6 +334,16 @@ class GlobalExceptionHandlerTest {
                 new ResourceAlreadyExistsException("exists")).getStatusCode());
         assertEquals(HttpStatus.CONFLICT, handler.handleChatConflict(
                 new ChatConflictException("conflict")).getStatusCode());
+    }
+
+    @Test
+    void handleCustomPromptNotFound_mapsTo404() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleCustomPromptNotFound(new CustomPromptNotFoundException());
+
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+        assertFalse(response.getBody().isSuccess());
+        assertEquals("Custom prompt not found.", response.getBody().getMessage());
     }
 
     @Test
