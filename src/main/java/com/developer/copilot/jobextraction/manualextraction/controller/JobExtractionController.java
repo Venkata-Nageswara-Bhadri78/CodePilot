@@ -1,8 +1,5 @@
 package com.developer.copilot.jobextraction.manualextraction.controller;
 
-import java.time.LocalDateTime;
-
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -13,6 +10,10 @@ import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.jobextraction.manualextraction.dto.request.JobExtractionRequest;
 import com.developer.copilot.jobextraction.manualextraction.dto.response.JobExtractionResultResponse;
 import com.developer.copilot.jobextraction.manualextraction.service.JobExtractionService;
+import com.developer.copilot.jobextraction.manualextraction.util.ExtractionAuto;
+import com.developer.copilot.jobextraction.persistence.ExtractionResponses;
+import com.developer.copilot.jobextraction.persistence.JobAutoPersistResponse;
+import com.developer.copilot.jobextraction.persistence.JobExtractionAutoPersistenceService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -28,8 +29,8 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * REST Controller for the "Extract Job Info" feature: normalizes/validates the pasted job
  * URL, rejects duplicates early, and returns AI-parsed structured job fields for the user to
- * review before saving. The actual save happens via the existing {@code jobs} module's
- * {@code POST /api/v1/jobs} endpoint - this controller never writes to the database.
+ * review before saving when {@code isAuto} is false. When {@code isAuto} is true or omitted,
+ * the structured job is saved immediately, or stored as a draft if that save fails.
  */
 @Slf4j
 @RestController
@@ -39,21 +40,24 @@ import lombok.extern.slf4j.Slf4j;
         name = "Job Content Extraction",
         description = "Preview step before saving a job. Authorize with a JWT from POST /api/v1/auth/login "
                 + "(enabled, email-verified account). POST /parse with the URL + pasted page text, edit the "
-                + "returned data, then save with POST /api/v1/jobs. Drop requiresManualReview on save; use "
-                + "data.sourceUrl (canonical) and data.originalDescription (the paste). Parse does not write "
-                + "rows. 200 is a preview — requiresManualReview true means fill title/company before save. "
+                + "returned data, then save with POST /api/v1/jobs when isAuto is false. "
+                + "Omit isAuto or send true to save immediately; a failed save is stored as a draft "
+                + "and data.persistedAs is DRAFT. Drop requiresManualReview on a manual save; use "
+                + "data.sourceUrl (canonical) and data.originalDescription (the paste). "
                 + "409 means this user already saved that URL. Try-it-out can take up to ~60s while the model runs.")
 @SecurityRequirement(name = "Bearer Authentication")
 public class JobExtractionController {
 
     private final JobExtractionService jobExtractionService;
+    private final JobExtractionAutoPersistenceService jobExtractionAutoPersistenceService;
 
     @PostMapping("/parse")
     @Operation(
             summary = "Extract structured job info from a pasted job posting",
             description = "Normalizes the job URL (absolute http/https only; tracking query params stripped), "
                     + "rejects it if already added by this user, sends the pasted text to the AI model, and "
-                    + "returns clipped fields that fit POST /api/v1/jobs @Size limits. Nothing is persisted. "
+                    + "returns clipped fields that fit POST /api/v1/jobs @Size limits when isAuto is false. "
+                    + "isAuto true or omitted saves the job, or a draft if required fields are missing. "
                     + "URL format is enforced in code, not by @Pattern — javascript: passes Bean Validation "
                     + "and fails with 400 from UrlNormalizationUtil. "
                     + "Field map: data.sourceUrl → JobRequest.sourceUrl (canonical); "
@@ -103,20 +107,18 @@ public class JobExtractionController {
                     description = "Unexpected error",
                     content = @Content(schema = @Schema(implementation = ApiResponse.class)))
     })
-    public ResponseEntity<ApiResponse<JobExtractionResultResponse>> parseJobInfo(
+    public ResponseEntity<?> parseJobInfo(
             @Valid @RequestBody JobExtractionRequest request) {
-        log.info("Incoming job extraction request, sourceUrl length: {}",
-                request.getSourceUrl() != null ? request.getSourceUrl().length() : 0);
+        log.info("Incoming job extraction request, sourceUrl length: {}, isAuto: {}",
+                request.getSourceUrl() != null ? request.getSourceUrl().length() : 0,
+                request.getIsAuto());
 
-        JobExtractionResultResponse result = jobExtractionService.extractJobInfo(request);
+        if (!ExtractionAuto.enabled(request.getIsAuto())) {
+            JobExtractionResultResponse result = jobExtractionService.extractJobInfo(request);
+            return ExtractionResponses.preview(result);
+        }
 
-        ApiResponse<JobExtractionResultResponse> response = ApiResponse.<JobExtractionResultResponse>builder()
-                .success(true)
-                .message("Job information extracted successfully. Review and edit before saving.")
-                .data(result)
-                .timestamp(LocalDateTime.now())
-                .build();
-
-        return ResponseEntity.status(HttpStatus.OK).body(response);
+        JobAutoPersistResponse outcome = jobExtractionAutoPersistenceService.persistManual(request);
+        return ExtractionResponses.persisted(outcome);
     }
 }

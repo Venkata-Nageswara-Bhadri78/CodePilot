@@ -24,12 +24,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 /**
- * Per-IP and per-user limits on {@code /api/v1/jobs/**}. Runs after the security chain
+ * Per-IP and per-user limits on {@code /api/v1/jobs/**} and {@code /api/v1/job-drafts/**}.
+ * Runs after the security chain
  * so a stolen JWT is keyed by user id, not only by source IP. Same generic 429 for both.
  */
 public class JobsRateLimitFilter extends OncePerRequestFilter {
 
     private static final String JOBS_PREFIX = "/api/v1/jobs";
+    private static final String DRAFTS_PREFIX = "/api/v1/job-drafts";
     private static final long WINDOW_SECONDS = 60L;
 
     private final JobsRateLimitProperties properties;
@@ -53,7 +55,7 @@ public class JobsRateLimitFilter extends OncePerRequestFilter {
             FilterChain filterChain) throws ServletException, IOException {
 
         String path = request.getRequestURI();
-        if (!isJobsPath(path)) {
+        if (!isLimitedPath(path)) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -108,12 +110,20 @@ public class JobsRateLimitFilter extends OncePerRequestFilter {
         };
     }
 
-    private static boolean isJobsPath(String path) {
-        return path != null && (path.equals(JOBS_PREFIX) || path.startsWith(JOBS_PREFIX + "/"));
+    private static boolean isLimitedPath(String path) {
+        return matchesPrefix(path, JOBS_PREFIX) || matchesPrefix(path, DRAFTS_PREFIX);
+    }
+
+    private static boolean matchesPrefix(String path, String prefix) {
+        return path != null && (path.equals(prefix) || path.startsWith(prefix + "/"));
     }
 
     private static boolean isCollectionPath(String path) {
-        return JOBS_PREFIX.equals(path) || (JOBS_PREFIX + "/").equals(path);
+        return isExactCollection(path, JOBS_PREFIX) || isExactCollection(path, DRAFTS_PREFIX);
+    }
+
+    private static boolean isExactCollection(String path, String prefix) {
+        return prefix.equals(path) || (prefix + "/").equals(path);
     }
 
     private static boolean hasQuery(HttpServletRequest request) {

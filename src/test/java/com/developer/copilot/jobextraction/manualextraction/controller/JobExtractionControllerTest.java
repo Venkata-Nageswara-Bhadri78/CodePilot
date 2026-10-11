@@ -9,6 +9,11 @@ import com.developer.copilot.jobextraction.manualextraction.dto.response.JobExtr
 import com.developer.copilot.jobextraction.manualextraction.exception.EmailNotVerifiedException;
 import com.developer.copilot.jobextraction.manualextraction.exception.JobExtractionAiUnavailableException;
 import com.developer.copilot.jobextraction.manualextraction.service.JobExtractionService;
+import com.developer.copilot.jobextraction.persistence.JobAutoPersistResponse;
+import com.developer.copilot.jobextraction.persistence.JobExtractionAutoPersistenceService;
+import com.developer.copilot.jobs.dto.JobDraftResponse;
+import com.developer.copilot.jobs.dto.JobResponse;
+import com.developer.copilot.jobs.entity.JobDraftFailureCategory;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +26,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -31,6 +38,9 @@ class JobExtractionControllerTest {
 
     @Mock
     private JobExtractionService jobExtractionService;
+
+    @Mock
+    private JobExtractionAutoPersistenceService jobExtractionAutoPersistenceService;
 
     @InjectMocks
     private JobExtractionController jobExtractionController;
@@ -48,7 +58,8 @@ class JobExtractionControllerTest {
         return """
                 {
                   "sourceUrl": "https://example.com/jobs/123",
-                  "rawJobText": "Full pasted job posting text describing the role."
+                  "rawJobText": "Full pasted job posting text describing the role.",
+                  "isAuto": false
                 }
                 """;
     }
@@ -188,6 +199,7 @@ class JobExtractionControllerTest {
                                 {
                                   "sourceUrl": "https://example.com/jobs/123",
                                   "rawJobText": "Full pasted job posting text describing the role.",
+                                  "isAuto": false,
                                   "requiresManualReview": true,
                                   "hack": 1
                                 }
@@ -212,7 +224,8 @@ class JobExtractionControllerTest {
                         .content("""
                                 {
                                   "sourceUrl": "https://example.com/jobs/123",
-                                  "rawJobText": "%s"
+                                  "rawJobText": "%s",
+                                  "isAuto": false
                                 }
                                 """.formatted(maxText)))
                 .andExpect(status().isOk());
@@ -254,7 +267,8 @@ class JobExtractionControllerTest {
                         .content("""
                                 {
                                   "sourceUrl": "https://example.com/<script>alert(1)</script>",
-                                  "rawJobText": "Full pasted job posting text describing the role."
+                                  "rawJobText": "Full pasted job posting text describing the role.",
+                                  "isAuto": false
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -323,5 +337,83 @@ class JobExtractionControllerTest {
                         .content(validRequestBody()))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    void parseJobInfo_isAutoFalse_doesNotPersist() throws Exception {
+        when(jobExtractionService.extractJobInfo(any())).thenReturn(
+                JobExtractionResultResponse.builder().title("Engineer").company("Acme").build());
+
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validRequestBody()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("Engineer"))
+                .andExpect(jsonPath("$.message").value(
+                        "Job information extracted successfully. Review and edit before saving."));
+        verify(jobExtractionAutoPersistenceService, never()).persistManual(any());
+    }
+
+    @Test
+    void parseJobInfo_omittedIsAuto_savesJob() throws Exception {
+        when(jobExtractionAutoPersistenceService.persistManual(any())).thenReturn(
+                JobAutoPersistResponse.saved(JobResponse.builder().id(9L).title("Engineer").build()));
+
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/jobs/123",
+                                  "rawJobText": "Full pasted job posting text describing the role."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.persistedAs").value("JOB"))
+                .andExpect(jsonPath("$.data.job.id").value(9))
+                .andExpect(jsonPath("$.message").value("Job created successfully."));
+        verify(jobExtractionService, never()).extractJobInfo(any());
+    }
+
+    @Test
+    void parseJobInfo_nullIsAuto_savesDraft() throws Exception {
+        when(jobExtractionAutoPersistenceService.persistManual(any())).thenReturn(
+                JobAutoPersistResponse.drafted(JobDraftResponse.builder()
+                        .id(4L)
+                        .failureCategory(JobDraftFailureCategory.VALIDATION)
+                        .failureReason("title: Title cannot be blank.")
+                        .build()));
+
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/jobs/123",
+                                  "rawJobText": "Full pasted job posting text describing the role.",
+                                  "isAuto": null
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.persistedAs").value("DRAFT"))
+                .andExpect(jsonPath("$.data.draft.id").value(4))
+                .andExpect(jsonPath("$.data.failureReason").value("title: Title cannot be blank."))
+                .andExpect(jsonPath("$.message").value("Job could not be saved. Stored as a draft."));
+    }
+
+    @Test
+    void parseJobInfo_isAutoTrue_duplicateStays409() throws Exception {
+        when(jobExtractionAutoPersistenceService.persistManual(any()))
+                .thenThrow(new DuplicateJobException("This post was already added to your records."));
+
+        mockMvc.perform(post("/api/v1/job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/jobs/123",
+                                  "rawJobText": "Full pasted job posting text describing the role.",
+                                  "isAuto": true
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("This post was already added to your records."));
     }
 }

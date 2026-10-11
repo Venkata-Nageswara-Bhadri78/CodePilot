@@ -153,6 +153,29 @@ class JobExtractionServiceImplTest {
     }
 
     @Test
+    void extractJobInfo_omittedResume_usesResolvedPriorityResume() {
+        mockAuthenticatedUser();
+        when(jobResumeBindingService.resolveResumeId(eq(testUser), nullable(Long.class))).thenReturn(4L);
+        when(jobResumeBindingService.loadResumeContextQuietly(4L)).thenReturn("priority resume");
+        when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);
+        when(aiService.extractJobInfo(any(JobExtractionAiRequest.class)))
+                .thenReturn(JobExtractionAiResponse.builder()
+                        .title("Engineer")
+                        .company("Acme")
+                        .resumeToJobScore(61)
+                        .build());
+
+        JobExtractionResultResponse result = jobExtractionService.extractJobInfo(JobExtractionRequest.builder()
+                .sourceUrl("https://acme.com/jobs/priority")
+                .rawJobText("Full pasted job posting text.")
+                .build());
+
+        assertEquals(4L, result.getResume());
+        assertEquals(61, result.getResumeToJobScore());
+        verify(jobResumeBindingService).resolveResumeId(testUser, null);
+    }
+
+    @Test
     void extractJobInfo_TrackingParamsStripped_CorrectHashPassedToRepository() {
         mockAuthenticatedUser();
         when(jobRepository.existsByUserIdAndSourceUrlHash(eq(1L), any())).thenReturn(false);

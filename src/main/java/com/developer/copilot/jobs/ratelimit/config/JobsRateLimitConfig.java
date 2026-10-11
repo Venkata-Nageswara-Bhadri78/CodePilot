@@ -37,7 +37,11 @@ public class JobsRateLimitConfig {
     public FilterRegistrationBean<JobsRateLimitFilter> jobsRateLimitFilterRegistration(
             JobsRateLimitFilter jobsRateLimitFilter) {
         FilterRegistrationBean<JobsRateLimitFilter> registration = new FilterRegistrationBean<>(jobsRateLimitFilter);
-        registration.addUrlPatterns("/api/v1/jobs", "/api/v1/jobs/*");
+        registration.addUrlPatterns(
+                "/api/v1/jobs",
+                "/api/v1/jobs/*",
+                "/api/v1/job-drafts",
+                "/api/v1/job-drafts/*");
         registration.setOrder(AFTER_SPRING_SECURITY);
         registration.setEnabled(true);
         return registration;

@@ -1,8 +1,5 @@
 package com.developer.copilot.jobextraction.automatedjobextraction.controller;
 
-import java.time.LocalDateTime;
-
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -13,6 +10,10 @@ import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.jobextraction.automatedjobextraction.dto.request.AutomatedJobExtractionRequest;
 import com.developer.copilot.jobextraction.automatedjobextraction.service.AutomatedJobExtractionService;
 import com.developer.copilot.jobextraction.manualextraction.dto.response.JobExtractionResultResponse;
+import com.developer.copilot.jobextraction.manualextraction.util.ExtractionAuto;
+import com.developer.copilot.jobextraction.persistence.ExtractionResponses;
+import com.developer.copilot.jobextraction.persistence.JobAutoPersistResponse;
+import com.developer.copilot.jobextraction.persistence.JobExtractionAutoPersistenceService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -32,14 +33,16 @@ import lombok.extern.slf4j.Slf4j;
 @Tag(
         name = "Automated Job Extraction",
         description = "Preview step that fetches a job posting URL, extracts only that job's content, "
-                + "and reuses POST /api/v1/job-extraction/parse behavior to return the application's "
-                + "fixed JSON. Authorize with a JWT from POST /api/v1/auth/login (enabled, email-verified). "
-                + "Edit the returned data, then save with POST /api/v1/jobs. Parse does not write rows. "
+                + "and reuses manual extraction. Authorize with a JWT from POST /api/v1/auth/login "
+                + "(enabled, email-verified). Optional resume selects the resume to score; omit it for the "
+                + "high-priority resume. isAuto false returns a preview. Omit isAuto or send true to save "
+                + "immediately, or store a draft when that save fails. "
                 + "409 means this user already saved that URL. Try-it-out can take up to ~60s.")
 @SecurityRequirement(name = "Bearer Authentication")
 public class AutomatedJobExtractionController {
 
     private final AutomatedJobExtractionService automatedJobExtractionService;
+    private final JobExtractionAutoPersistenceService jobExtractionAutoPersistenceService;
 
     @PostMapping("/parse")
     @Operation(
@@ -47,8 +50,9 @@ public class AutomatedJobExtractionController {
             description = "Normalizes the job URL (absolute http/https only; tracking query params stripped), "
                     + "blocks private/internal targets, fetches the page, identifies the specific job, "
                     + "strips unrelated chrome, and sends the extracted text through the existing manual "
-                    + "job-extraction feature. Returns clipped fields that fit POST /api/v1/jobs. "
-                    + "Nothing is persisted. Unusable job URLs return 400 with message INVALID JOB URL.")
+                    + "job-extraction feature. isAuto false returns a preview. isAuto true or omitted saves "
+                    + "the job, or a draft if required fields are missing. "
+                    + "Unusable job URLs return 400 with message INVALID JOB URL.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
@@ -96,20 +100,18 @@ public class AutomatedJobExtractionController {
                     description = "Unexpected error",
                     content = @Content(schema = @Schema(implementation = ApiResponse.class)))
     })
-    public ResponseEntity<ApiResponse<JobExtractionResultResponse>> parseJobUrl(
+    public ResponseEntity<?> parseJobUrl(
             @Valid @RequestBody AutomatedJobExtractionRequest request) {
-        log.info("Incoming automated job extraction request, sourceUrl length: {}",
-                request.getSourceUrl() != null ? request.getSourceUrl().length() : 0);
+        log.info("Incoming automated job extraction request, sourceUrl length: {}, isAuto: {}",
+                request.getSourceUrl() != null ? request.getSourceUrl().length() : 0,
+                request.getIsAuto());
 
-        JobExtractionResultResponse result = automatedJobExtractionService.extractFromUrl(request);
+        if (!ExtractionAuto.enabled(request.getIsAuto())) {
+            JobExtractionResultResponse result = automatedJobExtractionService.extractFromUrl(request);
+            return ExtractionResponses.preview(result);
+        }
 
-        ApiResponse<JobExtractionResultResponse> response = ApiResponse.<JobExtractionResultResponse>builder()
-                .success(true)
-                .message("Job information extracted successfully. Review and edit before saving.")
-                .data(result)
-                .timestamp(LocalDateTime.now())
-                .build();
-
-        return ResponseEntity.status(HttpStatus.OK).body(response);
+        JobAutoPersistResponse outcome = jobExtractionAutoPersistenceService.persistAutomated(request);
+        return ExtractionResponses.persisted(outcome);
     }
 }

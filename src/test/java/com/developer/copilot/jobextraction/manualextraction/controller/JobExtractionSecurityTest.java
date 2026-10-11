@@ -7,6 +7,7 @@ import com.developer.copilot.auth.jwt.JwtService;
 import com.developer.copilot.auth.repository.UserRepository;
 import com.developer.copilot.jobextraction.manualextraction.controller.JobExtractionController;
 import com.developer.copilot.jobextraction.manualextraction.service.JobExtractionService;
+import com.developer.copilot.jobextraction.persistence.JobExtractionAutoPersistenceService;
 
 import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.Test;
@@ -42,6 +43,9 @@ class JobExtractionSecurityTest {
 
     @MockitoBean
     private JobExtractionService jobExtractionService;
+
+    @MockitoBean
+    private JobExtractionAutoPersistenceService jobExtractionAutoPersistenceService;
 
     @MockitoBean
     private JwtService jwtService;

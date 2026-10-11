@@ -18,10 +18,15 @@ public class ManualJobExtractionGateway {
 
     private final JobExtractionService jobExtractionService;
 
-    public JobExtractionResultResponse parseExtractedContent(String canonicalUrl, String extractedText) {
+    public JobExtractionResultResponse parseExtractedContent(
+            String canonicalUrl,
+            String extractedText,
+            Long resumeId) {
         JobExtractionRequest request = JobExtractionRequest.builder()
                 .sourceUrl(canonicalUrl)
                 .rawJobText(extractedText)
+                .resume(resumeId)
+                .isAuto(Boolean.FALSE)
                 .build();
         return jobExtractionService.extractJobInfo(request);
     }

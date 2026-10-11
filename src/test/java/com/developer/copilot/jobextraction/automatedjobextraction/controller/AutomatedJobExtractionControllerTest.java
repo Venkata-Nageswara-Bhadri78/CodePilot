@@ -8,6 +8,11 @@ import com.developer.copilot.jobextraction.automatedjobextraction.exception.Auto
 import com.developer.copilot.jobextraction.automatedjobextraction.exception.AutomatedJobPageFetchException;
 import com.developer.copilot.jobextraction.automatedjobextraction.exception.InvalidAutomatedJobUrlException;
 import com.developer.copilot.jobextraction.automatedjobextraction.service.AutomatedJobExtractionService;
+import com.developer.copilot.jobextraction.persistence.JobAutoPersistResponse;
+import com.developer.copilot.jobextraction.persistence.JobExtractionAutoPersistenceService;
+import com.developer.copilot.jobs.dto.JobDraftResponse;
+import com.developer.copilot.jobs.dto.JobResponse;
+import com.developer.copilot.jobs.entity.JobDraftFailureCategory;
 import com.developer.copilot.jobextraction.manualextraction.dto.response.JobExtractionResultResponse;
 import com.developer.copilot.jobextraction.manualextraction.exception.EmailNotVerifiedException;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
@@ -22,6 +27,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -32,6 +39,9 @@ class AutomatedJobExtractionControllerTest {
 
     @Mock
     private AutomatedJobExtractionService automatedJobExtractionService;
+
+    @Mock
+    private JobExtractionAutoPersistenceService jobExtractionAutoPersistenceService;
 
     @InjectMocks
     private AutomatedJobExtractionController controller;
@@ -48,7 +58,8 @@ class AutomatedJobExtractionControllerTest {
     private String validRequestBody() {
         return """
                 {
-                  "sourceUrl": "https://example.com/jobs/123"
+                  "sourceUrl": "https://example.com/jobs/123",
+                  "isAuto": false
                 }
                 """;
     }
@@ -130,6 +141,7 @@ class AutomatedJobExtractionControllerTest {
                         .content("""
                                 {
                                   "sourceUrl": "https://example.com/jobs/123",
+                                  "isAuto": false,
                                   "hack": 1
                                 }
                                 """))
@@ -159,7 +171,8 @@ class AutomatedJobExtractionControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "sourceUrl": "javascript:alert(1)"
+                                  "sourceUrl": "javascript:alert(1)",
+                                  "isAuto": false
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
@@ -248,5 +261,48 @@ class AutomatedJobExtractionControllerTest {
                 .andExpect(jsonPath("$.message").value("Something went wrong."))
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("6379"))));
+    }
+
+    @Test
+    void parseJobUrl_omittedIsAuto_savesJob() throws Exception {
+        when(jobExtractionAutoPersistenceService.persistAutomated(any())).thenReturn(
+                JobAutoPersistResponse.saved(JobResponse.builder().id(3L).title("Engineer").build()));
+
+        mockMvc.perform(post("/api/v1/automated-job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/jobs/123",
+                                  "resume": 12
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.persistedAs").value("JOB"))
+                .andExpect(jsonPath("$.data.job.id").value(3))
+                .andExpect(jsonPath("$.message").value("Job created successfully."));
+        verify(automatedJobExtractionService, never()).extractFromUrl(any());
+    }
+
+    @Test
+    void parseJobUrl_isAutoTrue_storesDraft() throws Exception {
+        when(jobExtractionAutoPersistenceService.persistAutomated(any())).thenReturn(
+                JobAutoPersistResponse.drafted(JobDraftResponse.builder()
+                        .id(8L)
+                        .failureCategory(JobDraftFailureCategory.VALIDATION)
+                        .failureReason("company: Company cannot be blank.")
+                        .build()));
+
+        mockMvc.perform(post("/api/v1/automated-job-extraction/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/jobs/123",
+                                  "isAuto": true
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.persistedAs").value("DRAFT"))
+                .andExpect(jsonPath("$.data.draft.failureReason").value("company: Company cannot be blank."))
+                .andExpect(jsonPath("$.message").value("Job could not be saved. Stored as a draft."));
     }
 }

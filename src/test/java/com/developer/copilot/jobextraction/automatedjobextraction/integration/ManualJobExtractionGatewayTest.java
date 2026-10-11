@@ -1,6 +1,7 @@
 package com.developer.copilot.jobextraction.automatedjobextraction.integration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -28,12 +29,27 @@ class ManualJobExtractionGatewayTest {
                 JobExtractionResultResponse.builder().title("T").company("C").build());
 
         JobExtractionResultResponse result = gateway.parseExtractedContent(
-                "https://example.com/jobs/1", "Job Title: T\nJob Description:\nBuild APIs.");
+                "https://example.com/jobs/1", "Job Title: T\nJob Description:\nBuild APIs.", null);
 
         assertEquals("T", result.getTitle());
         ArgumentCaptor<JobExtractionRequest> captor = ArgumentCaptor.forClass(JobExtractionRequest.class);
         verify(jobExtractionService).extractJobInfo(captor.capture());
         assertEquals("https://example.com/jobs/1", captor.getValue().getSourceUrl());
         assertEquals("Job Title: T\nJob Description:\nBuild APIs.", captor.getValue().getRawJobText());
+        assertNull(captor.getValue().getResume());
+        assertEquals(Boolean.FALSE, captor.getValue().getIsAuto());
+    }
+
+    @Test
+    void parseExtractedContent_forwardsResumeId() {
+        ManualJobExtractionGateway gateway = new ManualJobExtractionGateway(jobExtractionService);
+        when(jobExtractionService.extractJobInfo(any())).thenReturn(
+                JobExtractionResultResponse.builder().title("T").build());
+
+        gateway.parseExtractedContent("https://example.com/jobs/1", "text", 12L);
+
+        ArgumentCaptor<JobExtractionRequest> captor = ArgumentCaptor.forClass(JobExtractionRequest.class);
+        verify(jobExtractionService).extractJobInfo(captor.capture());
+        assertEquals(12L, captor.getValue().getResume());
     }
 }
