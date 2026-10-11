@@ -60,6 +60,34 @@ class JobsExceptionMappingTest {
     }
 
     @Test
+    void jobDraftNotFound_is404() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleJobDraftNotFound(new JobDraftNotFoundException("Job draft not found with id: 4"));
+
+        assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
+        assertEquals("Job draft not found with id: 4", response.getBody().getMessage());
+    }
+
+    @Test
+    void duplicateJobDraft_is409() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleDuplicateJobDraft(new DuplicateJobDraftException());
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        assertEquals(DuplicateJobDraftException.MESSAGE, response.getBody().getMessage());
+    }
+
+    @Test
+    void jobDraftPersistence_is500WithoutCause() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleJobDraftPersistence(new JobDraftPersistenceException(new IllegalStateException("sql")));
+
+        assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+        assertEquals(JobDraftPersistenceException.MESSAGE, response.getBody().getMessage());
+        assertFalse(response.getBody().getMessage().contains("sql"));
+    }
+
+    @Test
     void dataIntegrity_isGeneric409() {
         ResponseEntity<ApiResponse<Void>> response =
                 handler.handleDataIntegrityViolation(new DataIntegrityViolationException("SQL detail"));

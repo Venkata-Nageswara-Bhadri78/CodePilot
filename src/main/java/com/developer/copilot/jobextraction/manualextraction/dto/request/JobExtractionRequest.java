@@ -48,4 +48,10 @@ public class JobExtractionRequest {
                     + "user's high-priority resume. Must belong to the current user when sent.",
             example = "12")
     private Long resume;
+
+    @Schema(description = "When false, return a preview and do not save. When true or omitted, "
+                    + "save the structured job immediately, or store a draft if that save fails.",
+            example = "true",
+            nullable = true)
+    private Boolean isAuto;
 }

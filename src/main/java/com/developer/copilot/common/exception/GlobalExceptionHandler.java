@@ -38,12 +38,16 @@ import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.chatassistant.exception.CustomPromptNotFoundException;
 import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.common.metrics.CopilotMetrics;
+import com.developer.copilot.jobs.exception.DuplicateJobDraftException;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
+import com.developer.copilot.jobs.exception.JobDraftNotFoundException;
+import com.developer.copilot.jobs.exception.JobDraftPersistenceException;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
 import com.developer.copilot.jobs.exception.JobValidationException;
 import com.developer.copilot.common.storage.exception.InvalidFileException;
 import com.developer.copilot.common.storage.exception.StorageException;
 import com.developer.copilot.common.storage.exception.StorageObjectNotFoundException;
+import com.developer.copilot.jobextraction.automatedjobextraction.exception.RecoverableAutomatedExtractionException;
 import com.developer.copilot.jobextraction.manualextraction.exception.EmailNotVerifiedException;
 import com.developer.copilot.jobextraction.manualextraction.exception.JobExtractionAiUnavailableException;
 import com.developer.copilot.user.config.ResumeProperties;
@@ -115,6 +119,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(response);
+    }
+
+    @ExceptionHandler(RecoverableAutomatedExtractionException.class)
+    public ResponseEntity<ApiResponse<Void>> handleRecoverableAutomatedExtraction(
+            RecoverableAutomatedExtractionException ex) {
+        RuntimeException cause = ex.aiFailure();
+        if (cause instanceof JobExtractionAiUnavailableException unavailable) {
+            return handleJobExtractionAiUnavailable(unavailable);
+        }
+        if (cause instanceof AiServiceException aiFailure) {
+            return handleAiServiceException(aiFailure);
+        }
+        log.error("Automated extraction failed after the page was read", ex);
+        return failure(HttpStatus.BAD_GATEWAY, "The job page was read, but it could not be structured.");
     }
 
     @ExceptionHandler(JobExtractionAiUnavailableException.class)
@@ -218,6 +236,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(response);
+    }
+
+    @ExceptionHandler(JobDraftNotFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleJobDraftNotFound(JobDraftNotFoundException ex) {
+        return failure(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateJobDraftException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateJobDraft(DuplicateJobDraftException ex) {
+        return failure(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(JobDraftPersistenceException.class)
+    public ResponseEntity<ApiResponse<Void>> handleJobDraftPersistence(JobDraftPersistenceException ex) {
+        log.error("Job draft could not be stored", ex);
+        return failure(HttpStatus.INTERNAL_SERVER_ERROR, JobDraftPersistenceException.MESSAGE);
     }
 
     @ExceptionHandler(JobValidationException.class)

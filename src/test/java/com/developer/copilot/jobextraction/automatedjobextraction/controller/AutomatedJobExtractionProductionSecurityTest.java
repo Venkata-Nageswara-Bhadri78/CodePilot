@@ -7,6 +7,7 @@ import com.developer.copilot.auth.jwt.JwtService;
 import com.developer.copilot.auth.ratelimit.config.AuthRateLimitConfig;
 import com.developer.copilot.auth.repository.UserRepository;
 import com.developer.copilot.jobextraction.automatedjobextraction.service.AutomatedJobExtractionService;
+import com.developer.copilot.jobextraction.persistence.JobExtractionAutoPersistenceService;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,6 +33,9 @@ class AutomatedJobExtractionProductionSecurityTest {
 
     @MockitoBean
     private AutomatedJobExtractionService automatedJobExtractionService;
+
+    @MockitoBean
+    private JobExtractionAutoPersistenceService jobExtractionAutoPersistenceService;
 
     @MockitoBean
     private JwtService jwtService;

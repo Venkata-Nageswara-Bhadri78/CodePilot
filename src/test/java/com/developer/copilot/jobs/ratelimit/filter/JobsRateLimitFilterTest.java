@@ -119,6 +119,27 @@ class JobsRateLimitFilterTest {
     }
 
     @Test
+    void draftSave_usesPostBucket() throws Exception {
+        JobsRateLimitProperties properties = tightPostLimit();
+        JobsRateLimitFilter filter = newFilter(properties);
+        FilterChain chain = mock(FilterChain.class);
+
+        for (int i = 0; i < 2; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/job-drafts/4/save");
+            request.setRemoteAddr("10.1.0.8");
+            filter.doFilterInternal(request, new MockHttpServletResponse(), chain);
+        }
+
+        MockHttpServletRequest blocked = new MockHttpServletRequest("POST", "/api/v1/job-drafts/4/save");
+        blocked.setRemoteAddr("10.1.0.8");
+        MockHttpServletResponse blockedResponse = new MockHttpServletResponse();
+        filter.doFilterInternal(blocked, blockedResponse, chain);
+
+        assertEquals(429, blockedResponse.getStatus());
+        verify(chain, times(2)).doFilter(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void otherPaths_areNotLimited() throws Exception {
         JobsRateLimitFilter filter = newFilter(tightPostLimit());
         FilterChain chain = mock(FilterChain.class);

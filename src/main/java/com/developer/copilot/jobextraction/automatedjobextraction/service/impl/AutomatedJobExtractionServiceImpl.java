@@ -13,8 +13,11 @@ import com.developer.copilot.common.security.CurrentUserService;
 import com.developer.copilot.common.util.UrlNormalizationUtil;
 import com.developer.copilot.jobextraction.automatedjobextraction.cache.ExtractedJobContentCache;
 import com.developer.copilot.jobextraction.automatedjobextraction.dto.request.AutomatedJobExtractionRequest;
+import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.jobextraction.automatedjobextraction.exception.AutomatedJobPageFetchException;
 import com.developer.copilot.jobextraction.automatedjobextraction.exception.InvalidAutomatedJobUrlException;
+import com.developer.copilot.jobextraction.automatedjobextraction.exception.RecoverableAutomatedExtractionException;
+import com.developer.copilot.jobextraction.manualextraction.exception.JobExtractionAiUnavailableException;
 import com.developer.copilot.jobextraction.automatedjobextraction.extract.JobExtractionPipeline;
 import com.developer.copilot.jobextraction.automatedjobextraction.fetch.FetchedJobPage;
 import com.developer.copilot.jobextraction.automatedjobextraction.fetch.JobPageFetcher;
@@ -44,6 +47,15 @@ public class AutomatedJobExtractionServiceImpl implements AutomatedJobExtraction
 
     @Override
     public JobExtractionResultResponse extractFromUrl(AutomatedJobExtractionRequest request) {
+        return extract(request, false);
+    }
+
+    @Override
+    public JobExtractionResultResponse extractForAutoSave(AutomatedJobExtractionRequest request) {
+        return extract(request, true);
+    }
+
+    private JobExtractionResultResponse extract(AutomatedJobExtractionRequest request, boolean wrapAiFailure) {
         Instant started = Instant.now();
         User currentUser = currentUserService.getCurrentUser();
         if (!Boolean.TRUE.equals(currentUser.getEmailVerified())) {
@@ -85,8 +97,17 @@ public class AutomatedJobExtractionServiceImpl implements AutomatedJobExtraction
             throw ex;
         }
 
-        JobExtractionResultResponse result =
-                manualJobExtractionGateway.parseExtractedContent(normalizedUrl, extractedText);
+        JobExtractionResultResponse result;
+        try {
+            result = manualJobExtractionGateway.parseExtractedContent(
+                    normalizedUrl, extractedText, request.getResume());
+        } catch (AiServiceException | JobExtractionAiUnavailableException ex) {
+            if (wrapAiFailure) {
+                throw new RecoverableAutomatedExtractionException(
+                        normalizedUrl, extractedText, request.getResume(), ex);
+            }
+            throw ex;
+        }
 
         if (!loaded.get()) {
             metrics.recordCacheHit();

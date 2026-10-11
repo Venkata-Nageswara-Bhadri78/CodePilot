@@ -1,5 +1,6 @@
 package com.developer.copilot.jobextraction.automatedjobextraction.service;
 
+import com.developer.copilot.ai.exception.AiServiceException;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.enums.Role;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
@@ -9,6 +10,7 @@ import com.developer.copilot.common.util.UrlNormalizationUtil;
 import com.developer.copilot.jobextraction.automatedjobextraction.cache.ExtractedJobContentCache;
 import com.developer.copilot.jobextraction.automatedjobextraction.dto.request.AutomatedJobExtractionRequest;
 import com.developer.copilot.jobextraction.automatedjobextraction.exception.AutomatedJobPageFetchException;
+import com.developer.copilot.jobextraction.automatedjobextraction.exception.RecoverableAutomatedExtractionException;
 import com.developer.copilot.jobextraction.automatedjobextraction.exception.InvalidAutomatedJobUrlException;
 import com.developer.copilot.jobextraction.automatedjobextraction.extract.JobExtractionPipeline;
 import com.developer.copilot.jobextraction.automatedjobextraction.fetch.FetchedJobPage;
@@ -31,9 +33,11 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -93,7 +97,7 @@ class AutomatedJobExtractionServiceImplTest {
         when(jobPageFetcher.fetch("https://example.com/jobs/123")).thenReturn(page);
         when(jobExtractionPipeline.extractJobText(eq("https://example.com/jobs/123"), eq(page)))
                 .thenReturn("Job Title: Engineer\nJob Description:\nBuild things.");
-        when(manualJobExtractionGateway.parseExtractedContent(eq("https://example.com/jobs/123"), any()))
+        when(manualJobExtractionGateway.parseExtractedContent(eq("https://example.com/jobs/123"), any(), nullable(Long.class)))
                 .thenReturn(JobExtractionResultResponse.builder()
                         .sourceUrl("https://example.com/jobs/123")
                         .title("Engineer")
@@ -107,7 +111,8 @@ class AutomatedJobExtractionServiceImplTest {
         assertEquals("Engineer", result.getTitle());
         verify(manualJobExtractionGateway).parseExtractedContent(
                 "https://example.com/jobs/123",
-                "Job Title: Engineer\nJob Description:\nBuild things.");
+                "Job Title: Engineer\nJob Description:\nBuild things.",
+                null);
     }
 
     @Test
@@ -117,7 +122,7 @@ class AutomatedJobExtractionServiceImplTest {
                 "https://example.com/jobs/1", "text/html", "<html></html>");
         when(jobPageFetcher.fetch("https://example.com/jobs/1")).thenReturn(page);
         when(jobExtractionPipeline.extractJobText(any(), any())).thenReturn("Job Title: T\n".repeat(20));
-        when(manualJobExtractionGateway.parseExtractedContent(any(), any()))
+        when(manualJobExtractionGateway.parseExtractedContent(any(), any(), nullable(Long.class)))
                 .thenReturn(JobExtractionResultResponse.builder().title("T").company("C").build());
 
         AutomatedJobExtractionRequest request = AutomatedJobExtractionRequest.builder()
@@ -127,7 +132,7 @@ class AutomatedJobExtractionServiceImplTest {
         service.extractFromUrl(request);
 
         verify(jobPageFetcher, org.mockito.Mockito.times(1)).fetch(any());
-        verify(manualJobExtractionGateway, org.mockito.Mockito.times(2)).parseExtractedContent(any(), any());
+        verify(manualJobExtractionGateway, org.mockito.Mockito.times(2)).parseExtractedContent(any(), any(), nullable(Long.class));
     }
 
     @Test
@@ -176,7 +181,7 @@ class AutomatedJobExtractionServiceImplTest {
 
         assertThrows(InvalidAutomatedJobUrlException.class, () -> service.extractFromUrl(
                 AutomatedJobExtractionRequest.builder().sourceUrl("https://example.com/careers").build()));
-        verify(manualJobExtractionGateway, never()).parseExtractedContent(any(), any());
+        verify(manualJobExtractionGateway, never()).parseExtractedContent(any(), any(), nullable(Long.class));
     }
 
     @Test
@@ -186,7 +191,7 @@ class AutomatedJobExtractionServiceImplTest {
 
         assertThrows(AutomatedJobPageFetchException.class, () -> service.extractFromUrl(
                 AutomatedJobExtractionRequest.builder().sourceUrl("https://example.com/jobs/1").build()));
-        verify(manualJobExtractionGateway, never()).parseExtractedContent(any(), any());
+        verify(manualJobExtractionGateway, never()).parseExtractedContent(any(), any(), nullable(Long.class));
     }
 
     @Test
@@ -226,5 +231,60 @@ class AutomatedJobExtractionServiceImplTest {
 
         assertThrows(InvalidAutomatedJobUrlException.class, () -> service.extractFromUrl(
                 AutomatedJobExtractionRequest.builder().sourceUrl("https://no-such-host.example/jobs/1").build()));
+    }
+
+    @Test
+    void extractFromUrl_forwardsSelectedResume() {
+        mockUser();
+        when(jobPageFetcher.fetch(any())).thenReturn(new FetchedJobPage(
+                "https://example.com/jobs/1", "text/html", "<html></html>"));
+        when(jobExtractionPipeline.extractJobText(any(), any())).thenReturn("Job Title: T\n".repeat(20));
+        when(manualJobExtractionGateway.parseExtractedContent(any(), any(), eq(12L)))
+                .thenReturn(JobExtractionResultResponse.builder().title("T").company("C").resume(12L).build());
+
+        JobExtractionResultResponse result = service.extractFromUrl(AutomatedJobExtractionRequest.builder()
+                .sourceUrl("https://example.com/jobs/1")
+                .resume(12L)
+                .isAuto(false)
+                .build());
+
+        assertEquals(12L, result.getResume());
+        verify(manualJobExtractionGateway).parseExtractedContent(eq("https://example.com/jobs/1"), any(), eq(12L));
+    }
+
+    @Test
+    void extractForAutoSave_aiFailure_keepsExtractedText() {
+        mockUser();
+        when(jobPageFetcher.fetch(any())).thenReturn(new FetchedJobPage(
+                "https://example.com/jobs/1", "text/html", "<html></html>"));
+        when(jobExtractionPipeline.extractJobText(any(), any())).thenReturn("Job Title: Engineer\nRole text");
+        AiServiceException aiFailure = new AiServiceException("AI provider unavailable.");
+        when(manualJobExtractionGateway.parseExtractedContent(any(), any(), nullable(Long.class)))
+                .thenThrow(aiFailure);
+
+        RecoverableAutomatedExtractionException ex = assertThrows(
+                RecoverableAutomatedExtractionException.class,
+                () -> service.extractForAutoSave(AutomatedJobExtractionRequest.builder()
+                        .sourceUrl("https://example.com/jobs/1")
+                        .resume(4L)
+                        .build()));
+
+        assertEquals("https://example.com/jobs/1", ex.getNormalizedUrl());
+        assertEquals("Job Title: Engineer\nRole text", ex.getExtractedText());
+        assertEquals(4L, ex.getResumeId());
+        assertSame(aiFailure, ex.aiFailure());
+    }
+
+    @Test
+    void extractFromUrl_aiFailure_staysAiException() {
+        mockUser();
+        when(jobPageFetcher.fetch(any())).thenReturn(new FetchedJobPage(
+                "https://example.com/jobs/1", "text/html", "<html></html>"));
+        when(jobExtractionPipeline.extractJobText(any(), any())).thenReturn("Job Title: Engineer\nRole text");
+        when(manualJobExtractionGateway.parseExtractedContent(any(), any(), nullable(Long.class)))
+                .thenThrow(new AiServiceException("AI provider unavailable."));
+
+        assertThrows(AiServiceException.class, () -> service.extractFromUrl(
+                AutomatedJobExtractionRequest.builder().sourceUrl("https://example.com/jobs/1").build()));
     }
 }

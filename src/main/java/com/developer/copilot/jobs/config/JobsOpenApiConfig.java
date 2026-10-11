@@ -19,7 +19,7 @@ public class JobsOpenApiConfig {
         return GroupedOpenApi.builder()
                 .group("jobs")
                 .displayName("Jobs API")
-                .pathsToMatch("/api/v1/jobs/**")
+                .pathsToMatch("/api/v1/jobs/**", "/api/v1/job-drafts/**")
                 .addOpenApiCustomizer(JobsOpenApiConfig::customize)
                 .build();
     }
@@ -43,6 +43,8 @@ public class JobsOpenApiConfig {
                         + "\"This post was already added to your records.\" "
                         + "List search is a contains-match on title, company, location, industry, and sourcePlatform. "
                         + "Page size max is 50. salary is not a sort field. "
-                        + "POST, list/search GET, and writes return 429 with Retry-After when the per-user or per-IP budget is spent."));
+                        + "POST, list/search GET, and writes return 429 with Retry-After when the per-user or per-IP budget is spent. "
+                        + "Job drafts live at /api/v1/job-drafts and use the same rate limits. "
+                        + "POST /api/v1/job-drafts/{id}/save creates a job and then deletes the draft."));
     }
 }
