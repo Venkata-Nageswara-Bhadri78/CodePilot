@@ -29,6 +29,11 @@ class BrowserExtensionProbeController {
         return "ok";
     }
 
+    @PostMapping(value = "/automated-job-extraction/probe", produces = MediaType.TEXT_PLAIN_VALUE)
+    String automatedJobExtractionPost() {
+        return "ok";
+    }
+
     @GetMapping(value = "/jobs/probe", produces = MediaType.TEXT_PLAIN_VALUE)
     String jobs() {
         return "ok";
@@ -46,6 +51,11 @@ class BrowserExtensionProbeController {
 
     @GetMapping(value = "/users/probe", produces = MediaType.TEXT_PLAIN_VALUE)
     String users() {
+        return "ok";
+    }
+
+    @GetMapping(value = "/users/resumes", produces = MediaType.TEXT_PLAIN_VALUE)
+    String resumes() {
         return "ok";
     }
 

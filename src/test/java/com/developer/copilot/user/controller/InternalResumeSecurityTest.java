@@ -20,9 +20,16 @@ import java.util.Optional;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+
+import com.developer.copilot.auth.security.AuthClientAuthorities;
 
 @WebMvcTest(controllers = InternalResumeController.class)
 @Import({SecurityConfig.class, SecurityBeansConfig.class})
@@ -72,5 +79,22 @@ class InternalResumeSecurityTest {
                         .header("Authorization", "Bearer token"))
                 .andExpect(status().isUnauthorized());
         verify(resumeParsingService, never()).getParsedResume(any());
+    }
+
+    @Test
+    void parsed_extensionClient_returns403() throws Exception {
+        mockMvc.perform(get("/api/v1/internal/resumes/parsed")
+                        .with(user("john@example.com").authorities(
+                                new SimpleGrantedAuthority("ROLE_USER"),
+                                new SimpleGrantedAuthority(AuthClientAuthorities.BROWSER_EXTENSION)))
+                        .header("X-Internal-Api-Key", "any-key"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(AuthClientAuthorities.FORBIDDEN_MESSAGE));
+        mockMvc.perform(get("/api/v1/internal/resumes/12/parsed")
+                        .with(user("john@example.com").authorities(
+                                new SimpleGrantedAuthority("ROLE_USER"),
+                                new SimpleGrantedAuthority(AuthClientAuthorities.BROWSER_EXTENSION))))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(resumeParsingService);
     }
 }

@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -18,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -29,6 +31,7 @@ import com.developer.copilot.auth.config.SecurityConfig;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.jwt.JwtService;
 import com.developer.copilot.auth.repository.UserRepository;
+import com.developer.copilot.auth.security.AuthClientAuthorities;
 import com.developer.copilot.common.security.CurrentUserService;
 
 import io.jsonwebtoken.JwtException;
@@ -114,6 +117,19 @@ class AiSecurityTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.message").value("Unauthorized."));
         verify(aiService, never()).getActiveModel();
+    }
+
+    @Test
+    void chat_extensionClient_returns403() throws Exception {
+        mockMvc.perform(post("/api/v1/ai/chat")
+                        .with(user("candidate@example.com").authorities(
+                                new SimpleGrantedAuthority("ROLE_USER"),
+                                new SimpleGrantedAuthority(AuthClientAuthorities.BROWSER_EXTENSION)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(CHAT_BODY))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(AuthClientAuthorities.FORBIDDEN_MESSAGE));
+        verify(aiService, never()).chat(any(), any());
     }
 
     @Test

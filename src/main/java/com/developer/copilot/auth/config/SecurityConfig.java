@@ -89,6 +89,7 @@ public class SecurityConfig {
                     "/api/v1/automated-job-extraction/parse")
             .authenticated()
             .requestMatchers(JOB_EXTRACTION_PATHS).authenticated()
+            .requestMatchers(HttpMethod.GET, "/api/v1/users/resumes").authenticated()
             .anyRequest().access(webFrontendOnly());
         })
         .addFilterBefore(authRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
@@ -132,7 +133,8 @@ public class SecurityConfig {
 
     /**
      * Web frontend tokens (no {@code CLIENT_BROWSER_EXTENSION} authority) keep existing access.
-     * Extension tokens are authenticated but must not reach any other service.
+     * Extension tokens may use the job-extraction matchers and {@code GET /api/v1/users/resumes}
+     * only. Every other authenticated route stays closed to that client.
      */
     private static AuthorizationManager<RequestAuthorizationContext> webFrontendOnly() {
         return AuthorizationManagers.allOf(
