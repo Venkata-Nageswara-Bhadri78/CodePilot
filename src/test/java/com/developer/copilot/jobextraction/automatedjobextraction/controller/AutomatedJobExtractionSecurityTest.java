@@ -5,8 +5,13 @@ import com.developer.copilot.auth.config.SecurityConfig;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.jwt.JwtService;
 import com.developer.copilot.auth.repository.UserRepository;
+import com.developer.copilot.auth.security.AuthClientAuthorities;
 import com.developer.copilot.jobextraction.automatedjobextraction.service.AutomatedJobExtractionService;
+import com.developer.copilot.jobextraction.persistence.JobAutoPersistResponse;
 import com.developer.copilot.jobextraction.persistence.JobExtractionAutoPersistenceService;
+import com.developer.copilot.jobs.dto.JobDraftResponse;
+import com.developer.copilot.jobs.dto.JobResponse;
+import com.developer.copilot.jobs.entity.JobDraftFailureCategory;
 
 import io.jsonwebtoken.JwtException;
 import org.junit.jupiter.api.Test;
@@ -14,8 +19,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.util.Optional;
 
@@ -23,7 +30,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = AutomatedJobExtractionController.class)
@@ -104,5 +113,51 @@ class AutomatedJobExtractionSecurityTest {
                         .content(BODY))
                 .andExpect(status().isUnauthorized());
         verify(automatedJobExtractionService, never()).extractFromUrl(any());
+    }
+
+    @Test
+    void parseJobUrl_extensionClient_canAutoSave() throws Exception {
+        when(jobExtractionAutoPersistenceService.persistAutomated(any())).thenReturn(
+                JobAutoPersistResponse.drafted(JobDraftResponse.builder()
+                        .id(4L)
+                        .sourceUrl("https://example.com/jobs/123")
+                        .failureCategory(JobDraftFailureCategory.VALIDATION)
+                        .failureReason("title: Title cannot be blank.")
+                        .build()));
+
+        mockMvc.perform(post("/api/v1/automated-job-extraction/parse")
+                        .with(extensionUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceUrl": "https://example.com/jobs/123",
+                                  "resume": 12,
+                                  "isAuto": true
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Job could not be saved. Stored as a draft."))
+                .andExpect(jsonPath("$.data.persistedAs").value("DRAFT"))
+                .andExpect(jsonPath("$.data.draft.id").value(4));
+        verify(jobExtractionAutoPersistenceService).persistAutomated(any());
+        verify(automatedJobExtractionService, never()).extractFromUrl(any());
+    }
+
+    @Test
+    void parseJobUrl_webClient_canAutoSave() throws Exception {
+        when(jobExtractionAutoPersistenceService.persistAutomated(any())).thenReturn(
+                JobAutoPersistResponse.saved(JobResponse.builder().id(9L).build()));
+
+        mockMvc.perform(post("/api/v1/automated-job-extraction/parse")
+                        .with(user("john@example.com").roles("USER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(BODY))
+                .andExpect(status().isOk());
+    }
+
+    private static RequestPostProcessor extensionUser() {
+        return user("john@example.com").authorities(
+                new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority(AuthClientAuthorities.BROWSER_EXTENSION));
     }
 }

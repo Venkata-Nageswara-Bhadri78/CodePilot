@@ -1,12 +1,16 @@
 package com.developer.copilot.jobs.controller;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,21 +48,31 @@ class JobDraftSecurityTest {
     void listDrafts_withoutAuthorization_returns401() throws Exception {
         mockMvc.perform(get("/api/v1/job-drafts"))
                 .andExpect(status().isUnauthorized());
-        verify(jobDraftService, never()).list(any());
+        verifyNoInteractions(jobDraftService);
     }
 
     @Test
-    void extensionClient_cannotListDrafts() throws Exception {
-        mockMvc.perform(get("/api/v1/job-drafts").with(extensionUser()))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value(AuthClientAuthorities.FORBIDDEN_MESSAGE));
-        verify(jobDraftService, never()).list(any());
+    void extensionClient_cannotUseDraftHttpApi() throws Exception {
+        assertForbidden(get("/api/v1/job-drafts"));
+        assertForbidden(get("/api/v1/job-drafts/4"));
+        assertForbidden(put("/api/v1/job-drafts/4")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"));
+        assertForbidden(post("/api/v1/job-drafts/4/save"));
+        assertForbidden(delete("/api/v1/job-drafts/4"));
+        verifyNoInteractions(jobDraftService);
     }
 
     @Test
     void webClient_canListDrafts() throws Exception {
         mockMvc.perform(get("/api/v1/job-drafts").with(user("john@example.com").roles("USER")))
                 .andExpect(status().isOk());
+    }
+
+    private void assertForbidden(MockHttpServletRequestBuilder request) throws Exception {
+        mockMvc.perform(request.with(extensionUser()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(AuthClientAuthorities.FORBIDDEN_MESSAGE));
     }
 
     private static RequestPostProcessor extensionUser() {

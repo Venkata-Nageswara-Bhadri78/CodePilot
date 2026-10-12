@@ -93,7 +93,7 @@ app.auth.redis.key-prefix=auth
 # Authorization is the signed JWT cid=browser-extension claim, not this origin and not a static header.
 # Set app.extension.id to the Chrome extension ID to allow chrome-extension://<id> CORS.
 app.extension.enabled=true
-app.extension.id=
+app.extension.id=lghllhgdcekacmdoolnekkkoffcmcaeo
 app.extension.access-expiry-ms=900000
 app.extension.token-rate-limit-per-minute=10
 

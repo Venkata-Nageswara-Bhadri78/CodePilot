@@ -16,6 +16,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import com.developer.copilot.auth.security.AuthClientAuthorities;
 
@@ -127,5 +128,37 @@ class AuthSecurityTest {
                                 new SimpleGrantedAuthority(AuthClientAuthorities.BROWSER_EXTENSION))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message").value(AuthClientAuthorities.FORBIDDEN_MESSAGE));
+    }
+
+    @Test
+    void logout_withExtensionClient_returns403() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .with(extensionUser())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"550e8400-e29b-41d4-a716-446655440000\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(AuthClientAuthorities.FORBIDDEN_MESSAGE));
+    }
+
+    @Test
+    void logoutAll_withExtensionClient_returns403() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/logout-all").with(extensionUser()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(AuthClientAuthorities.FORBIDDEN_MESSAGE));
+    }
+
+    @Test
+    void logout_withWebUser_isNotForbidden() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .with(user("john@example.com").roles("USER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"550e8400-e29b-41d4-a716-446655440000\"}"))
+                .andExpect(status().isOk());
+    }
+
+    private static RequestPostProcessor extensionUser() {
+        return user("john@example.com").authorities(
+                new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority(AuthClientAuthorities.BROWSER_EXTENSION));
     }
 }
