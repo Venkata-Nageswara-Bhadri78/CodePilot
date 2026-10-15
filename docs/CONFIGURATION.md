@@ -43,7 +43,9 @@ There is no other `application-*.properties` in `src/main/resources`.
 | `app.auth.max-otp-attempts` | Failed OTP attempts (default 5). |
 | `app.auth.max-active-refresh-tokens` | Session cap (default 5). |
 | `app.auth.mail-cooldown-seconds` | Resend/forgot mail spacing (default 60). |
-| `app.auth.login-rate-limit-per-minute` (and register/verify/resend/forgot/refresh) | Auth POST budgets. |
+| `app.auth.login-rate-limit-per-minute` (and register/verify/resend/forgot/refresh/google/complete-username/setup-password) | Auth POST budgets. |
+| `app.google.client-ids` | GIS web client IDs allowed as the ID token `aud`. No client secret. Production refuses an empty or placeholder value. |
+| `app.google.hosted-domain` | Optional Workspace `hd` check. Blank disables it. |
 | `app.auth.max-failed-logins` / `failed-login-window-minutes` | Lockout window; login still returns the generic 401. |
 
 ## CORS and browser extension

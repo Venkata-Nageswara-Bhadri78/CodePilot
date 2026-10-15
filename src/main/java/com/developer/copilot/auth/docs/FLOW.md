@@ -4,7 +4,7 @@ These workflows are the ones implemented in `AuthServiceImpl`, the security filt
 
 ## Request lifecycle
 
-Every call to `/api/v1/auth/**` follows the same outer path. Public routes skip authentication; protected routes (`/me`, `/logout`, `/logout-all`, `/extension-token`) require a live access JWT. `/extension-token` additionally rejects browser-extension JWTs.
+Every call to `/api/v1/auth/**` follows the same outer path. Public routes skip authentication; protected routes (`/me`, `/logout`, `/logout-all`, `/complete-username`, `/setup-password/**`, `/extension-token`) require a live access JWT. `/me`, logout, and `/complete-username` allow a web user who still needs a username. `/extension-token` rejects browser-extension JWTs and users without a username.
 
 ```mermaid
 sequenceDiagram
@@ -96,7 +96,7 @@ flowchart TD
     B --> C{Failed-login window blocked?}
     C -->|yes| D[Dummy BCrypt then 401 same message]
     C -->|no| E{User by email?}
-    E -->|no| F[Dummy BCrypt, record failure, 401]
+    E -->|no or password is null| F[Dummy BCrypt, record failure, 401]
     E -->|yes| G{Password matches?}
     G -->|no| H[Record failure, 401]
     G -->|yes| I{Enabled and emailVerified?}
@@ -106,9 +106,41 @@ flowchart TD
     L --> M[New refresh UUID plus access JWT]
 ```
 
-The client-visible message is always `"Invalid email or password."` Dummy BCrypt on unknown/blocked emails keeps timing closer to a real password check.
+The client-visible message is always `"Invalid email or password."` Dummy BCrypt on unknown users, passwordless Google accounts, and blocked emails keeps timing closer to a real password check.
 
 Unverified or disabled accounts that present the correct password do **not** increment the failure counter.
+
+## Continue with Google
+
+The browser Google Identity Services button returns an ID token. The frontend posts it to `POST /api/v1/auth/google`. Verification runs **before** the database transaction. A Google ID token is not an application bearer token.
+
+```mermaid
+flowchart TD
+    A[POST /google idToken] --> B[Per-IP google-ip limit]
+    B --> C[Verify signature issuer audience expiry subject email]
+    C -->|invalid| D[401 Invalid Google token]
+    C -->|valid| E[Per-email google-email limit]
+    E --> F{Identity for GOOGLE plus sub?}
+    F -->|yes and active| G[Issue access JWT and refresh UUID]
+    F -->|yes and disabled| H[401 This account is disabled]
+    F -->|no| I{users row for that email?}
+    I -->|yes| J[409 email already exists no silent link]
+    I -->|no| K[Insert user username null password null plus user_identities]
+    K --> G
+    G --> L{username null?}
+    L -->|yes| M[onboardingComplete false]
+    L -->|no| N[onboardingComplete true]
+```
+
+A unique-constraint race re-reads `(GOOGLE, sub)` and continues as that user. If the email row appeared without this subject, the response stays 409.
+
+`POST /complete-username` then normalizes the username, rejects a taken or already-different name with 409, saves it, and returns a new access JWT with `onboardingComplete: true`. Until that save, `/me`, logout, and complete-username are the only authenticated web routes. Jobs, AI, chat, resumes, job extraction, and extension-token return 403.
+
+## Set a password after Google
+
+`POST /setup-password/request` (web JWT, username already set) emails a 6-digit OTP stored in `password_setup_otp`, separate from registration OTP. `POST /setup-password/confirm` checks the HMAC, stores a BCrypt password, bumps `tokenVersion`, revokes refresh tokens, and returns a new session. Google sign-in for the same `sub` still works, and `POST /login` works with the new password.
+
+Forgot-password also emails a reset link when `password` is null. Reset stores the hash and does not mark onboarding complete.
 
 ## Refresh token
 
@@ -193,7 +225,7 @@ sequenceDiagram
         F->>S: leave empty
         Note over F,S: Protected routes then 401 Unauthorized.
     else valid
-        F->>S: CustomUserDetails plus CLIENT_BROWSER_EXTENSION when cid is browser-extension
+        F->>S: CustomUserDetails plus extension authority and ONBOARDING_INCOMPLETE when username is null
     end
 ```
 
@@ -201,7 +233,7 @@ Database failures during user load are **not** swallowed; they propagate (typica
 
 ## Browser-extension token
 
-The web frontend, already holding a full-privilege access JWT (no `cid`), calls `POST /api/v1/auth/extension-token`. Auth mints a short-lived JWT with `cid=browser-extension` and **no** refresh token. The caller must not already be an extension client. `app.extension.enabled=false` returns `403` `"Browser extension access is disabled."`
+The web frontend, already holding a full-privilege access JWT (no `cid`) for a user with a username, calls `POST /api/v1/auth/extension-token`. Auth mints a short-lived JWT with `cid=browser-extension` and **no** refresh token. The caller must not already be an extension client. A null username returns `403` `"Complete your username to continue."` `app.extension.enabled=false` returns `403` `"Browser extension access is disabled."`
 
 ```mermaid
 sequenceDiagram

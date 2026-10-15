@@ -66,6 +66,31 @@ public class EmailServiceImpl implements EmailService {
     }
 
     @Override
+    public void sendPasswordSetupOtpEmail(String recipientEmail, String recipientName, String otp) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+            helper.setFrom(emailProperties.getFrom(), emailProperties.getSenderName());
+            helper.setTo(recipientEmail);
+            helper.setSubject("Set up your Password - AI Copilot");
+
+            String html = emailTemplateService.process(
+                    "password-setup-otp",
+                    Map.of(
+                            "name", recipientName == null ? "" : recipientName,
+                            "otp", otp,
+                            "expiryMinutes", authProperties.getOtpExpiryMinutes()));
+
+            helper.setText(html, true);
+            mailSender.send(message);
+        } catch (Exception ex) {
+            log.error("Failed to send password setup email");
+            throw new EmailDeliveryException("Unable to send password setup email.", ex);
+        }
+    }
+
+    @Override
     public void sendPasswordResetEmail(String recipientEmail, String recipientName, String resetToken) {
         try {
             MimeMessage message = mailSender.createMimeMessage();

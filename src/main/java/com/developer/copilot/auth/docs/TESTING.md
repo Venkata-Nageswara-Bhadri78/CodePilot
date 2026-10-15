@@ -11,10 +11,11 @@ src/test/java/com/developer/copilot/auth/
 ├── controller/     AuthControllerTest, AuthSecurityTest, AuthProductionSecurityTest,
 │                   BrowserExtensionSecurityTest, BrowserExtensionProbeController (test-only mappings)
 ├── service/impl/   AuthServiceImplTest, EmailServiceImplTest
+├── service/oauth/  GoogleIdTokenServiceTest, GoogleAccountWriterTest, GoogleOAuth2ServiceTest
 ├── jwt/            JwtServiceTest, JwtAuthenticationFilterTest
 ├── ratelimit/      AuthRateLimitFilterTest, AuthRateLimitServiceImplTest
 ├── redis/          AuthRedisKeyBuilderTest, AuthRedisServiceImplTest
-├── config/         AuthSecretsGuardTest, CorsPropertiesTest, ExtensionPropertiesTest
+├── config/         AuthSecretsGuardTest, GoogleClientIdsGuardTest, CorsPropertiesTest, ExtensionPropertiesTest
 ├── mapper/         AuthMapperTest
 └── util/           CredentialDigestsTest, OtpGeneratorTest
 ```
@@ -25,17 +26,17 @@ Related: `src/test/java/com/developer/copilot/common/exception/GlobalExceptionHa
 
 **`AuthControllerTest`** — standalone `MockMvc` + `GlobalExceptionHandler`, `AuthService` mocked.
 
-Covers: register `201`; invalid email / short password / password longer than 72 / email longer than 255 → `400`; login missing password, oversized password/email, malformed JSON message; login `200` with token fields; `GET /me` body; OTP not 6 digits; forgot-password generic success message; blank and oversized refresh token → `400`; `POST /extension-token` `200` with `client` / `expiresIn` and no `refreshToken`.
+Covers: register `201`; invalid email / short password / password longer than 72 / email longer than 255 → `400`; login missing password, oversized password/email, malformed JSON message; login `200` with token fields including `onboardingComplete`; Google login message when onboarding is incomplete; blank Google `idToken` → `400`; `GET /me` body; OTP not 6 digits; forgot-password generic success message; blank and oversized refresh token → `400`; `POST /extension-token` `200` with `client` / `expiresIn` and no `refreshToken`.
 
 Does **not** run `SecurityConfig` or rate-limit filters.
 
 **`AuthSecurityTest`** — `@WebMvcTest(AuthController)` importing `SecurityConfig`, `SecurityBeansConfig`, `JsonAuthenticationEntryPoint`, `AuthRateLimitConfig`.
 
-Covers: `/me` and `/logout-all` / `/logout` without auth → `401`; `/me` with `@WithMockUser` → `200`; public register and forgot-password are not `401`; `/extension-token` without auth → `401`, with web user → `200`, with extension authority → `403`; `/me` with extension authority → `403`.
+Covers: `/me` and `/logout-all` / `/logout` without auth → `401`; `/me` with `@WithMockUser` → `200`; `/me` and `/complete-username` with `ONBOARDING_INCOMPLETE` are not forbidden; public register, forgot-password, and `/google` are not `401`; `/complete-username` and `/setup-password/*` without auth → `401`; `/extension-token` without auth → `401`, with web user → `200`, with extension authority → `403`; `/me` and `/complete-username` with extension authority → `403`.
 
 **`BrowserExtensionSecurityTest`** — `@WebMvcTest(BrowserExtensionProbeController)` importing `SecurityConfig`.
 
-Covers: unauthenticated job-extraction and other probes → `401`; web user keeps access to job-extraction, jobs, AI, chat, users, and internal resume probes; extension authority allowed on job-extraction GET/POST probes only; extension denied on jobs/AI/chat/users/internal/`/auth/me-probe` with forbidden message; `X-Client` / `X-Extension-Id` headers do not change authorization.
+Covers: unauthenticated job-extraction and other probes → `401`; web user keeps access to job-extraction, jobs, AI, chat, users, and internal resume probes; extension authority allowed on job-extraction GET/POST probes only; extension denied on jobs/AI/chat/users/internal/`/auth/me-probe` with forbidden message; `ONBOARDING_INCOMPLETE` denied on jobs, job-extraction, and extension-token with `"Complete your username to continue."`; `X-Client` / `X-Extension-Id` headers do not change authorization.
 
 **`AuthProductionSecurityTest`** — same slice as `AuthSecurityTest`, `@ActiveProfiles("prod")`.
 
@@ -45,9 +46,11 @@ Covers: `GET /v3/api-docs` is not HTTP 200 (Swagger not publicly documented on p
 
 **`JwtServiceTest`** — generate token contains user id and email; valid for matching user; invalid for other user or bumped `tokenVersion`; expired token; short/placeholder secret rejected at `validateConfiguration`; missing `tv` treated as 0; `alg=none` token rejected; web token omits `cid`; extension token includes `cid=browser-extension`; unknown `cid` invalid; extension JWT invalid when `app.extension.enabled=false`; `generateExtensionToken` throws when disabled.
 
-**`JwtAuthenticationFilterTest`** — valid Bearer sets `CustomUserDetails`; disabled or unverified user leaves context empty; no header / malformed JWT continues without auth; `DataAccessException` on user load propagates; extension token adds `CLIENT_BROWSER_EXTENSION`.
+**`JwtAuthenticationFilterTest`** — valid Bearer sets `CustomUserDetails`; disabled or unverified user leaves context empty; no header / malformed JWT continues without auth; `DataAccessException` on user load propagates; extension token adds `CLIENT_BROWSER_EXTENSION`; null username adds `ONBOARDING_INCOMPLETE`.
 
 **`AuthSecretsGuardTest`** — blank/null env secret rejected; non-blank accepted.
+
+**`GoogleClientIdsGuardTest`** — production client-id list rejects empty and placeholder values.
 
 **`CorsPropertiesTest`** — `*` dropped from allowed origins; only-wildcard list becomes empty.
 
@@ -60,7 +63,10 @@ Covers: `GET /v3/api-docs` is not HTTP 200 (Swagger not publicly documented on p
 - Register saves OTP and sends mail; existing email or username does not save; username/email normalized to lowercase.
 - Verify OTP success, invalid, expired, already used.
 - Resend sends for unverified; skips verified.
-- Login success tokens; wrong password; unverified; disabled; unknown email same message; unverified/disabled same message as bad password.
+- Login success tokens including `onboardingComplete`; wrong password; null password uses a dummy hash and the generic 401; unverified; disabled; unknown email same message; unverified/disabled same message as bad password.
+- Complete-username saves a normalized name, rejects taken and too-short names, rejects a different name once set, and is idempotent for the same name.
+- Password-setup confirm stores the hash, bumps `tokenVersion`, and returns a session. Incomplete users cannot request it. Forgot-password still emails a Google user with a null password.
+- Extension minting rejects a null username.
 - Forgot saves token and mails; reset success bumps `tokenVersion` and revokes refresh; expired/used reset tokens.
 - Refresh rotates; revoked; expired; disabled user.
 - Logout success / invalid / other user’s token; logout-all revokes all and bumps version.
@@ -72,7 +78,13 @@ Covers: `GET /v3/api-docs` is not HTTP 200 (Swagger not publicly documented on p
 
 ## Rate limiting and Redis
 
-**`AuthRateLimitFilterTest`** — login and refresh-token limited per IP; `/reset-password` not limited by the filter; `/extension-token` limited per IP.
+**`AuthRateLimitFilterTest`** — login, Google, and refresh-token limited per IP; `/reset-password` not limited by the filter; `/extension-token` limited per IP.
+
+**`GoogleIdTokenServiceTest`** — mock verifier: valid token normalizes email; null, bad signature, IO failure, expiry, wrong audience, wrong issuer, missing subject, unverified email, empty client-id list, and hosted-domain mismatch are `Invalid Google token.`
+
+**`GoogleAccountWriterTest`** — new user has null username and password and `Role.USER`; short Google name falls back to the email local-part; returning complete and incomplete users; email collision does not link; disabled linked user; unique-race exception is left for the caller; recover re-reads the identity and still refuses to attach a colliding email.
+
+**`GoogleOAuth2ServiceTest`** — after a unique-constraint failure, authenticate re-reads the identity and applies the email rate limit only after verification.
 
 **`AuthRateLimitServiceImplTest`** — in-memory block after limit; `consumeOrThrow`; mail cooldown; login failure window clears on success; Redis increment path; Redis exception falls back to memory.
 

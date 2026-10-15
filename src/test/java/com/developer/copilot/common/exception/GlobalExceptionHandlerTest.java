@@ -34,6 +34,8 @@ import org.springframework.web.multipart.MultipartException;
 import com.developer.copilot.auth.exception.BrowserExtensionAccessDeniedException;
 import com.developer.copilot.auth.exception.EmailDeliveryException;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
+import com.developer.copilot.auth.exception.InvalidGoogleTokenException;
+import com.developer.copilot.auth.exception.OnboardingIncompleteException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.auth.ratelimit.exception.RateLimitExceededException;
 import com.developer.copilot.chatassistant.exception.ChatConflictException;
@@ -189,6 +191,24 @@ class GlobalExceptionHandlerTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertEquals("Job URL must not be empty.", response.getBody().getMessage());
+    }
+
+    @Test
+    void handleInvalidGoogleToken_mapsTo401() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleInvalidGoogleToken(new InvalidGoogleTokenException());
+
+        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
+        assertEquals(InvalidGoogleTokenException.MESSAGE, response.getBody().getMessage());
+    }
+
+    @Test
+    void handleOnboardingIncomplete_mapsTo403() {
+        ResponseEntity<ApiResponse<Void>> response =
+                handler.handleOnboardingIncomplete(new OnboardingIncompleteException());
+
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals("Complete your username to continue.", response.getBody().getMessage());
     }
 
     @Test

@@ -22,6 +22,8 @@ import org.springframework.web.multipart.MultipartException;
 import com.developer.copilot.auth.exception.BrowserExtensionAccessDeniedException;
 import com.developer.copilot.auth.exception.EmailDeliveryException;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
+import com.developer.copilot.auth.exception.InvalidGoogleTokenException;
+import com.developer.copilot.auth.exception.OnboardingIncompleteException;
 import com.developer.copilot.auth.exception.InvalidOtpException;
 import com.developer.copilot.auth.exception.InvalidPasswordResetTokenException;
 import com.developer.copilot.auth.exception.InvalidRefreshTokenException;
@@ -398,6 +400,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(response);
+    }
+
+    @ExceptionHandler(InvalidGoogleTokenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidGoogleToken(InvalidGoogleTokenException ex) {
+        return failure(HttpStatus.UNAUTHORIZED, ex.getMessage());
+    }
+
+    @ExceptionHandler(OnboardingIncompleteException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOnboardingIncomplete(OnboardingIncompleteException ex) {
+        return failure(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)

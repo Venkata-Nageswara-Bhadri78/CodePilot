@@ -23,7 +23,7 @@ public class User extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 50)
+    @Column(length = 50)
     private String username;
 
     @Column(name = "full_name", nullable = false, length = 100)
@@ -32,7 +32,7 @@ public class User extends BaseEntity {
     @Column(nullable = false, length = 255)
     private String email;
 
-    @Column(nullable = false)
+    @Column(length = 255)
     private String password;
 
     @Enumerated(EnumType.STRING)

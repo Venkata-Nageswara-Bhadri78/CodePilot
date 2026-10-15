@@ -17,6 +17,11 @@ Limited **POST** paths (exact `requestURI`):
 | Path | Bucket | Default limit / 60s |
 | --- | --- | --- |
 | `/api/v1/auth/login` | `login-ip` | 5 |
+| `/api/v1/auth/google` | `google-ip` | 5 |
+| `/api/v1/auth/google/link` | `google-link-ip` | 5 |
+| `/api/v1/auth/complete-username` | `complete-username-ip` | 10 |
+| `/api/v1/auth/setup-password/request` | `setup-password-ip` | 3 |
+| `/api/v1/auth/setup-password/confirm` | `setup-password-confirm-ip` | 10 |
 | `/api/v1/auth/register` | `register-ip` | 5 |
 | `/api/v1/auth/verify-email` | `verify-ip` | 10 |
 | `/api/v1/auth/resend-otp` | `resend-ip` | 3 |
@@ -40,6 +45,11 @@ After validation, `consumeOrThrow(bucket, identity, limit, 60)`:
 | --- | --- | --- | --- |
 | Register | `register-email` | email (lowercase) | 5 |
 | Login | `login-email` | email (lowercase) | 5 |
+| Google | `google-email` | verified email, after the ID token is accepted | 5 |
+| Google link | `google-link` | user id string, after the ID token is accepted | 5 |
+| Complete username | `complete-username` | user id string | 10 |
+| Password setup request | `setup-password` | user id string | 3 |
+| Password setup confirm | `setup-password-confirm` | user id string | 10 |
 | Verify | `verify-email` | email (lowercase) | 10 |
 | Resend | `resend-email` | email (lowercase) | 3 |
 | Forgot | `forgot-email` | email (lowercase) | 3 |
@@ -55,6 +65,7 @@ Not a 429. `tryAcquireMail`:
 
 - Resend: identity = email, TTL = `mailCooldownSeconds` (60).
 - Forgot: identity = `reset:` + email, same TTL.
+- Password setup request: identity = `setup-password:` + email, same TTL. A skipped send still returns 200 and tells the client to use the recent code.
 
 If not acquired, mail and new OTP/reset rows are skipped; HTTP remains the generic 200.
 

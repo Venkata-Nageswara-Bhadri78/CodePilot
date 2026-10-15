@@ -30,7 +30,9 @@ Startup refuses secrets shorter than 32 characters or placeholder-like values.
 
 Validation (`isTokenValid`): parse with `verifyWith` (rejects `alg=none`), user id equals `sub`, `exp` not in the past, `tv` equals the user’s current `tokenVersion` (missing `tv` → 0), `cid` trusted (absent/blank or `browser-extension` while the extension is enabled).
 
-The filter also requires the user row to exist, `enabled == true`, and `emailVerified == true`. For extension tokens it adds `CLIENT_BROWSER_EXTENSION` to the `Authentication` authorities. It authenticates with `extractUserId` only. It does not compare the JWT `email` or `role` claims to the database; those claims are informational for clients/other layers. Identity is `sub` + live user row + `tv`. Client authorization is the signed `cid` claim.
+The filter also requires the user row to exist, `enabled == true`, and `emailVerified == true`. For extension tokens it adds `CLIENT_BROWSER_EXTENSION` to the `Authentication` authorities. When `username` is null it adds `ONBOARDING_INCOMPLETE`. That authority is not a JWT claim: refresh, a second device, and a username just saved are all decided from the user row. It authenticates with `extractUserId` only. It does not compare the JWT `email` or `role` claims to the database; those claims are informational for clients/other layers. Identity is `sub` + live user row + `tv`. Client authorization is the signed `cid` claim.
+
+Incomplete Google sessions still rotate refresh tokens. The new access JWT stays incomplete until `username` is saved, because the filter reads the row rather than an onboarding claim. `complete-username` issues a new access JWT (and a new refresh UUID). Older refresh UUIDs remain usable until expiry; the next `/refresh-token` mints a complete access JWT once the username exists. Password-setup confirm bumps `tokenVersion`, revokes refresh tokens, and returns a replacement session so the caller stays signed in.
 
 ## Browser-extension access JWT
 

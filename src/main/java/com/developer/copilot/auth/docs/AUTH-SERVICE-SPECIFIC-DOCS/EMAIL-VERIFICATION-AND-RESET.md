@@ -76,6 +76,7 @@ Forgot message: `"If the account exists, a password reset email has been sent."`
 
 - Resend OTP identity: the email.
 - Forgot password identity: `"reset:" + email` so OTP and reset cooldowns do not share one Redis/memory key.
+- Password setup identity: `"setup-password:" + email`. That OTP lives in `password_setup_otp`, not `email_verification`.
 
 Failure to acquire: log debug and return; HTTP still 200. Cooldown `<= 0` always acquires.
 
@@ -101,6 +102,8 @@ Unlike OTP, reset hashes are unsalted SHA-256 (no `app.jwt.secret`). JWT secret 
 ## Account state vs mail
 
 A registered user cannot login until verify-email succeeds. Forgot-password **does** send mail to unverified users if the row exists (there is no `emailVerified` check on forgot). Reset still bumps `tokenVersion` and revokes refresh tokens for that user.
+
+Google-created users are already `emailVerified`, so resend-otp is a silent no-op for them. They have no password until `POST /setup-password/confirm` or a successful reset. Either path lets the same user sign in with Google or with email and password. Reset does not fill in a missing username.
 
 There is no “change email” flow in auth; email is set at register (lowercased) and is not updated here.
 

@@ -13,7 +13,7 @@ Auth is a package in the Copilot Maven module (`com.developer:copilot`). It does
 | `CopilotApplication` | Enables `EmailProperties`; excludes Boot Redis auto-config so auth Redis is opt-in. |
 | Other feature packages | Not called by auth. They consume JWTs and `User`. |
 
-`ResourceAlreadyExistsException` is declared in auth and handled globally; current auth flows do not throw it.
+`ResourceAlreadyExistsException` is declared in auth and handled globally. Google sign-in throws it when the email already belongs to an unlinked account. `complete-username` throws it when the username is taken or already set to a different value. Register still hides duplicates with HTTP 201.
 
 ## Framework and web
 
@@ -30,8 +30,9 @@ Auth is a package in the Copilot Maven module (`com.developer:copilot`). It does
 | --- | --- |
 | `spring-boot-starter-security` | Filter chain, CORS, `PasswordEncoder`, `UserDetails`, stateless sessions. |
 | `io.jsonwebtoken:jjwt-api` / `jjwt-impl` / `jjwt-jackson` (0.12.7) | Create and parse HS256 access JWTs (`JwtService`). |
+| `com.google.api-client:google-api-client` (2.7.2) | `GoogleIdTokenVerifier` checks the Google ID token signature and Google certificates. Not used as the application bearer token. |
 
-BCrypt comes from Spring Security (`BCryptPasswordEncoder`). Login does not use OAuth2 or resource-server JWT auto-config; validation is the custom filter.
+BCrypt comes from Spring Security (`BCryptPasswordEncoder`). Login does not use OAuth2 or resource-server JWT auto-config; validation is the custom filter. Google sign-in does not request Google API access tokens or Google refresh tokens.
 
 ## Persistence and Redis
 
@@ -46,7 +47,7 @@ BCrypt comes from Spring Security (`BCryptPasswordEncoder`). Login does not use 
 | Library | Why |
 | --- | --- |
 | `spring-boot-starter-mail` | `JavaMailSender` OTP and password-reset messages. |
-| `spring-boot-starter-thymeleaf` | HTML bodies from `otp-email` and `password-reset` templates. |
+| `spring-boot-starter-thymeleaf` | HTML bodies from `otp-email`, `password-setup-otp`, and `password-reset` templates. |
 
 ## API documentation
 

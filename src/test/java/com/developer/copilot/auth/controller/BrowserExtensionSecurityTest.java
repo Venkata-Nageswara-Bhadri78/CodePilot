@@ -7,6 +7,7 @@ import com.developer.copilot.auth.jwt.JwtService;
 import com.developer.copilot.auth.ratelimit.config.AuthRateLimitConfig;
 import com.developer.copilot.auth.repository.UserRepository;
 import com.developer.copilot.auth.security.AuthClientAuthorities;
+import com.developer.copilot.auth.security.AuthOnboardingAuthorities;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -144,6 +145,25 @@ class BrowserExtensionSecurityTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.message").value(AuthClientAuthorities.FORBIDDEN_MESSAGE));
+    }
+
+    @Test
+    void incompleteWebUser_cannotReachJobsOrExtraction() throws Exception {
+        mockMvc.perform(get("/api/v1/jobs/probe").with(incompleteUser()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(AuthOnboardingAuthorities.INCOMPLETE_MESSAGE));
+        mockMvc.perform(get("/api/v1/job-extraction/probe").with(incompleteUser()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(AuthOnboardingAuthorities.INCOMPLETE_MESSAGE));
+        mockMvc.perform(post("/api/v1/auth/extension-token").with(incompleteUser()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value(AuthOnboardingAuthorities.INCOMPLETE_MESSAGE));
+    }
+
+    private static RequestPostProcessor incompleteUser() {
+        return user("john@example.com").authorities(
+                new SimpleGrantedAuthority("ROLE_USER"),
+                new SimpleGrantedAuthority(AuthOnboardingAuthorities.INCOMPLETE));
     }
 
     private static RequestPostProcessor webUser() {

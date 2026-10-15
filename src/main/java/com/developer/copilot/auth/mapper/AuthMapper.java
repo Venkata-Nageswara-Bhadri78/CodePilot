@@ -9,6 +9,10 @@ import com.developer.copilot.auth.entity.User;
 public class AuthMapper {
 
     public UserResponse toUserResponse(User user) {
+        return toUserResponse(user, false);
+    }
+
+    public UserResponse toUserResponse(User user, boolean googleLinked) {
 
         return UserResponse.builder()
                 .id(user.getId())
@@ -16,6 +20,8 @@ public class AuthMapper {
                 .fullName(user.getFullName())
                 .email(user.getEmail())
                 .role(user.getRole())
+                .passwordConfigured(user.getPassword() != null && !user.getPassword().isBlank())
+                .googleLinked(googleLinked)
                 .build();
 
     }
