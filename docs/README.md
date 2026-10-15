@@ -49,6 +49,7 @@ All packages live under `com.developer.copilot` in a **single Spring Boot applic
 | **automated job extraction** | `jobextraction.automatedjobextraction` | Fetch URL (SSRF-guarded), extract page text, reuse manual parse |
 | **ai** | `ai` | LLM client, prompts, resume/job grounding, in-process chat circuit/bulkhead |
 | **chatassistant** | `chatassistant` | Persisted, job-keyed multi-turn conversations |
+| **community** | `community` | Persistence for job-posting groups: account opt-in, community, URL aliases, membership, messages. No HTTP API yet |
 | **common** | `common` | Shared HTTP contract, storage, internal key, URL util, global exceptions |
 
 ---
@@ -93,7 +94,7 @@ Details: [FLOW.md](FLOW.md).
 
 | Store | What lives there |
 | --- | --- |
-| MySQL | Users, tokens, profile, resumes, parsed resume, jobs, chat sessions/messages |
+| MySQL | Users, tokens, profile, resumes, parsed resume, jobs, chat sessions/messages, community accounts, communities, URL aliases, memberships, messages |
 | MinIO | Resume PDF bytes |
 | Redis (optional) | Rate-limit counters; auth mail cooldown / login backoff; extraction preview / fetched-content caches |
 
@@ -129,6 +130,7 @@ Deeper module docs (do not duplicate them here):
 | Manual job extraction | [`src/main/java/com/developer/copilot/jobextraction/manualextraction/docs/JOBEXTRACTION.md`](../src/main/java/com/developer/copilot/jobextraction/manualextraction/docs/JOBEXTRACTION.md) |
 | AI | [`src/main/java/com/developer/copilot/ai/docs/AI.md`](../src/main/java/com/developer/copilot/ai/docs/AI.md) |
 | Chat assistant | [`src/main/java/com/developer/copilot/chatassistant/docs/CHATASSISTANT.md`](../src/main/java/com/developer/copilot/chatassistant/docs/CHATASSISTANT.md) |
+| Community | [`src/main/java/com/developer/copilot/community/docs/DATABASE.md`](../src/main/java/com/developer/copilot/community/docs/DATABASE.md) |
 | Common | [`src/main/java/com/developer/copilot/common/docs/COMMON.md`](../src/main/java/com/developer/copilot/common/docs/COMMON.md) |
 
 Automated job extraction does not have a parallel `docs/` tree; behavior is described in this global set and in the `automatedjobextraction` package.

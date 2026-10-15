@@ -20,6 +20,7 @@ flowchart TB
         Auto[jobextraction.automatedjobextraction]
         AI[ai]
         Chat[chatassistant]
+        Community[community]
         Common[common]
     end
 
@@ -64,6 +65,7 @@ flowchart TB
     Chat --> AI
     Chat --> MySQL
     Chat --> Redis
+    Community --> MySQL
     Common --> MinIO
     Common --> Redis
     Auth --> Common
@@ -101,6 +103,10 @@ LLM orchestration. HTTP under `/api/v1/ai`. In-process APIs used by extraction (
 
 Job-keyed sessions and append-only turns. Calls AI **outside** a DB transaction. Does not create jobs.
 
+### community
+
+Job-posting groups. This module currently persists accounts, communities, URL aliases, membership, and messages. It has no controller and no WebSocket endpoint. It references `users.id` and does not map `jobs`. Canonical posting identity is a URL hash, not `jobs.id`.
+
 ### common
 
 No user-facing business controllers. Owns `ApiResponse`, `GlobalExceptionHandler`, JPA auditing, internal key + hallway rate limit, MinIO client, `UrlNormalizationUtil`, `CurrentUserService`.
@@ -121,6 +127,7 @@ flowchart LR
     User --> Auth
     Jobs --> Auth
     Chat --> Auth
+    Community --> Auth
     AI --> Auth
     Manual --> Auth
     Auto --> Auth
