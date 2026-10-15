@@ -1,13 +1,16 @@
 package com.developer.copilot.auth.service;
 
 import com.developer.copilot.auth.dto.AuthResponse;
+import com.developer.copilot.auth.dto.CompleteUsernameRequest;
 import com.developer.copilot.auth.dto.ForgotPasswordRequest;
+import com.developer.copilot.auth.dto.GoogleAuthRequest;
 import com.developer.copilot.auth.dto.LoginRequest;
 import com.developer.copilot.auth.dto.LogoutRequest;
 import com.developer.copilot.auth.dto.RefreshTokenRequest;
 import com.developer.copilot.auth.dto.RegisterRequest;
 import com.developer.copilot.auth.dto.ResendOtpRequest;
 import com.developer.copilot.auth.dto.ResetPasswordRequest;
+import com.developer.copilot.auth.dto.SetupPasswordConfirmRequest;
 import com.developer.copilot.auth.dto.UserResponse;
 import com.developer.copilot.auth.dto.ExtensionAuthResponse;
 import com.developer.copilot.auth.dto.VerifyOtpRequest;
@@ -16,6 +19,11 @@ import com.developer.copilot.auth.dto.VerifyOtpRequest;
 public interface AuthService {
     void register(RegisterRequest registerRequest);
     AuthResponse login(LoginRequest request);
+    AuthResponse googleLogin(GoogleAuthRequest request);
+    void linkGoogle(GoogleAuthRequest request);
+    AuthResponse completeUsername(CompleteUsernameRequest request);
+    boolean requestPasswordSetup();
+    AuthResponse confirmPasswordSetup(SetupPasswordConfirmRequest request);
     ExtensionAuthResponse issueExtensionToken();
     UserResponse me();
     void verifyOtp(VerifyOtpRequest request);

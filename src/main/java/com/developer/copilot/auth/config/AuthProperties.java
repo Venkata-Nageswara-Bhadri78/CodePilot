@@ -35,6 +35,16 @@ public class AuthProperties {
 
     private int forgotRateLimitPerMinute = 3;
 
+    private int googleRateLimitPerMinute = 5;
+
+    private int googleLinkRateLimitPerMinute = 5;
+
+    private int completeUsernameRateLimitPerMinute = 10;
+
+    private int setupPasswordRequestRateLimitPerMinute = 3;
+
+    private int setupPasswordConfirmRateLimitPerMinute = 10;
+
     private int refreshRateLimitPerMinute = 10;
 
     private int maxFailedLogins = 10;

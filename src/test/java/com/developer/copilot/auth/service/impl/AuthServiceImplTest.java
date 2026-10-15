@@ -17,7 +17,17 @@ import com.developer.copilot.auth.entity.PasswordResetToken;
 import com.developer.copilot.auth.entity.RefreshToken;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.enums.Role;
+import com.developer.copilot.auth.dto.CompleteUsernameRequest;
+import com.developer.copilot.auth.dto.GoogleAuthRequest;
+import com.developer.copilot.auth.dto.SetupPasswordConfirmRequest;
+import com.developer.copilot.auth.entity.PasswordSetupOtp;
 import com.developer.copilot.auth.exception.BrowserExtensionAccessDeniedException;
+import com.developer.copilot.auth.exception.OnboardingIncompleteException;
+import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
+import com.developer.copilot.auth.repository.PasswordSetupOtpRepository;
+import com.developer.copilot.auth.repository.UserIdentityRepository;
+import com.developer.copilot.auth.security.AuthOnboardingAuthorities;
+import com.developer.copilot.auth.service.oauth.GoogleOAuth2Service;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
 import com.developer.copilot.auth.exception.InvalidOtpException;
 import com.developer.copilot.auth.exception.InvalidPasswordResetTokenException;
@@ -58,6 +68,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -65,6 +76,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -88,6 +100,12 @@ class AuthServiceImplTest {
     private RefreshTokenRepository refreshTokenRepository;
     @Mock
     private CurrentUserService currentUserService;
+    @Mock
+    private GoogleOAuth2Service googleOAuth2Service;
+    @Mock
+    private PasswordSetupOtpRepository passwordSetupOtpRepository;
+    @Mock
+    private UserIdentityRepository userIdentityRepository;
 
     @InjectMocks
     private AuthServiceImpl authService;
@@ -302,6 +320,25 @@ class AuthServiceImplTest {
         assertEquals("access-token", response.getAccessToken());
         assertEquals("Bearer", response.getTokenType());
         assertNotNull(response.getRefreshToken());
+        assertTrue(response.isOnboardingComplete());
+    }
+
+    @Test
+    void login_nullPassword_usesDummyHashAndGeneric401() {
+        user.setPassword(null);
+        LoginRequest request = new LoginRequest();
+        request.setEmail("john@example.com");
+        request.setPassword("Secure@123");
+
+        when(userRepository.findByEmail("john@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches(eq("Secure@123"), anyString())).thenReturn(false);
+
+        InvalidCredentialsException ex = assertThrows(
+                InvalidCredentialsException.class, () -> authService.login(request));
+
+        assertEquals(AuthServiceImpl.INVALID_CREDENTIALS, ex.getMessage());
+        verify(passwordEncoder).matches(eq("Secure@123"), anyString());
+        verify(passwordEncoder, never()).matches(anyString(), isNull());
     }
 
     @Test
@@ -418,6 +455,28 @@ class AuthServiceImplTest {
         assertEquals("new-access", response.getAccessToken());
         assertEquals("Bearer", response.getTokenType());
         assertNotNull(response.getRefreshToken());
+        assertTrue(response.isOnboardingComplete());
+    }
+
+    @Test
+    void refreshToken_incompleteUser_keepsOnboardingIncomplete() {
+        user.setUsername(null);
+        RefreshTokenRequest request = new RefreshTokenRequest();
+        request.setRefreshToken("old-refresh");
+
+        RefreshToken storedToken = new RefreshToken();
+        storedToken.setUser(user);
+        storedToken.setRevoked(false);
+        storedToken.setExpiresAt(LocalDateTime.now().plusDays(1));
+
+        when(refreshTokenRepository.findByTokenForUpdate(CredentialDigests.sha256("old-refresh")))
+                .thenReturn(Optional.of(storedToken));
+        when(jwtService.generateToken(user)).thenReturn("new-access");
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AuthResponse response = authService.refreshToken(request);
+
+        assertFalse(response.isOnboardingComplete());
     }
 
     @Test
@@ -658,6 +717,189 @@ class AuthServiceImplTest {
                 assertThrows(BrowserExtensionAccessDeniedException.class, authService::issueExtensionToken);
         assertEquals(AuthClientAuthorities.FORBIDDEN_MESSAGE, ex.getMessage());
         verify(jwtService, never()).generateExtensionToken(any());
+    }
+
+    @Test
+    void issueExtensionToken_incompleteUser_throws() {
+        user.setUsername(null);
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+
+        BrowserExtensionAccessDeniedException ex =
+                assertThrows(BrowserExtensionAccessDeniedException.class, authService::issueExtensionToken);
+
+        assertEquals(AuthOnboardingAuthorities.INCOMPLETE_MESSAGE, ex.getMessage());
+        verify(jwtService, never()).generateExtensionToken(any());
+    }
+
+    @Test
+    void completeUsername_savesNormalizedUsername() {
+        user.setUsername(null);
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.existsByUsername("newname")).thenReturn(false);
+        when(userRepository.saveAndFlush(user)).thenReturn(user);
+        when(jwtService.generateToken(user)).thenReturn("access");
+        when(refreshTokenRepository.findAllByUserIdAndRevokedFalseOrderByCreatedAtAsc(1L)).thenReturn(List.of());
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CompleteUsernameRequest request = new CompleteUsernameRequest();
+        request.setUsername(" NewName ");
+
+        AuthResponse response = authService.completeUsername(request);
+
+        assertEquals("newname", user.getUsername());
+        assertTrue(response.isOnboardingComplete());
+        assertEquals("access", response.getAccessToken());
+    }
+
+    @Test
+    void completeUsername_taken_returns409Message() {
+        user.setUsername(null);
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.existsByUsername("taken")).thenReturn(true);
+
+        CompleteUsernameRequest request = new CompleteUsernameRequest();
+        request.setUsername("taken");
+
+        ResourceAlreadyExistsException ex = assertThrows(
+                ResourceAlreadyExistsException.class, () -> authService.completeUsername(request));
+        assertEquals(AuthServiceImpl.USERNAME_TAKEN, ex.getMessage());
+        verify(userRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void completeUsername_tooShortAfterNormalize_returns400Message() {
+        user.setUsername(null);
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        CompleteUsernameRequest request = new CompleteUsernameRequest();
+        request.setUsername(" ab ");
+
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class, () -> authService.completeUsername(request));
+        assertEquals("username: size must be between 3 and 50", ex.getMessage());
+    }
+
+    @Test
+    void completeUsername_alreadySetToDifferentValue_conflicts() {
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        CompleteUsernameRequest request = new CompleteUsernameRequest();
+        request.setUsername("othername");
+
+        ResourceAlreadyExistsException ex = assertThrows(
+                ResourceAlreadyExistsException.class, () -> authService.completeUsername(request));
+        assertEquals(AuthServiceImpl.USERNAME_ALREADY_SET, ex.getMessage());
+    }
+
+    @Test
+    void completeUsername_sameUsername_isIdempotent() {
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(jwtService.generateToken(user)).thenReturn("access");
+        when(refreshTokenRepository.findAllByUserIdAndRevokedFalseOrderByCreatedAtAsc(1L)).thenReturn(List.of());
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CompleteUsernameRequest request = new CompleteUsernameRequest();
+        request.setUsername("JohnDoe");
+
+        AuthResponse response = authService.completeUsername(request);
+
+        assertEquals("johndoe", user.getUsername());
+        assertTrue(response.isOnboardingComplete());
+        verify(userRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void requestPasswordSetup_incompleteUser_isForbidden() {
+        user.setUsername(null);
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        assertThrows(OnboardingIncompleteException.class, () -> authService.requestPasswordSetup());
+        verify(emailService, never()).sendPasswordSetupOtpEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void confirmPasswordSetup_validOtp_setsPasswordAndRotatesSession() {
+        SetupPasswordConfirmRequest request = new SetupPasswordConfirmRequest();
+        request.setOtp("123456");
+        request.setNewPassword("Secure@123");
+
+        PasswordSetupOtp otp = new PasswordSetupOtp();
+        otp.setUser(user);
+        otp.setOtp(CredentialDigests.hmacSha256("123456", HMAC_SECRET));
+        otp.setExpiresAt(LocalDateTime.now().plusMinutes(5));
+        otp.setUsed(false);
+        otp.setFailedAttempts(0);
+
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(passwordSetupOtpRepository.findTopByUserIdOrderByCreatedAtDesc(1L)).thenReturn(Optional.of(otp));
+        when(passwordEncoder.encode("Secure@123")).thenReturn("new-hash");
+        when(refreshTokenRepository.findAllByUserIdAndRevokedFalse(1L)).thenReturn(List.of());
+        when(refreshTokenRepository.findAllByUserIdAndRevokedFalseOrderByCreatedAtAsc(1L)).thenReturn(List.of());
+        when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(jwtService.generateToken(user)).thenReturn("access");
+
+        AuthResponse response = authService.confirmPasswordSetup(request);
+
+        assertEquals("new-hash", user.getPassword());
+        assertEquals(1, user.getTokenVersion());
+        assertTrue(otp.getUsed());
+        assertTrue(response.isOnboardingComplete());
+        assertEquals("access", response.getAccessToken());
+    }
+
+    @Test
+    void forgotPassword_passwordlessUser_stillSendsReset() {
+        user.setPassword(null);
+        ForgotPasswordRequest request = new ForgotPasswordRequest();
+        request.setEmail("john@example.com");
+        when(userRepository.findByEmail("john@example.com")).thenReturn(Optional.of(user));
+
+        authService.forgotPassword(request);
+
+        verify(emailService).sendPasswordResetEmail(eq("john@example.com"), eq("John Doe"), anyString());
+    }
+
+    @Test
+    void linkGoogle_delegatesForSignedInUser() {
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        GoogleAuthRequest request = new GoogleAuthRequest();
+        request.setIdToken("google-id-token");
+
+        authService.linkGoogle(request);
+
+        verify(googleOAuth2Service).link(request, 1L);
+    }
+
+    @Test
+    void linkGoogle_incompleteUser_doesNotLink() {
+        user.setUsername(null);
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        GoogleAuthRequest request = new GoogleAuthRequest();
+        request.setIdToken("google-id-token");
+
+        assertThrows(OnboardingIncompleteException.class, () -> authService.linkGoogle(request));
+        verify(googleOAuth2Service, never()).link(any(), any());
+    }
+
+    @Test
+    void me_reportsGoogleLinked() {
+        when(currentUserService.getCurrentUser()).thenReturn(user);
+        when(userIdentityRepository.existsByUserIdAndProvider(1L, com.developer.copilot.auth.enums.IdentityProvider.GOOGLE))
+                .thenReturn(true);
+
+        var response = authService.me();
+
+        assertTrue(response.isGoogleLinked());
+        assertTrue(response.isPasswordConfigured());
     }
 
     @Test

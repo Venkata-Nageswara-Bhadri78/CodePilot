@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.developer.copilot.auth.repository.EmailVerificationRepository;
 import com.developer.copilot.auth.repository.PasswordResetTokenRepository;
+import com.developer.copilot.auth.repository.PasswordSetupOtpRepository;
 import com.developer.copilot.auth.repository.RefreshTokenRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class AuthTokenCleanupJob {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final EmailVerificationRepository emailVerificationRepository;
+    private final PasswordSetupOtpRepository passwordSetupOtpRepository;
     private final Clock clock;
 
     @Scheduled(cron = "0 0 * * * *")
@@ -31,8 +33,14 @@ public class AuthTokenCleanupJob {
         int refresh = refreshTokenRepository.deleteRevokedOrExpired(now);
         int resets = passwordResetTokenRepository.deleteUsedOrExpired(now);
         int otps = emailVerificationRepository.deleteExpiredOrVerified(now);
-        if (refresh + resets + otps > 0) {
-            log.info("Purged auth rows refresh={}, resets={}, otps={}", refresh, resets, otps);
+        int passwordSetupOtps = passwordSetupOtpRepository.deleteExpiredOrUsed(now);
+        if (refresh + resets + otps + passwordSetupOtps > 0) {
+            log.info(
+                    "Purged auth rows refresh={}, resets={}, otps={}, passwordSetupOtps={}",
+                    refresh,
+                    resets,
+                    otps,
+                    passwordSetupOtps);
         }
     }
 }

@@ -118,3 +118,15 @@ app.automatedjobextraction.redis.port=6379
 app.automatedjobextraction.redis.database=0
 app.automatedjobextraction.redis.timeout-ms=2000
 app.automatedjobextraction.redis.key-prefix=automatedjobextraction
+
+# Google Sign-In (Google Identity Services ID tokens)
+# Web OAuth client IDs. The ID token "aud" claim must match one entry.
+# Comma-separate multiple client IDs. No client secret is required or read.
+# Authorized JavaScript origin for local development: http://localhost:5173
+app.google.client-ids=<your-google-oauth-web-client-id>
+app.google.hosted-domain=
+app.auth.google-rate-limit-per-minute=5
+app.auth.complete-username-rate-limit-per-minute=10
+app.auth.setup-password-request-rate-limit-per-minute=3
+app.auth.setup-password-confirm-rate-limit-per-minute=10
+app.auth.google-link-rate-limit-per-minute=5

@@ -8,13 +8,16 @@ A new developer should start here, then follow the links at the bottom for archi
 
 Auth proves who a caller is and whether that account is allowed to use the rest of the API.
 
-It creates accounts, proves email ownership with a one-time code, issues a short-lived access JWT plus an opaque refresh UUID, rotates and revokes sessions, and resets passwords. It also owns the HTTP security filter chain that every request in the application passes through, including a restricted access JWT for one Chrome extension client.
+It creates accounts, proves email ownership with a one-time code, signs users in with Google, issues a short-lived access JWT plus an opaque refresh UUID, rotates and revokes sessions, and resets passwords. It also owns the HTTP security filter chain that every request in the application passes through, including a restricted access JWT for one Chrome extension client. Google sign-in does not replace those application tokens.
 
 ## Responsibilities
 
 - Register users without leaking whether a username or email already exists.
 - Keep new accounts disabled until the emailed OTP is verified.
-- Authenticate with email and password, using the same error message for every login failure.
+- Authenticate with email and password, using the same error message for every login failure. A Google-only account has no password until the user sets one, so email/password login stays a generic 401.
+- Sign in with a Google ID token, create a linked identity, and block every protected API except profile, logout, and username completion until a unique username is saved.
+- Let a signed-in email/password user link the Google account whose verified email matches theirs, without creating a second user.
+- Let a signed-in user set or replace a password after an email OTP, so the same account can use Google and email/password.
 - Issue HS256 access JWTs (subject = user id, default lifetime 15 minutes) and store only hashes of refresh tokens.
 - Rotate refresh tokens on use and revoke every session if a previously rotated token is replayed.
 - Invalidate access JWTs immediately on password reset and logout-from-all-devices by bumping `tokenVersion`.
@@ -31,7 +34,10 @@ Auth does **not** implement user profiles, resumes, jobs, chat, or internal serv
 | --- | --- |
 | Registration | Creates `Role.USER`, `enabled=false`, `emailVerified=false`. Duplicate username/email still returns HTTP 201 with the same message. |
 | Email verification | 6-digit OTP, HMAC-SHA256 stored (keyed with `app.jwt.secret`), default 10-minute expiry, max 5 failed attempts. |
-| Login | BCrypt password check. Unknown user, wrong password, unverified, disabled, and lockout all return `401` `"Invalid email or password."` |
+| Login | BCrypt password check. Unknown user, wrong password, missing password, unverified, disabled, and lockout all return `401` `"Invalid email or password."` |
+| Google sign-in | `POST /api/v1/auth/google` verifies a Google ID token (signature, issuer, audience, expiry, subject, verified email). New users are created with a null username and null password. `onboardingComplete` is `username != null`. An existing email/password account is not silently linked. |
+| Username completion | `POST /api/v1/auth/complete-username` stores a unique lowercase username. Until then the filter adds `ONBOARDING_INCOMPLETE` and protected APIs return 403. |
+| Password setup | Signed-in users with a username can `POST /setup-password/request` and `/confirm` to store a BCrypt password after an email OTP. Forgot/reset can also set a password on a Google-only account. |
 | Access JWT | Signed with `app.jwt.secret`. Claims: `sub` (user id), `email`, `role`, `tv` (token version). Web tokens omit `cid`. Extension tokens add `cid=browser-extension`. |
 | Browser-extension token | `POST /api/v1/auth/extension-token` with a web JWT. No refresh UUID. Filter chain allows that JWT only on job-extraction paths. |
 | Refresh | Opaque UUID, SHA-256 in MySQL, default 30 days. Public endpoint; the UUID is the secret. |
@@ -47,7 +53,7 @@ Auth does **not** implement user profiles, resumes, jobs, chat, or internal serv
 
 **Out of scope:** user profile, storage, jobs, AI, chat, and the internal API key filter. Those are other packages. Auth only supplies identity they rely on.
 
-The HTTP security configuration lives in auth (`SecurityConfig`) and applies to the whole application: public auth paths and Swagger (non-production) are anonymous; job-extraction paths require a valid access JWT (web or extension); every other route requires a valid **web** access JWT for an enabled, email-verified user.
+The HTTP security configuration lives in auth (`SecurityConfig`) and applies to the whole application: public auth paths (including `POST /api/v1/auth/google`) and Swagger (non-production) are anonymous; job-extraction paths require a valid access JWT (web or extension) for a user who already has a username; `/me`, logout, and `POST /complete-username` allow a web user who still needs a username; every other route requires a valid **web** access JWT for an enabled, email-verified user with a username.
 
 ## Main components
 
@@ -67,11 +73,12 @@ flowchart LR
 ```
 
 - **`AuthController`** — REST surface at `/api/v1/auth`.
-- **`AuthServiceImpl`** — account, OTP, login, refresh, logout, reset, and `issueExtensionToken`.
+- **`AuthServiceImpl`** — account, OTP, login, refresh, logout, reset, username completion, password setup, and `issueExtensionToken`.
+- **`GoogleOAuth2Service` / `GoogleIdTokenService` / `GoogleAccountWriter`** — verify the Google ID token outside the database transaction, then find or create the user and `user_identities` row.
 - **`JwtService` / `JwtAuthenticationFilter`** — issue and validate access tokens (including extension `cid`).
-- **Repositories** — `User`, `EmailVerification`, `PasswordResetToken`, `RefreshToken`.
+- **Repositories** — `User`, `UserIdentity`, `EmailVerification`, `PasswordSetupOtp`, `PasswordResetToken`, `RefreshToken`.
 - **`AuthRateLimitFilter` + `AuthRateLimitServiceImpl`** — IP, email, and per-user extension-token limits; Redis when enabled, otherwise in-memory.
-- **`EmailServiceImpl`** — SMTP + Thymeleaf templates `otp-email` and `password-reset`.
+- **`EmailServiceImpl`** — SMTP + Thymeleaf templates `otp-email`, `password-setup-otp`, and `password-reset`.
 - **`AuthTokenCleanupJob`** — hourly deletion of stale token rows.
 - **`TestController`** — `GET /api/v1/test` on the `dev` profile only; not a production API.
 

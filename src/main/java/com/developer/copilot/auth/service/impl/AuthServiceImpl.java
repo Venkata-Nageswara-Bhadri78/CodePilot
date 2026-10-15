@@ -2,7 +2,9 @@ package com.developer.copilot.auth.service.impl;
 
 import com.developer.copilot.auth.repository.EmailVerificationRepository;
 import com.developer.copilot.auth.repository.PasswordResetTokenRepository;
+import com.developer.copilot.auth.repository.PasswordSetupOtpRepository;
 import com.developer.copilot.auth.repository.RefreshTokenRepository;
+import com.developer.copilot.auth.repository.UserIdentityRepository;
 import com.developer.copilot.auth.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -23,24 +25,30 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.developer.copilot.auth.config.AuthProperties;
 import com.developer.copilot.auth.config.ExtensionProperties;
 import com.developer.copilot.auth.dto.AuthResponse;
+import com.developer.copilot.auth.dto.CompleteUsernameRequest;
 import com.developer.copilot.auth.dto.ExtensionAuthResponse;
 import com.developer.copilot.auth.dto.ForgotPasswordRequest;
+import com.developer.copilot.auth.dto.GoogleAuthRequest;
 import com.developer.copilot.auth.dto.LoginRequest;
 import com.developer.copilot.auth.dto.LogoutRequest;
 import com.developer.copilot.auth.dto.RefreshTokenRequest;
 import com.developer.copilot.auth.dto.RegisterRequest;
 import com.developer.copilot.auth.dto.ResendOtpRequest;
 import com.developer.copilot.auth.dto.ResetPasswordRequest;
+import com.developer.copilot.auth.dto.SetupPasswordConfirmRequest;
 import com.developer.copilot.auth.dto.UserResponse;
 import com.developer.copilot.auth.dto.VerifyOtpRequest;
 import com.developer.copilot.auth.entity.EmailVerification;
 import com.developer.copilot.auth.entity.PasswordResetToken;
+import com.developer.copilot.auth.entity.PasswordSetupOtp;
 import com.developer.copilot.auth.entity.RefreshToken;
 import com.developer.copilot.auth.entity.User;
+import com.developer.copilot.auth.enums.IdentityProvider;
 import com.developer.copilot.auth.enums.Role;
 import com.developer.copilot.auth.exception.EmailDeliveryException;
 import com.developer.copilot.auth.exception.InvalidCredentialsException;
@@ -53,6 +61,8 @@ import com.developer.copilot.auth.util.CredentialDigests;
 import com.developer.copilot.auth.util.OtpGenerator;
 import com.developer.copilot.auth.exception.BrowserExtensionAccessDeniedException;
 import com.developer.copilot.auth.exception.InvalidOtpException;
+import com.developer.copilot.auth.exception.OnboardingIncompleteException;
+import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.auth.exception.InvalidPasswordResetTokenException;
 import com.developer.copilot.auth.exception.InvalidRefreshTokenException;
 import com.developer.copilot.auth.exception.OtpExpiredException;
@@ -61,6 +71,9 @@ import com.developer.copilot.auth.exception.PasswordResetTokenUsedException;
 import com.developer.copilot.auth.exception.RefreshTokenExpiredException;
 import com.developer.copilot.auth.exception.RefreshTokenRevokedException;
 import com.developer.copilot.auth.security.AuthClientAuthorities;
+import com.developer.copilot.auth.security.AuthOnboardingAuthorities;
+import com.developer.copilot.auth.service.oauth.GoogleAccountWriter;
+import com.developer.copilot.auth.service.oauth.GoogleOAuth2Service;
 import com.developer.copilot.common.security.CurrentUserService;
 
 @Slf4j
@@ -69,6 +82,8 @@ import com.developer.copilot.common.security.CurrentUserService;
 public class AuthServiceImpl implements AuthService {
 
     static final String INVALID_CREDENTIALS = "Invalid email or password.";
+    static final String USERNAME_TAKEN = "Username is already taken.";
+    static final String USERNAME_ALREADY_SET = "Username is already set.";
 
     /**
      * Real BCrypt hash used only so a missing user still pays the same CPU as a wrong password.
@@ -79,6 +94,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final PasswordEncoder passwordEncoder;
     private final UserRepository userRepository;
+    private final UserIdentityRepository userIdentityRepository;
     private final EmailVerificationRepository emailVerificationRepository;
     private final JwtService jwtService;
     private final EmailService emailService;
@@ -90,6 +106,9 @@ public class AuthServiceImpl implements AuthService {
     private final CurrentUserService currentUserService;
     private final AuthRateLimitService authRateLimitService;
     private final ExtensionProperties extensionProperties;
+    private final GoogleOAuth2Service googleOAuth2Service;
+    private final PasswordSetupOtpRepository passwordSetupOtpRepository;
+    private final TransactionTemplate authTransactionTemplate;
 
     @Value("${app.jwt.secret}")
     private String otpHmacSecret;
@@ -146,10 +165,10 @@ public class AuthServiceImpl implements AuthService {
         }
 
         User user = userRepository.findByEmail(email).orElse(null);
-        if (user == null) {
+        if (user == null || user.getPassword() == null) {
             passwordEncoder.matches(request.getPassword(), DUMMY_PASSWORD_HASH);
             authRateLimitService.recordLoginFailure(email);
-            log.debug("Login failed: unknown email");
+            log.debug("Login failed: unknown email or passwordless account");
             throw new InvalidCredentialsException(INVALID_CREDENTIALS);
         }
 
@@ -169,6 +188,25 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    public AuthResponse googleLogin(GoogleAuthRequest request) {
+        User resolved = googleOAuth2Service.authenticate(request);
+        return authTransactionTemplate.execute(status -> {
+            User user = userRepository.findById(resolved.getId())
+                    .orElseThrow(() -> new InvalidCredentialsException(GoogleAccountWriter.ACCOUNT_DISABLED));
+            return buildAuthResponse(user);
+        });
+    }
+
+    @Override
+    public void linkGoogle(GoogleAuthRequest request) {
+        rejectBrowserExtensionClient();
+        User current = reloadCurrentUser();
+        requireCompletedProfile(current);
+        requireActiveAccount(current);
+        googleOAuth2Service.link(request, current.getId());
+    }
+
+    @Override
     public ExtensionAuthResponse issueExtensionToken() {
         if (extensionProperties == null || !extensionProperties.isEnabled()) {
             throw new BrowserExtensionAccessDeniedException("Browser extension access is disabled.");
@@ -179,6 +217,9 @@ public class AuthServiceImpl implements AuthService {
         }
 
         User user = currentUserService.getCurrentUser();
+        if (user.getUsername() == null) {
+            throw new BrowserExtensionAccessDeniedException(AuthOnboardingAuthorities.INCOMPLETE_MESSAGE);
+        }
         int limit = extensionProperties.getTokenRateLimitPerMinute();
         if (limit > 0) {
             authRateLimitService.consumeOrThrow(
@@ -197,7 +238,10 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public UserResponse me() {
-        return authMapper.toUserResponse(currentUserService.getCurrentUser());
+        User user = currentUserService.getCurrentUser();
+        boolean googleLinked = user.getId() != null
+                && userIdentityRepository.existsByUserIdAndProvider(user.getId(), IdentityProvider.GOOGLE);
+        return authMapper.toUserResponse(user, googleLinked);
     }
 
     @Override
@@ -343,7 +387,106 @@ public class AuthServiceImpl implements AuthService {
         refreshTokenRepository.save(storedToken);
 
         String newAccessToken = jwtService.generateToken(user);
-        return new AuthResponse(newAccessToken, "Bearer", newRefreshTokenValue);
+        return new AuthResponse(newAccessToken, "Bearer", newRefreshTokenValue, user.getUsername() != null);
+    }
+
+    @Override
+    @Transactional
+    public AuthResponse completeUsername(CompleteUsernameRequest request) {
+        rejectBrowserExtensionClient();
+        User user = reloadCurrentUser();
+        authRateLimitService.consumeOrThrow(
+                "complete-username",
+                String.valueOf(user.getId()),
+                authProperties.getCompleteUsernameRateLimitPerMinute(),
+                60);
+        requireActiveAccount(user);
+
+        String username = normalizeUsername(request.getUsername());
+        if (username == null || username.length() < 3 || username.length() > 50) {
+            throw new IllegalArgumentException("username: size must be between 3 and 50");
+        }
+
+        if (user.getUsername() != null) {
+            if (user.getUsername().equals(username)) {
+                return buildAuthResponse(user);
+            }
+            throw new ResourceAlreadyExistsException(USERNAME_ALREADY_SET);
+        }
+        if (userRepository.existsByUsername(username)) {
+            throw new ResourceAlreadyExistsException(USERNAME_TAKEN);
+        }
+
+        user.setUsername(username);
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException ex) {
+            throw new ResourceAlreadyExistsException(USERNAME_TAKEN);
+        }
+        log.info("Username completed for userId={}", user.getId());
+        return buildAuthResponse(user);
+    }
+
+    @Override
+    @Transactional
+    public boolean requestPasswordSetup() {
+        rejectBrowserExtensionClient();
+        User user = reloadCurrentUser();
+        requireCompletedProfile(user);
+        requireActiveAccount(user);
+        authRateLimitService.consumeOrThrow(
+                "setup-password",
+                String.valueOf(user.getId()),
+                authProperties.getSetupPasswordRequestRateLimitPerMinute(),
+                60);
+        if (!authRateLimitService.tryAcquireMail(
+                "setup-password:" + user.getEmail(), authProperties.getMailCooldownSeconds())) {
+            log.debug("Password setup OTP skipped by cooldown for userId={}", user.getId());
+            return false;
+        }
+        issueAndMailPasswordSetupOtp(user);
+        return true;
+    }
+
+    @Override
+    @Transactional
+    public AuthResponse confirmPasswordSetup(SetupPasswordConfirmRequest request) {
+        rejectBrowserExtensionClient();
+        User user = reloadCurrentUser();
+        requireCompletedProfile(user);
+        requireActiveAccount(user);
+        authRateLimitService.consumeOrThrow(
+                "setup-password-confirm",
+                String.valueOf(user.getId()),
+                authProperties.getSetupPasswordConfirmRateLimitPerMinute(),
+                60);
+
+        PasswordSetupOtp otp = passwordSetupOtpRepository.findTopByUserIdOrderByCreatedAtDesc(user.getId())
+                .orElseThrow(() -> new InvalidOtpException("OTP not found."));
+        if (Boolean.TRUE.equals(otp.getUsed())) {
+            throw new InvalidOtpException("OTP already used.");
+        }
+        if (otp.getExpiresAt().isBefore(now())) {
+            throw new OtpExpiredException("OTP has expired.");
+        }
+        int failedAttempts = otp.getFailedAttempts() == null ? 0 : otp.getFailedAttempts();
+        if (failedAttempts >= authProperties.getMaxOtpAttempts()) {
+            throw new InvalidOtpException("OTP not found.");
+        }
+        if (!CredentialDigests.hmacMatches(request.getOtp(), otp.getOtp(), otpHmacSecret)) {
+            otp.setFailedAttempts(failedAttempts + 1);
+            passwordSetupOtpRepository.save(otp);
+            throw new InvalidOtpException("Invalid OTP.");
+        }
+
+        otp.setUsed(true);
+        passwordSetupOtpRepository.save(otp);
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        bumpTokenVersion(user);
+        userRepository.save(user);
+        revokeAllRefreshTokens(user);
+        log.info("Password saved for userId={}", user.getId());
+        return buildAuthResponse(user);
     }
 
     private void issueAndMailOtp(User user) {
@@ -400,7 +543,52 @@ public class AuthServiceImpl implements AuthService {
     private AuthResponse buildAuthResponse(User user) {
         String refreshToken = persistRefreshToken(user, null);
         String accessToken = jwtService.generateToken(user);
-        return new AuthResponse(accessToken, "Bearer", refreshToken);
+        return new AuthResponse(accessToken, "Bearer", refreshToken, user.getUsername() != null);
+    }
+
+    private void issueAndMailPasswordSetupOtp(User user) {
+        String otp = OtpGenerator.generateOtp();
+        passwordSetupOtpRepository.deleteByUserId(user.getId());
+        PasswordSetupOtp verification = new PasswordSetupOtp();
+        verification.setUser(user);
+        verification.setOtp(CredentialDigests.hmacSha256(otp, otpHmacSecret));
+        verification.setExpiresAt(now().plusMinutes(authProperties.getOtpExpiryMinutes()));
+        verification.setUsed(false);
+        verification.setFailedAttempts(0);
+        passwordSetupOtpRepository.save(verification);
+
+        afterCommit(() -> sendMailSafely(() -> emailService.sendPasswordSetupOtpEmail(
+                user.getEmail(),
+                user.getFullName(),
+                otp)));
+    }
+
+    private User reloadCurrentUser() {
+        User current = currentUserService.getCurrentUser();
+        if (current == null || current.getId() == null) {
+            throw new InvalidCredentialsException("User is not authenticated.");
+        }
+        return userRepository.findById(current.getId())
+                .orElseThrow(() -> new InvalidCredentialsException("User is not authenticated."));
+    }
+
+    private void rejectBrowserExtensionClient() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (AuthClientAuthorities.isBrowserExtension(authentication)) {
+            throw new BrowserExtensionAccessDeniedException(AuthClientAuthorities.FORBIDDEN_MESSAGE);
+        }
+    }
+
+    private void requireCompletedProfile(User user) {
+        if (user.getUsername() == null) {
+            throw new OnboardingIncompleteException();
+        }
+    }
+
+    private void requireActiveAccount(User user) {
+        if (!Boolean.TRUE.equals(user.getEnabled()) || !Boolean.TRUE.equals(user.getEmailVerified())) {
+            throw new InvalidCredentialsException(GoogleAccountWriter.ACCOUNT_DISABLED);
+        }
     }
 
     private void revokeAllRefreshTokens(User user) {

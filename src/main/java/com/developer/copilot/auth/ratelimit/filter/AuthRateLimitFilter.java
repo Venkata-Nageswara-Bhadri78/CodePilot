@@ -31,6 +31,11 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
     private static final Set<String> LIMITED_PATHS = Set.of(
             "/api/v1/auth/login",
             "/api/v1/auth/register",
+            "/api/v1/auth/google",
+            "/api/v1/auth/google/link",
+            "/api/v1/auth/complete-username",
+            "/api/v1/auth/setup-password/request",
+            "/api/v1/auth/setup-password/confirm",
             "/api/v1/auth/verify-email",
             "/api/v1/auth/resend-otp",
             "/api/v1/auth/forgot-password",
@@ -91,6 +96,11 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
         return switch (path) {
             case "/api/v1/auth/login" -> authProperties.getLoginRateLimitPerMinute();
             case "/api/v1/auth/register" -> authProperties.getRegisterRateLimitPerMinute();
+            case "/api/v1/auth/google" -> authProperties.getGoogleRateLimitPerMinute();
+            case "/api/v1/auth/google/link" -> authProperties.getGoogleLinkRateLimitPerMinute();
+            case "/api/v1/auth/complete-username" -> authProperties.getCompleteUsernameRateLimitPerMinute();
+            case "/api/v1/auth/setup-password/request" -> authProperties.getSetupPasswordRequestRateLimitPerMinute();
+            case "/api/v1/auth/setup-password/confirm" -> authProperties.getSetupPasswordConfirmRateLimitPerMinute();
             case "/api/v1/auth/verify-email" -> authProperties.getVerifyRateLimitPerMinute();
             case "/api/v1/auth/resend-otp" -> authProperties.getResendRateLimitPerMinute();
             case "/api/v1/auth/forgot-password" -> authProperties.getForgotRateLimitPerMinute();
@@ -104,6 +114,11 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
         return switch (path) {
             case "/api/v1/auth/login" -> "login-ip";
             case "/api/v1/auth/register" -> "register-ip";
+            case "/api/v1/auth/google" -> "google-ip";
+            case "/api/v1/auth/google/link" -> "google-link-ip";
+            case "/api/v1/auth/complete-username" -> "complete-username-ip";
+            case "/api/v1/auth/setup-password/request" -> "setup-password-ip";
+            case "/api/v1/auth/setup-password/confirm" -> "setup-password-confirm-ip";
             case "/api/v1/auth/verify-email" -> "verify-ip";
             case "/api/v1/auth/resend-otp" -> "resend-ip";
             case "/api/v1/auth/forgot-password" -> "forgot-ip";

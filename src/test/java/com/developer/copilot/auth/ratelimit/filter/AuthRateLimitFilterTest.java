@@ -64,6 +64,30 @@ class AuthRateLimitFilterTest {
     }
 
     @Test
+    void google_isLimitedPerIp() throws Exception {
+        AuthProperties properties = new AuthProperties();
+        properties.setGoogleRateLimitPerMinute(2);
+        AuthRateLimitFilter filter = new AuthRateLimitFilter(properties, new AuthRateLimitServiceImpl(properties, null));
+        FilterChain chain = mock(FilterChain.class);
+
+        for (int i = 0; i < 2; i++) {
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/google");
+            request.setRemoteAddr("10.0.0.8");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            filter.doFilterInternal(request, response, chain);
+            assertEquals(200, response.getStatus() == 0 ? 200 : response.getStatus());
+        }
+
+        MockHttpServletRequest blocked = new MockHttpServletRequest("POST", "/api/v1/auth/google");
+        blocked.setRemoteAddr("10.0.0.8");
+        MockHttpServletResponse blockedResponse = new MockHttpServletResponse();
+        filter.doFilterInternal(blocked, blockedResponse, chain);
+
+        assertEquals(429, blockedResponse.getStatus());
+        verify(chain, times(2)).doFilter(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void otherPaths_areNotLimited() throws Exception {
         AuthProperties properties = new AuthProperties();
         AuthRateLimitFilter filter = new AuthRateLimitFilter(properties, new AuthRateLimitServiceImpl(properties, null));

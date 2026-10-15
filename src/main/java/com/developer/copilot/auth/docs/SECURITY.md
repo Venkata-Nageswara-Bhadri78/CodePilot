@@ -9,7 +9,7 @@ Two credentials, plus a restricted variant of the access JWT:
 1. **Access JWT** — short-lived HS256 token in `Authorization: Bearer`. Default lifetime `app.auth.access-expiry-ms` = 900_000 ms (15 minutes). `JwtService` does **not** read `app.jwt.expiration` even if that property appears in a local file. Web tokens omit `cid`. Extension tokens (`POST /api/v1/auth/extension-token`) add `cid=browser-extension` and use `app.extension.access-expiry-ms`; they have **no** refresh UUID.
 2. **Refresh UUID** — opaque token returned at login/refresh. Stored as SHA-256. Sent in JSON, not as a Bearer JWT. Default lifetime 30 days.
 
-Login is a custom BCrypt comparison in `AuthServiceImpl`, not Spring form login and not `AuthenticationManager`.
+Login is a custom BCrypt comparison in `AuthServiceImpl`, not Spring form login and not `AuthenticationManager`. A null password hash uses a dummy BCrypt compare and the same generic 401. Google sign-in verifies an ID token with Google's certificates and then issues the same application access JWT and refresh UUID. A Google ID token is never accepted as `Authorization: Bearer`.
 
 ## How a request is authenticated
 
@@ -26,8 +26,11 @@ flowchart TD
     F -->|yes| G[SecurityContext CustomUserDetails]
     G --> G2{cid is browser-extension?}
     G2 -->|yes| G3[Add CLIENT_BROWSER_EXTENSION]
-    G2 -->|no| H{Authorization}
-    G3 --> H
+    G2 -->|no| G4{username is null?}
+    G3 --> G4
+    G4 -->|yes| G5[Add ONBOARDING_INCOMPLETE]
+    G4 -->|no| H{Authorization}
+    G5 --> H
     D --> H
     H -->|path permitAll| I[Controller]
     H -->|job-extraction and authenticated| I
@@ -46,16 +49,17 @@ The filter requires **both** `enabled` and `emailVerified`. A token issued befor
 
 `SecurityConfig`:
 
-- **Permit all:** `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/verify-email`, `/api/v1/auth/resend-otp`, `/api/v1/auth/forgot-password`, `/api/v1/auth/reset-password`, `/api/v1/auth/refresh-token`, `/error`.
+- **Permit all:** `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/google`, `/api/v1/auth/verify-email`, `/api/v1/auth/resend-otp`, `/api/v1/auth/forgot-password`, `/api/v1/auth/reset-password`, `/api/v1/auth/refresh-token`, `/error`.
 - **Swagger paths:** permit all unless active profile is `prod` or `production`.
-- **Job extraction:** `/api/v1/job-extraction/**` and `/api/v1/automated-job-extraction/**` — any authenticated user (web frontend **or** browser-extension JWT).
-- **Everything else:** authenticated **and not** `CLIENT_BROWSER_EXTENSION`. Browser-extension JWTs receive `403` `"This client is not authorized to access this resource."`
+- **Onboarding-allowed web routes:** `GET /api/v1/auth/me`, `POST /logout`, `POST /logout-all`, `POST /complete-username`. Extension JWTs are still denied. A missing username is allowed.
+- **Job extraction and `GET /api/v1/users/resumes`:** authenticated web **or** extension JWT, and **not** `ONBOARDING_INCOMPLETE`.
+- **Everything else:** authenticated web JWT **and not** `ONBOARDING_INCOMPLETE`. Browser-extension JWTs receive `403` `"This client is not authorized to access this resource."` Incomplete users receive `403` `"Complete your username to continue."`
 
 Auth controllers do not use `@PreAuthorize` or `hasRole`. `Role.USER` and `Role.ADMIN` are stored, copied into the JWT `role` claim, and exposed as `ROLE_USER` / `ROLE_ADMIN` on `CustomUserDetails`. The extension restriction is a **client** authority (`CLIENT_BROWSER_EXTENSION`) copied from the signed JWT `cid` claim, not from request headers.
 
 `/logout` additionally checks that the refresh token’s user id equals the JWT user.
 
-`POST /api/v1/auth/extension-token` mints the restricted JWT. It requires a web-frontend access token. Extension tokens cannot mint another extension token.
+`POST /api/v1/auth/extension-token` mints the restricted JWT. It requires a web-frontend access token for a user who already has a username. Extension tokens cannot mint another extension token. `ONBOARDING_INCOMPLETE` comes from the live user row on each request, not from a JWT claim, so saving a username takes effect without trusting the client.
 
 ## Session and CSRF
 
@@ -71,7 +75,8 @@ When `app.extension.id` is set, `chrome-extension://<id>` is added to that list.
 
 | Secret / credential | Handling |
 | --- | --- |
-| Account password | BCrypt (`BCryptPasswordEncoder`). Never returned in `UserResponse`. |
+| Account password | BCrypt (`BCryptPasswordEncoder`). Never returned in `UserResponse`. Null until a Google user sets one. |
+| Google ID token | Verified and discarded. Not stored, not logged, not used as an API credential. Audience must be in `app.google.client-ids`. |
 | Access JWT signing key | `app.jwt.secret`, min 32 characters. Placeholder strings containing `enter-your-jwt` / `your-jwt-configuration` or `changeme` refuse to boot. |
 | OTP | HMAC-SHA256 using the **same** `app.jwt.secret`. Compared with `MessageDigest.isEqual`. |
 | Refresh UUID / reset UUID | SHA-256 hex in the database. Raw values exist only in API/email responses. |
@@ -107,7 +112,8 @@ See [RATE-LIMITING.md](AUTH-SERVICE-SPECIFIC-DOCS/RATE-LIMITING.md).
 
 - Register: same 201 whether the account is new or already present.
 - Login: same 401 message for unknown, wrong password, unverified, disabled, lockout.
-- Dummy BCrypt when the user is missing or lockout is active.
+- Dummy BCrypt when the user is missing, the password hash is null, or lockout is active.
+- Public Google sign-in does not attach a verified email to an existing password account. Linking requires a live web session plus a verified Google ID token whose email equals that account, at `POST /api/v1/auth/google/link`.
 - Resend OTP / forgot password: generic 200.
 - OTP lockout message `"OTP not found."` after max attempts.
 
@@ -117,6 +123,9 @@ See [RATE-LIMITING.md](AUTH-SERVICE-SPECIFIC-DOCS/RATE-LIMITING.md).
 | --- | --- |
 | Protected route, no/invalid JWT | `401` `"Unauthorized."` |
 | Login failure | `401` `"Invalid email or password."` |
+| Invalid Google ID token | `401` `"Invalid Google token."` |
+| Linked Google account disabled or unverified | `401` `"This account is disabled."` |
+| Web user without a username on a protected API | `403` `"Complete your username to continue."` |
 | Bad refresh | `401` with refresh-specific messages |
 | `CurrentUserService` without `CustomUserDetails` | `401` `"User is not authenticated."` |
 | Browser-extension JWT on a non-job-extraction route | `403` `"This client is not authorized to access this resource."` |

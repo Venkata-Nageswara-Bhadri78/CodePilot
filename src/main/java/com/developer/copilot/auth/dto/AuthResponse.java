@@ -18,4 +18,8 @@ public class AuthResponse {
 
     @Schema(description = "Opaque refresh UUID, not a JWT", example = "f47ac10b-58cc-4372-a567-0e02b2c3d479")
     private String refreshToken;
+
+    @Schema(description = "False until the account has a username. Incomplete Google users must call complete-username before other APIs.",
+            example = "true")
+    private boolean onboardingComplete;
 }

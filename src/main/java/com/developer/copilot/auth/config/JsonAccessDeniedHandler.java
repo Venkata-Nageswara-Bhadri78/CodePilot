@@ -13,6 +13,7 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
 
 import com.developer.copilot.auth.security.AuthClientAuthorities;
+import com.developer.copilot.auth.security.AuthOnboardingAuthorities;
 import com.developer.copilot.common.dto.ApiResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -43,14 +44,21 @@ public class JsonAccessDeniedHandler implements AccessDeniedHandler {
             AccessDeniedException accessDeniedException) throws IOException {
 
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        boolean onboardingIncomplete = AuthOnboardingAuthorities.isIncomplete(authentication);
         if (AuthClientAuthorities.isBrowserExtension(authentication)) {
             log.warn(
                     "Denied browser-extension client {} {}",
                     request.getMethod(),
                     request.getRequestURI());
+        } else if (onboardingIncomplete) {
+            log.warn("Denied onboarding-incomplete user {} {}", request.getMethod(), request.getRequestURI());
         } else {
             log.warn("Denied {} {}", request.getMethod(), request.getRequestURI());
         }
+
+        String message = onboardingIncomplete
+                ? AuthOnboardingAuthorities.INCOMPLETE_MESSAGE
+                : AuthClientAuthorities.FORBIDDEN_MESSAGE;
 
         response.setStatus(HttpStatus.FORBIDDEN.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -58,7 +66,7 @@ public class JsonAccessDeniedHandler implements AccessDeniedHandler {
                 response.getOutputStream(),
                 ApiResponse.<Void>builder()
                         .success(false)
-                        .message(AuthClientAuthorities.FORBIDDEN_MESSAGE)
+                        .message(message)
                         .timestamp(LocalDateTime.now())
                         .build());
     }

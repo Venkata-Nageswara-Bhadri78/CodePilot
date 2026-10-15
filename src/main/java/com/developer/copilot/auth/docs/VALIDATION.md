@@ -33,6 +33,10 @@ Login `password` is only `@NotBlank` and `@Size(max = 72)` so a stored password 
 | `ResetPasswordRequest` | `token` | `@NotBlank` `@Size(max = 128)` |
 | | `newPassword` | `@ValidPassword` |
 | `RefreshTokenRequest` / `LogoutRequest` | `refreshToken` | `@NotBlank` `@Size(max = 128)` |
+| `GoogleAuthRequest` | `idToken` | `@NotBlank` `@Size(max = 4096)` |
+| `CompleteUsernameRequest` | `username` | `@NotBlank` `@Size(3, 50)` |
+| `SetupPasswordConfirmRequest` | `otp` | `@NotBlank` `@Pattern("^\\d{6}$")` |
+| | `newPassword` | `@ValidPassword` |
 
 There are no query/path variables on auth routes.
 
@@ -54,7 +58,10 @@ If username is null or not in `[3, 50]` after normalize, the service throws `Ill
 
 | Rule | Where | Failure |
 | --- | --- | --- |
-| Username/email must be unused to **create** a row | `register` | No exception; method returns; controller still 201 |
+| Username/email must be unused to **create** a password account | `register` | No exception; method returns; controller still 201 |
+| Google email already on `users` without this subject | `googleLogin` | `409` visible message. No silent link |
+| Username unique on completion | `completeUsername` | `409` `"Username is already taken."` (visible, unlike register) |
+| Username already saved | `completeUsername` | Same normalized value: 200. Different value: `409` `"Username is already set."` |
 | Unique constraint race | `register` save | Caught; same silent return |
 | Latest OTP must exist | `verifyOtp` | `InvalidOtpException` `"OTP not found."` |
 | OTP not already verified | | `"OTP already used."` |

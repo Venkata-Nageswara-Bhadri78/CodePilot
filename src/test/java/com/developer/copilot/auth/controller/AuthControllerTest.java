@@ -100,7 +100,7 @@ class AuthControllerTest {
 
     @Test
     void login_success_returns200WithTokens() throws Exception {
-        when(authService.login(any())).thenReturn(new AuthResponse("access-token", "Bearer", "refresh-token"));
+        when(authService.login(any())).thenReturn(new AuthResponse("access-token", "Bearer", "refresh-token", true));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -113,7 +113,36 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accessToken").value("access-token"))
                 .andExpect(jsonPath("$.data.refreshToken").value("refresh-token"))
-                .andExpect(jsonPath("$.data.tokenType").value("Bearer"));
+                .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.data.onboardingComplete").value(true));
+    }
+
+    @Test
+    void googleLogin_incomplete_returnsUsernameMessage() throws Exception {
+        when(authService.googleLogin(any())).thenReturn(new AuthResponse("access-token", "Bearer", "refresh-token", false));
+
+        mockMvc.perform(post("/api/v1/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "idToken": "google-id-token"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Complete your username to continue."))
+                .andExpect(jsonPath("$.data.onboardingComplete").value(false));
+    }
+
+    @Test
+    void googleLogin_blankToken_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "idToken": ""
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

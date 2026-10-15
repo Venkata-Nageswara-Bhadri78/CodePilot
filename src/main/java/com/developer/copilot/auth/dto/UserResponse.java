@@ -29,4 +29,12 @@ public class UserResponse {
 
     @Schema(description = "Role copied from the account", example = "USER", accessMode = Schema.AccessMode.READ_ONLY)
     private Role role;
+
+    @Schema(description = "True when the account has a password and can also use email/password login.",
+            example = "true", accessMode = Schema.AccessMode.READ_ONLY)
+    private boolean passwordConfigured;
+
+    @Schema(description = "True when a Google identity is linked to this account.",
+            example = "false", accessMode = Schema.AccessMode.READ_ONLY)
+    private boolean googleLinked;
 }

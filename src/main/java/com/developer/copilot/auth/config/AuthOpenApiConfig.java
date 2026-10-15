@@ -32,7 +32,8 @@ public class AuthOpenApiConfig {
         }
         openApi.addTagsItem(new Tag()
                 .name("Authentication")
-                .description("Use this group for identity. Register → verify-email → login, then Authorize with the access JWT. "
-                        + "Refresh-token is public and takes the UUID from login, not the JWT."));
+                .description("Use this group for identity. Register → verify-email → login, or POST /google then "
+                        + "complete-username when needed. Authorize with the access JWT. "
+                        + "Refresh-token is public and takes the UUID from login, not the Google ID token."));
     }
 }

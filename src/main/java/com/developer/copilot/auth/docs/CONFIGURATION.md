@@ -32,6 +32,11 @@ Project-wide MySQL is included because auth tables live in that database. MinIO,
 | `verify-rate-limit-per-minute` | 10 | Per-IP and per-email |
 | `resend-rate-limit-per-minute` | 3 | Per-IP and per-email |
 | `forgot-rate-limit-per-minute` | 3 | Per-IP and per-email |
+| `google-rate-limit-per-minute` | 5 | Per-IP (`google-ip`) and per verified email (`google-email`) on `POST /google` |
+| `google-link-rate-limit-per-minute` | 5 | Per-IP (`google-link-ip`) and per user (`google-link`) on `POST /google/link` |
+| `complete-username-rate-limit-per-minute` | 10 | Per-IP and per user on `POST /complete-username` |
+| `setup-password-request-rate-limit-per-minute` | 3 | Per-IP and per user on `POST /setup-password/request` |
+| `setup-password-confirm-rate-limit-per-minute` | 10 | Per-IP and per user on `POST /setup-password/confirm` |
 | `refresh-rate-limit-per-minute` | 10 | Per-IP only |
 | `max-failed-logins` | 10 | Lockout threshold. `<= 0` disables lockout |
 | `failed-login-window-minutes` | 15 | Failure window |
@@ -76,7 +81,18 @@ See [REDIS-INFRASTRUCTURE.md](REDIS-INFRASTRUCTURE.md).
 | `spring.mail.properties.mail.smtp.starttls.enable` | Example `true` |
 | `spring.mail.properties.mail.smtp.connectiontimeout` / `timeout` / `writetimeout` | Example `5000` ms |
 
-Templates: `src/main/resources/templates/otp-email.html`, `password-reset.html`.
+Templates: `src/main/resources/templates/otp-email.html`, `password-setup-otp.html`, `password-reset.html`.
+
+## Google sign-in (`app.google`)
+
+ID-token verification does **not** use a client secret. Production (`prod` / `production`) refuses to boot when `client-ids` is empty or still a placeholder (`your-google`, `changeme`, `placeholder`, or `<`).
+
+| Property | Default | Purpose |
+| --- | --- | --- |
+| `app.google.client-ids` | empty | Comma-separated GIS **web** client IDs. The ID token `aud` must match one. Example placeholder: `<your-google-oauth-web-client-id>`. |
+| `app.google.hosted-domain` | empty | Optional Workspace `hd` allowlist. Blank disables the check. |
+
+Local authorized JavaScript origin for the GIS button: `http://localhost:5173`. Scopes are `openid`, `email`, and `profile` only. The button runs in the browser; this service only receives the ID token.
 
 ## CORS (`cors`)
 

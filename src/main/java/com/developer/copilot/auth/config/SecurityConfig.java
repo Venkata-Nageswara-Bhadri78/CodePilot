@@ -28,6 +28,7 @@ import com.developer.copilot.auth.jwt.JwtAuthenticationFilter;
 import com.developer.copilot.auth.ratelimit.config.AuthRateLimitConfig;
 import com.developer.copilot.auth.ratelimit.filter.AuthRateLimitFilter;
 import com.developer.copilot.auth.security.AuthClientAuthorities;
+import com.developer.copilot.auth.security.AuthOnboardingAuthorities;
 
 import lombok.RequiredArgsConstructor;
 
@@ -76,6 +77,7 @@ public class SecurityConfig {
             auth.requestMatchers(
                 "/api/v1/auth/register",
                 "/api/v1/auth/login",
+                "/api/v1/auth/google",
                 "/api/v1/auth/verify-email",
                 "/api/v1/auth/resend-otp",
                 "/api/v1/auth/forgot-password",
@@ -83,14 +85,21 @@ public class SecurityConfig {
                 "/api/v1/auth/refresh-token",
                 "/error"
             ).permitAll()
+            .requestMatchers(HttpMethod.GET, "/api/v1/auth/me").access(webFrontendOnly())
+            .requestMatchers(
+                    HttpMethod.POST,
+                    "/api/v1/auth/logout",
+                    "/api/v1/auth/logout-all",
+                    "/api/v1/auth/complete-username")
+            .access(webFrontendOnly())
             .requestMatchers(
                     HttpMethod.POST,
                     "/api/v1/job-extraction/parse",
                     "/api/v1/automated-job-extraction/parse")
-            .authenticated()
-            .requestMatchers(JOB_EXTRACTION_PATHS).authenticated()
-            .requestMatchers(HttpMethod.GET, "/api/v1/users/resumes").authenticated()
-            .anyRequest().access(webFrontendOnly());
+            .access(authenticatedNotOnboarding())
+            .requestMatchers(JOB_EXTRACTION_PATHS).access(authenticatedNotOnboarding())
+            .requestMatchers(HttpMethod.GET, "/api/v1/users/resumes").access(authenticatedNotOnboarding())
+            .anyRequest().access(webFrontendComplete());
         })
         .addFilterBefore(authRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
         .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
@@ -133,13 +142,34 @@ public class SecurityConfig {
 
     /**
      * Web frontend tokens (no {@code CLIENT_BROWSER_EXTENSION} authority) keep existing access.
-     * Extension tokens may use the job-extraction matchers and {@code GET /api/v1/users/resumes}
-     * only. Every other authenticated route stays closed to that client.
+     * Incomplete Google users are allowed here so they can finish username setup or sign out.
      */
     private static AuthorizationManager<RequestAuthorizationContext> webFrontendOnly() {
         return AuthorizationManagers.allOf(
                 AuthenticatedAuthorizationManager.authenticated(),
                 AuthorizationManagers.not(
                         AuthorityAuthorizationManager.hasAuthority(AuthClientAuthorities.BROWSER_EXTENSION)));
+    }
+
+    /**
+     * Job extraction and resume list stay open to complete web and extension clients.
+     * {@code ONBOARDING_INCOMPLETE} is denied even when the caller is otherwise authenticated.
+     */
+    private static AuthorizationManager<RequestAuthorizationContext> authenticatedNotOnboarding() {
+        return AuthorizationManagers.allOf(
+                AuthenticatedAuthorizationManager.authenticated(),
+                AuthorizationManagers.not(
+                        AuthorityAuthorizationManager.hasAuthority(AuthOnboardingAuthorities.INCOMPLETE)));
+    }
+
+    /**
+     * Every other route requires a complete web session. Extension tokens and users who
+     * still need a username are denied.
+     */
+    private static AuthorizationManager<RequestAuthorizationContext> webFrontendComplete() {
+        return AuthorizationManagers.allOf(
+                webFrontendOnly(),
+                AuthorizationManagers.not(
+                        AuthorityAuthorizationManager.hasAuthority(AuthOnboardingAuthorities.INCOMPLETE)));
     }
 }

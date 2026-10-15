@@ -38,7 +38,9 @@ flowchart TD
 
 | Exception | Typical HTTP | Message as thrown by auth |
 | --- | --- | --- |
-| `InvalidCredentialsException` | 401 | `"Invalid email or password."` (login). `"User is not authenticated."` (`CurrentUserService`) |
+| `InvalidCredentialsException` | 401 | `"Invalid email or password."` (login). `"This account is disabled."` (linked Google account, or password setup on a disabled user). `"User is not authenticated."` (`CurrentUserService`) |
+| `InvalidGoogleTokenException` | 401 | `"Invalid Google token."` |
+| `OnboardingIncompleteException` | 403 | `"Complete your username to continue."` |
 | `InvalidOtpException` | 400 | `"OTP not found."` / `"OTP already used."` / `"Invalid OTP."` |
 | `OtpExpiredException` | 400 | `"OTP has expired."` |
 | `InvalidPasswordResetTokenException` | 400 | `"Invalid password reset token."` |
@@ -48,14 +50,14 @@ flowchart TD
 | `RefreshTokenExpiredException` | 401 | `"Refresh token has expired."` |
 | `RefreshTokenRevokedException` | 401 | `"Refresh token has been revoked."` |
 | `RateLimitExceededException` | 429 | `"Too many requests. Please try again later."` |
-| `BrowserExtensionAccessDeniedException` | 403 | `"This client is not authorized to access this resource."` or `"Browser extension access is disabled."` |
+| `BrowserExtensionAccessDeniedException` | 403 | `"This client is not authorized to access this resource."`, `"Browser extension access is disabled."`, or `"Complete your username to continue."` when extension-token minting sees a null username |
 | `EmailDeliveryException` | 503 | Handler message `"Unable to send email. Please try again later."` (not the internal cause) |
 
 `EmailDeliveryException` is thrown by `EmailServiceImpl` on SMTP/template failure. Register/resend/forgot wrap send in `sendMailSafely`, which **catches** this exception and logs it. Those flows therefore usually still return success after a mail failure. The `503` mapping applies if the exception escapes (for example a future caller that does not use `sendMailSafely`).
 
 ## `ResourceAlreadyExistsException`
 
-Mapped to `409` with `ex.getMessage()`. **AuthServiceImpl does not throw it.** Duplicates on register are silent 201. The type remains in the auth package and in the global handler.
+Mapped to `409` with `ex.getMessage()`. Register still hides duplicates (201). Google sign-in throws `"An account with this email already exists. Sign in with your email and password."` when the email is already registered without this Google subject. `complete-username` throws `"Username is already taken."` or `"Username is already set."` A unique-constraint race on username is translated to the taken message. The filter's onboarding denial is not this exception; `JsonAccessDeniedHandler` writes `"Complete your username to continue."` when the authentication has `ONBOARDING_INCOMPLETE`.
 
 ## Validation and request-shape errors
 

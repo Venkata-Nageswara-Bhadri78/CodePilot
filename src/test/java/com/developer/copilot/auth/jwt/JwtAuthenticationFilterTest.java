@@ -30,6 +30,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.developer.copilot.auth.security.AuthClientAuthorities;
+import com.developer.copilot.auth.security.AuthOnboardingAuthorities;
 
 @ExtendWith(MockitoExtension.class)
 class JwtAuthenticationFilterTest {
@@ -95,6 +96,23 @@ class JwtAuthenticationFilterTest {
 
         assertNotNull(SecurityContextHolder.getContext().getAuthentication());
         assertTrue(AuthClientAuthorities.isBrowserExtension(SecurityContextHolder.getContext().getAuthentication()));
+        verify(filterChain).doFilter(request, response);
+    }
+
+    @Test
+    void doFilterInternal_missingUsername_addsOnboardingAuthority() throws Exception {
+        user.setUsername(null);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer valid-token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        when(jwtService.extractUserId("valid-token")).thenReturn(1L);
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(jwtService.isTokenValid("valid-token", user)).thenReturn(true);
+
+        jwtAuthenticationFilter.doFilterInternal(request, response, filterChain);
+
+        assertTrue(AuthOnboardingAuthorities.isIncomplete(SecurityContextHolder.getContext().getAuthentication()));
         verify(filterChain).doFilter(request, response);
     }
 

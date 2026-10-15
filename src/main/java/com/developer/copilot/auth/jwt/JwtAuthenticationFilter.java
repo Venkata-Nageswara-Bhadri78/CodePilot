@@ -17,6 +17,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import com.developer.copilot.auth.entity.User;
 import com.developer.copilot.auth.repository.UserRepository;
 import com.developer.copilot.auth.security.AuthClientAuthorities;
+import com.developer.copilot.auth.security.AuthOnboardingAuthorities;
 import com.developer.copilot.auth.security.CustomUserDetails;
 
 import io.jsonwebtoken.JwtException;
@@ -66,6 +67,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     if (jwtService.isBrowserExtensionClient(jwt)) {
                         authorities.add(new SimpleGrantedAuthority(AuthClientAuthorities.BROWSER_EXTENSION));
                         log.debug("Authenticated browser-extension client for userId={}", userId);
+                    }
+                    if (user.getUsername() == null) {
+                        authorities.add(new SimpleGrantedAuthority(AuthOnboardingAuthorities.INCOMPLETE));
+                        log.debug("Authenticated onboarding-incomplete userId={}", userId);
                     }
 
                     UsernamePasswordAuthenticationToken authToken =
