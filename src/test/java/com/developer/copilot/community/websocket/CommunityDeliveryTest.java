@@ -5,12 +5,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -26,12 +28,15 @@ class CommunityDeliveryTest {
 
     @Mock
     private SimpMessagingTemplate messagingTemplate;
+    @Mock
+    private ObjectProvider<SimpMessagingTemplate> messagingTemplateProvider;
 
     private final CommunitySubscriptionRegistry subscriptions = new CommunitySubscriptionRegistry();
 
     @Test
     void persistedMessage_isBroadcastWithItsServerId() {
-        CommunityMessageBroadcast broadcast = new CommunityMessageBroadcast(messagingTemplate);
+        when(messagingTemplateProvider.getIfAvailable()).thenReturn(messagingTemplate);
+        CommunityMessageBroadcast broadcast = new CommunityMessageBroadcast(messagingTemplateProvider);
         CommunityMessageResponse saved = CommunityMessageResponse.builder().id(42L).communityId(10L).content("Hi").build();
 
         broadcast.onPersisted(new CommunityMessagePersisted(saved));
@@ -45,7 +50,8 @@ class CommunityDeliveryTest {
 
     @Test
     void unsavedMessage_isNotBroadcast() {
-        CommunityMessageBroadcast broadcast = new CommunityMessageBroadcast(messagingTemplate);
+        when(messagingTemplateProvider.getIfAvailable()).thenReturn(messagingTemplate);
+        CommunityMessageBroadcast broadcast = new CommunityMessageBroadcast(messagingTemplateProvider);
         broadcast.onPersisted(new CommunityMessagePersisted(CommunityMessageResponse.builder().build()));
         verifyNoInteractions(messagingTemplate);
     }

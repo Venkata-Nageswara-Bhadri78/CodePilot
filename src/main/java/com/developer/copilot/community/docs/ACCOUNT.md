@@ -1,8 +1,6 @@
 # Community account and terms
 
-Consent is the only community HTTP API in this slice. Creating or joining a group is not available yet.
-
-The signed-in user is taken from the JWT through `CurrentUserService`. The request body cannot name the account owner.
+The signed-in user is taken from the JWT through `CurrentUserService`. The request body cannot name the account owner. Creating a community, joining one, reading history, and the live socket all require a current account. This route only records consent.
 
 ## Routes
 

@@ -1,5 +1,6 @@
 package com.developer.copilot.community.websocket;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
@@ -16,14 +17,15 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class CommunityMessageBroadcast {
 
-    private final SimpMessagingTemplate messagingTemplate;
+    private final ObjectProvider<SimpMessagingTemplate> messagingTemplate;
 
     @EventListener
     public void onPersisted(CommunityMessagePersisted event) {
         CommunityMessageResponse message = event.message();
-        if (message == null || message.getCommunityId() == null || message.getId() == null) {
+        SimpMessagingTemplate template = messagingTemplate.getIfAvailable();
+        if (template == null || message == null || message.getCommunityId() == null || message.getId() == null) {
             return;
         }
-        messagingTemplate.convertAndSend(CommunityStompDestinations.messagesTopic(message.getCommunityId()), message);
+        template.convertAndSend(CommunityStompDestinations.messagesTopic(message.getCommunityId()), message);
     }
 }

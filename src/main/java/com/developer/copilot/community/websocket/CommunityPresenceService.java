@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.user.SimpSession;
@@ -36,7 +37,7 @@ public class CommunityPresenceService {
     private final CommunityPresenceTracker tracker;
     private final CommunitySubscriptionRegistry subscriptions;
     private final CommunityMembershipRepository communityMembershipRepository;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final ObjectProvider<SimpMessagingTemplate> messagingTemplate;
     private final ObjectProvider<SimpUserRegistry> simpUserRegistry;
     private final CommunityWebSocketProperties communityWebSocketProperties;
 
@@ -91,10 +92,11 @@ public class CommunityPresenceService {
     }
 
     public void sendToUser(Authentication authentication, String queue, Object payload) {
-        if (authentication == null || authentication.getName() == null) {
+        SimpMessagingTemplate template = messagingTemplate.getIfAvailable();
+        if (authentication == null || authentication.getName() == null || template == null) {
             return;
         }
-        messagingTemplate.convertAndSendToUser(authentication.getName(), queue, payload);
+        template.convertAndSendToUser(authentication.getName(), queue, payload);
     }
 
     public void sendError(Authentication authentication, CommunitySocketError error) {
@@ -151,7 +153,11 @@ public class CommunityPresenceService {
     }
 
     private void publish(long communityId, CommunityPresenceTracker.Person person, String status) {
-        messagingTemplate.convertAndSend(
+        SimpMessagingTemplate template = messagingTemplate.getIfAvailable();
+        if (template == null) {
+            return;
+        }
+        template.convertAndSend(
                 CommunityStompDestinations.presenceTopic(communityId),
                 CommunityPresenceEvent.builder()
                         .communityId(communityId)

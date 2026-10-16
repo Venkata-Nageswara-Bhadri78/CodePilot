@@ -42,6 +42,8 @@ class CommunityPresenceServiceTest {
     @Mock
     private SimpMessagingTemplate messagingTemplate;
     @Mock
+    private ObjectProvider<SimpMessagingTemplate> messagingTemplateProvider;
+    @Mock
     private ObjectProvider<SimpUserRegistry> simpUserRegistry;
     @Mock
     private SimpUserRegistry registry;
@@ -61,7 +63,7 @@ class CommunityPresenceServiceTest {
                 tracker,
                 subscriptions,
                 communityMembershipRepository,
-                messagingTemplate,
+                messagingTemplateProvider,
                 simpUserRegistry,
                 new CommunityWebSocketProperties());
         user = new User();
@@ -75,6 +77,7 @@ class CommunityPresenceServiceTest {
         membership.setCommunity(community);
         membership.setUser(user);
         membership.setMembershipStatus(MembershipStatus.ACTIVE);
+        lenient().when(messagingTemplateProvider.getIfAvailable()).thenReturn(messagingTemplate);
         lenient().when(communityMembershipRepository.findByUserIdAndMembershipStatusOrderByJoinedAtDescIdDesc(
                 7L, MembershipStatus.ACTIVE)).thenReturn(List.of(membership));
     }

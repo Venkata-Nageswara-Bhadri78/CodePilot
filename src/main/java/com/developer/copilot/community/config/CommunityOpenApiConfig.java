@@ -47,6 +47,7 @@ public class CommunityOpenApiConfig {
                         + "GET /api/v1/community/memberships lists communities the caller belongs to. "
                         + "GET /api/v1/community/{communityId} and /members require an active membership. "
                         + "POST /join and /leave change only that caller's membership. "
-                        + "GET /api/v1/community/{communityId}/messages returns one page of text history for an active member."));
+                        + "GET /api/v1/community/{communityId}/messages returns one page of text history for an active member. "
+                        + "Live send is STOMP at /ws/community, not a REST route."));
     }
 }

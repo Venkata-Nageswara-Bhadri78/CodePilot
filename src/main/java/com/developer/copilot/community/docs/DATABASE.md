@@ -2,7 +2,7 @@
 
 Community data lives in MySQL, mapped by JPA, under `com.developer.copilot.community`. The application still updates the schema with `spring.jpa.hibernate.ddl-auto` (typically `update`). This module does not add Flyway or Liquibase.
 
-Consent, posting match, community creation, explicit join/leave, text history, and live STOMP delivery are implemented. Presence is in memory for this process. History routes are in `documentation/subscription2/community/prompts/task5/endpoints.md`. The socket contract is in `documentation/subscription2/community/prompts/task6/endpoints.md`.
+Consent, posting match, community creation, explicit join/leave, text history, and live STOMP delivery are implemented. Presence is in memory for this process. The integrated contract is in this folder: [ARCHITECTURE.md](ARCHITECTURE.md), [ENDPOINTS.md](ENDPOINTS.md), [WEBSOCKET.md](WEBSOCKET.md), and [FRONTEND.md](FRONTEND.md).
 
 ## Responsibilities
 

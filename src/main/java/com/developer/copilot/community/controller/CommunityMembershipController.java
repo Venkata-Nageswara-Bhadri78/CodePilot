@@ -24,10 +24,12 @@ import com.developer.copilot.community.service.CommunityMessages;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Positive;
-import lombok.RequiredArgsConstructor;
 
 @Tag(name = "Community",
         description = "List, inspect, join, and leave communities the signed-in user may access. "
@@ -35,15 +37,25 @@ import lombok.RequiredArgsConstructor;
 @Validated
 @RestController
 @RequestMapping("/api/v1/community")
-@RequiredArgsConstructor
 @SecurityRequirement(name = "Bearer Authentication")
 public class CommunityMembershipController {
 
     private final CommunityMembershipService communityMembershipService;
 
+    public CommunityMembershipController(CommunityMembershipService communityMembershipService) {
+        this.communityMembershipService = communityMembershipService;
+    }
+
     @Operation(summary = "List communities the current user belongs to",
             description = "Requires a current community account. Returns only communities where this user is an active member. "
                     + "It is not a directory of every community.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Communities the caller belongs to"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Community account, terms, extension client, or incomplete username",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @GetMapping("/memberships")
     public ResponseEntity<ApiResponse<CommunityListResponse>> listMine() {
         return ResponseEntity.ok(envelope(CommunityMessages.LISTED, communityMembershipService.listMine()));
@@ -52,6 +64,17 @@ public class CommunityMembershipController {
     @Operation(summary = "Read a community the current user belongs to",
             description = "Requires an active membership. Returns the shared header only: name, title, company, location, "
                     + "description, and the active member count. A departed member receives membership required.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Shared community header"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Community id is not a positive number",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Account, terms, or active membership required",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Community is not available",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @GetMapping("/{communityId}")
     public ResponseEntity<ApiResponse<CommunitySummaryResponse>> details(
             @Parameter(description = "Community id returned by resolve or create.", example = "10")
@@ -62,6 +85,15 @@ public class CommunityMembershipController {
     @Operation(summary = "List active members",
             description = "Requires an active membership. Each person is user id, username, and full name. "
                     + "Email is not returned. People who have left are omitted.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Active members and count"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Account, terms, or active membership required",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Community is not available",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @GetMapping("/{communityId}/members")
     public ResponseEntity<ApiResponse<CommunityMembersResponse>> members(
             @PathVariable("communityId") @Positive(message = CommunityMessages.INVALID_COMMUNITY_ID) Long communityId) {
@@ -71,6 +103,15 @@ public class CommunityMembershipController {
     @Operation(summary = "Read the current user's membership",
             description = "Requires a current community account. Does not require membership. "
                     + "Does not return the member list or the shared description.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Caller membership. NOT_A_MEMBER is success."),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Community account or terms required",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Community is not available",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @GetMapping("/{communityId}/membership")
     public ResponseEntity<ApiResponse<CommunityMembershipResponse>> status(
             @PathVariable("communityId") @Positive(message = CommunityMessages.INVALID_COMMUNITY_ID) Long communityId) {
@@ -82,6 +123,18 @@ public class CommunityMembershipController {
             description = "Requires a current community account. Uses the signed-in user. "
                     + "Creates a membership, returns the existing one, or reactivates a membership the user had left. "
                     + "A repeated join does not create a second row. Send no body fields.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "First join"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Already a member, or rejoined the same row"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Unknown JSON field",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Community account or terms required",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Community is not available",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PostMapping("/{communityId}/join")
     public ResponseEntity<ApiResponse<CommunityMembershipResponse>> join(
             @PathVariable("communityId") @Positive(message = CommunityMessages.INVALID_COMMUNITY_ID) Long communityId,
@@ -98,6 +151,17 @@ public class CommunityMembershipController {
             description = "Leaves only the signed-in user's membership. A repeated leave is safe and keeps the first leave time. "
                     + "The community, its messages, and the recorded creator stay. "
                     + "The creator may leave. The community stays open, including when they were the last active member.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Left, already left, or was never a member"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Unknown JSON field",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Missing or invalid JWT",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Community account or terms required",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class))),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Community is not available",
+                    content = @Content(schema = @Schema(implementation = ApiResponse.class)))
+    })
     @PostMapping("/{communityId}/leave")
     public ResponseEntity<ApiResponse<CommunityMembershipResponse>> leave(
             @PathVariable("communityId") @Positive(message = CommunityMessages.INVALID_COMMUNITY_ID) Long communityId,
