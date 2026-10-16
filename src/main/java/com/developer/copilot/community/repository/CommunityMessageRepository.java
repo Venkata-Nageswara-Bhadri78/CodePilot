@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,7 +15,9 @@ public interface CommunityMessageRepository extends JpaRepository<CommunityMessa
 
     /**
      * Newest page of a community. Pass a {@link Pageable} that sets the limit and does not add a sort.
+     * The sender is loaded with the row so history can show username and full name.
      */
+    @EntityGraph(attributePaths = "sender")
     List<CommunityMessage> findByCommunityIdOrderByCreatedAtDescIdDesc(Long communityId, Pageable pageable);
 
     /**
@@ -24,6 +27,7 @@ public interface CommunityMessageRepository extends JpaRepository<CommunityMessa
      */
     @Query("""
             SELECT m FROM CommunityMessage m
+            JOIN FETCH m.sender
             WHERE m.community.id = :communityId
               AND (
                     m.createdAt < :createdAt

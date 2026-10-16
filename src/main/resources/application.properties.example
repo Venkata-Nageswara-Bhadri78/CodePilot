@@ -142,3 +142,17 @@ app.community.terms-version=1
 # Whole number from 1 to 20. This is not a secret.
 app.community.max-url-aliases=8
 
+# Community messages
+# Maximum length of one text message, counted in Unicode characters (code points).
+# Emoji count as one character. Whole number from 1 to 10000. This is not a secret.
+app.community.max-message-length=4000
+
+# Community message history
+# Page size used when the client omits limit. Whole number from 1 to 100.
+# It cannot be larger than max-message-page-size. This is not a secret.
+app.community.message-page-size=30
+
+# Largest page a history request may ask for. Whole number from 1 to 100.
+# History never returns every message in one response. This is not a secret.
+app.community.max-message-page-size=50
+

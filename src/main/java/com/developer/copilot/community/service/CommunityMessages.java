@@ -52,10 +52,26 @@ public final class CommunityMessages {
 
     public static final String MEMBERS = "Community members.";
 
+    public static final String HISTORY = "Community messages.";
+
+    public static final String MESSAGE_REQUIRED = "Message text is required.";
+
+    public static final String MESSAGE_INVALID = "Message text is invalid.";
+
+    public static final String INVALID_CURSOR = "Message history cursor is invalid.";
+
     private CommunityMessages() {
     }
 
     public static String tooManyUrls(int maxAlternatives) {
         return "You can add at most " + maxAlternatives + " alternative posting URLs.";
+    }
+
+    public static String messageTooLong(int maxCharacters) {
+        return "Message cannot exceed " + maxCharacters + " characters.";
+    }
+
+    public static String invalidPageSize(int maxPageSize) {
+        return "Message page size must be between 1 and " + maxPageSize + ".";
     }
 }

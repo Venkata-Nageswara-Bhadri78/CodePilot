@@ -46,6 +46,7 @@ public class CommunityOpenApiConfig {
                         + "POST /api/v1/community/descriptions/refine rewrites description text only. "
                         + "GET /api/v1/community/memberships lists communities the caller belongs to. "
                         + "GET /api/v1/community/{communityId} and /members require an active membership. "
-                        + "POST /join and /leave change only that caller's membership."));
+                        + "POST /join and /leave change only that caller's membership. "
+                        + "GET /api/v1/community/{communityId}/messages returns one page of text history for an active member."));
     }
 }

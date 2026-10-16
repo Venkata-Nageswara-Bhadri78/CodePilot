@@ -2,7 +2,7 @@
 
 Community data lives in MySQL, mapped by JPA, under `com.developer.copilot.community`. The application still updates the schema with `spring.jpa.hibernate.ddl-auto` (typically `update`). This module does not add Flyway or Liquibase.
 
-Consent, posting match, community creation, and explicit join/leave are implemented. Message history and WebSocket are not. Membership routes are recorded in `documentation/subscription2/community/prompts/task4/endpoints.md`.
+Consent, posting match, community creation, explicit join/leave, and text history are implemented. WebSocket delivery is not. History routes are recorded in `documentation/subscription2/community/prompts/task5/endpoints.md`.
 
 ## Responsibilities
 
@@ -89,7 +89,7 @@ Columns: `community_id`, `sender_user_id` → `users.id`, `content` (`TEXT` not 
 
 Index: `idx_community_message_history` on `(community_id, created_at, id)`.
 
-History is newest first. The next page is strictly older than the cursor `(created_at, id)`. `CommunityMessageRepository.findOlderThan` is that query. The page request must set a limit and must not add its own sort.
+History is stored newest-first in the index. `GET /api/v1/community/{communityId}/messages` asks for one page plus one extra row, then returns that page oldest-first. The next page is strictly older than the oldest returned message. `CommunityMessageRepository.findOlderThan` is that query. The page request sets a limit and does not add its own sort. Active membership is required. The sender profile is not copied onto the row.
 
 ## Concurrency
 
