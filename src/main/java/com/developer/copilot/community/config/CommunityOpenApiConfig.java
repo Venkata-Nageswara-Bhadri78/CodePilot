@@ -37,5 +37,12 @@ public class CommunityOpenApiConfig {
                         + "The same version again returns the existing account. "
                         + "A changed configured version requires a new acceptance on the same row. "
                         + "The owner is the JWT user. Unknown JSON fields, including a user id, are rejected."));
+        openApi.addTagsItem(new Tag()
+                .name("Community")
+                .description("Job-posting communities. GET /api/v1/community/jobs/{jobId}/prefill reads the caller's saved job. "
+                        + "POST /api/v1/community/resolve checks URLs and does not join. "
+                        + "POST /api/v1/community creates a community, its aliases, and the creator membership, "
+                        + "or returns the existing community without joining. "
+                        + "POST /api/v1/community/descriptions/refine rewrites description text only."));
     }
 }

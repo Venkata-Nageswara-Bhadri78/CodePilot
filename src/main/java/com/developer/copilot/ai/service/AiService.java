@@ -37,4 +37,10 @@ public interface AiService {
      * chat-assistant; HTTP chat/stream pass {@code userId} instead.
      */
     AiChatResponse continueJobChat(JobChatAiRequest request, String userEmail);
+
+    /**
+     * Rewrites a job description for community display. The argument is the only text sent.
+     * Resumes, profiles, and saved job rows are not read.
+     */
+    String refineCommunityDescription(String description);
 }

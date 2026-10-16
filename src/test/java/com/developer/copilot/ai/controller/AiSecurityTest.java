@@ -142,6 +142,7 @@ class AiSecurityTest {
     @Test
     void chat_authenticated_ignoresUnknownJsonFields() throws Exception {
         User user = enabledUser(true, true);
+        user.setUsername("candidate");
         when(jwtService.extractUserId("good")).thenReturn(1L);
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(jwtService.isTokenValid(eq("good"), any(User.class))).thenReturn(true);

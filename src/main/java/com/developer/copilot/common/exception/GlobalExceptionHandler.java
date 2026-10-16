@@ -40,8 +40,11 @@ import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.chatassistant.exception.CustomPromptNotFoundException;
 import com.developer.copilot.common.dto.ApiResponse;
 import com.developer.copilot.community.exception.CommunityAccountRequiredException;
+import com.developer.copilot.community.exception.CommunityAliasConflictException;
 import com.developer.copilot.community.exception.CommunityConsentRejectedException;
+import com.developer.copilot.community.exception.CommunityMatchUncertainException;
 import com.developer.copilot.community.exception.CommunityTermsVersionException;
+import com.developer.copilot.community.exception.CommunityValidationException;
 import com.developer.copilot.community.exception.TermsAcceptanceRequiredException;
 import com.developer.copilot.common.metrics.CopilotMetrics;
 import com.developer.copilot.jobs.exception.DuplicateJobDraftException;
@@ -396,6 +399,21 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TermsAcceptanceRequiredException.class)
     public ResponseEntity<ApiResponse<Void>> handleCommunityTermsRequired(TermsAcceptanceRequiredException ex) {
         return failure(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityValidation(CommunityValidationException ex) {
+        return failure(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityMatchUncertainException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityMatchUncertain(CommunityMatchUncertainException ex) {
+        return failure(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityAliasConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityAliasConflict(CommunityAliasConflictException ex) {
+        return failure(HttpStatus.CONFLICT, ex.getMessage());
     }
 
     @ExceptionHandler(CustomPromptNotFoundException.class)

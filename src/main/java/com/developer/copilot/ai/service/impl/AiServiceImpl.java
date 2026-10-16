@@ -535,6 +535,34 @@ public class AiServiceImpl implements AiService {
         return resolveJobDescriptionByUserId(jobId, userOptional.get().getId(), required);
     }
 
+    @Override
+    public String refineCommunityDescription(String description) {
+        if (description == null || description.isBlank()) {
+            throw new AiServiceException("A job description is required.");
+        }
+        log.info("Refining community description, length={}", description.length());
+        String systemPrompt = """
+                You rewrite a job description so applicants in a shared group can read it.
+                Preserve the original meaning and every fact that is already present.
+                Do not add responsibilities, qualifications, salary, dates, benefits, or company facts that are not in the source.
+                Do not mention resumes, candidates, or that you are a model.
+                Return only the rewritten description.
+                """;
+        String content = aiChatGuard.call(() -> callWithTimeout(() -> chatClient.prompt()
+                .system(systemPrompt)
+                .user(description.trim())
+                .options(OpenAiChatOptions.builder()
+                        .model(aiProperties.getDefaultModel())
+                        .maxTokens(aiProperties.getMaxCompletionTokens())
+                        .temperature(0.0))
+                .call()
+                .content()));
+        if (content == null || content.isBlank()) {
+            throw new AiServiceException("AI did not return a description.");
+        }
+        return content.trim();
+    }
+
     private static String jobText(JobEntity job) {
         if (job.getDescription() != null && !job.getDescription().isBlank()) {
             return job.getDescription();

@@ -2,7 +2,7 @@
 
 Community data lives in MySQL, mapped by JPA, under `com.developer.copilot.community`. The application still updates the schema with `spring.jpa.hibernate.ddl-auto` (typically `update`). This module does not add Flyway or Liquibase.
 
-There is no community create, join, message, or WebSocket API yet. Consent for the community account is implemented; see `ACCOUNT.md`.
+Consent for the community account is implemented. A saved job can be prefilled and turned into a community; see `ACCOUNT.md` and the creation routes under `/api/v1/community`. Join, message history, and WebSocket are not implemented.
 
 ## Responsibilities
 

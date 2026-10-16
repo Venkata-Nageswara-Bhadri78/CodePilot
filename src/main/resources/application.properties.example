@@ -136,3 +136,9 @@ app.auth.google-link-rate-limit-per-minute=5
 # Changing this value requires every existing community account to accept the new version.
 # The comparison is an exact match after trim. It is not a secret.
 app.community.terms-version=1
+
+# Community creation
+# Maximum alternative posting URLs on one create, in addition to the primary URL.
+# Whole number from 1 to 20. This is not a secret.
+app.community.max-url-aliases=8
+
