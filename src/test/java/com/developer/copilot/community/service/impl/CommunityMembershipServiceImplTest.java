@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import com.developer.copilot.auth.entity.User;
@@ -69,6 +70,8 @@ class CommunityMembershipServiceImplTest {
     private CommunityRepository communityRepository;
     @Mock
     private CommunityMembershipRepository communityMembershipRepository;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private CommunityMembershipServiceImpl service;
     private User user;
@@ -83,7 +86,8 @@ class CommunityMembershipServiceImplTest {
                 communityRepository,
                 communityMembershipRepository,
                 writer,
-                new CommunitySummaryMapper(communityMembershipRepository));
+                new CommunitySummaryMapper(communityMembershipRepository),
+                eventPublisher);
         user = person(7L, "ada", "Ada Lovelace");
         community = community(10L, user);
         lenient().when(communityAccountService.requireActiveAccount()).thenReturn(new CommunityAccount());

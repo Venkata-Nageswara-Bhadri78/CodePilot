@@ -2,7 +2,7 @@
 
 Community data lives in MySQL, mapped by JPA, under `com.developer.copilot.community`. The application still updates the schema with `spring.jpa.hibernate.ddl-auto` (typically `update`). This module does not add Flyway or Liquibase.
 
-Consent, posting match, community creation, explicit join/leave, and text history are implemented. WebSocket delivery is not. History routes are recorded in `documentation/subscription2/community/prompts/task5/endpoints.md`.
+Consent, posting match, community creation, explicit join/leave, text history, and live STOMP delivery are implemented. Presence is in memory for this process. History routes are in `documentation/subscription2/community/prompts/task5/endpoints.md`. The socket contract is in `documentation/subscription2/community/prompts/task6/endpoints.md`.
 
 ## Responsibilities
 
@@ -100,7 +100,7 @@ Do not use check-then-insert as the only guard. The unique keys above are the gu
 - **User primary key:** `users.id`, `Long`, identity. Loaded from the JWT by `JwtAuthenticationFilter`, then read through `CurrentUserService`.
 - **Job ownership:** `JobRepository.findByIdAndUserId`. Community tables do not reference `jobs`.
 - **AI:** `AiService` / `AiServiceImpl` and Spring AI `ChatClient`. Not called here. `extractJobInfo` and `chat` both pull resume context, so description refinement needs its own call that sends only the permitted description.
-- **WebSocket:** none in the repo. Redis is optional rate-limit and cache storage, not messaging. No Redis usage was added.
+- **WebSocket:** STOMP at `/ws/community` for this process. Redis is not used as a chat bus. Presence is in memory and is not shared across instances.
 - **Migrations:** Hibernate `ddl-auto` only. No new configuration keys.
 - **Privacy:** no email, password, phone, resume, notes, or full job copy in these tables. Later APIs return DTOs, not entities.
 

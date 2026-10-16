@@ -156,3 +156,16 @@ app.community.message-page-size=30
 # History never returns every message in one response. This is not a secret.
 app.community.max-message-page-size=50
 
+# Community WebSocket
+# STOMP endpoint is /ws/community. The browser upgrade is anonymous because a browser
+# cannot set Authorization on the WebSocket handshake. The STOMP CONNECT frame must send
+# Authorization: Bearer <access token>. Do not put the token in the URL.
+# Heartbeat interval in milliseconds. The server sends a heartbeat this often and expects
+# the client to do the same. A silent socket is closed, and that session drops offline.
+# Whole number from 1000 to 120000. This is not a secret.
+app.community.ws.heartbeat-ms=10000
+
+# How often, in milliseconds, to forget a presence session the broker has already closed.
+# Whole number from 1000 to 300000. This is not a secret.
+app.community.ws.presence-sweep-ms=15000
+

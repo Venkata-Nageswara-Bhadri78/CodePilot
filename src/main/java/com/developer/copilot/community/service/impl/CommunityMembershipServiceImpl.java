@@ -2,6 +2,7 @@ package com.developer.copilot.community.service.impl;
 
 import java.util.List;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ import com.developer.copilot.community.exception.CommunityValidationException;
 import com.developer.copilot.community.repository.CommunityMembershipRepository;
 import com.developer.copilot.community.repository.CommunityRepository;
 import com.developer.copilot.community.service.CommunityAccountService;
+import com.developer.copilot.community.service.CommunityMembershipChanged;
 import com.developer.copilot.community.service.CommunityMembershipService;
 import com.developer.copilot.community.service.CommunityMembershipWriter;
 import com.developer.copilot.community.service.CommunityMembershipWriter.JoinKind;
@@ -47,6 +49,7 @@ public class CommunityMembershipServiceImpl implements CommunityMembershipServic
     private final CommunityMembershipRepository communityMembershipRepository;
     private final CommunityMembershipWriter communityMembershipWriter;
     private final CommunitySummaryMapper communitySummaryMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional(readOnly = true)
@@ -112,6 +115,7 @@ public class CommunityMembershipServiceImpl implements CommunityMembershipServic
             JoinWrite result = communityMembershipWriter.join(community, user);
             log.info("Community join outcome={} communityId={} userId={}",
                     result.kind(), communityId, user.getId());
+            publishJoin(communityId, user.getId(), result.kind());
             return toResponse(joinOutcome(result.kind()), result.membership(), community, user.getId());
         } catch (DataIntegrityViolationException ex) {
             if (!CommunityMembershipWriter.isDuplicateMembership(ex)) {
@@ -127,6 +131,7 @@ public class CommunityMembershipServiceImpl implements CommunityMembershipServic
                 JoinWrite retried = communityMembershipWriter.join(community, user);
                 log.info("Community join retried after a uniqueness race outcome={} communityId={} userId={}",
                         retried.kind(), communityId, user.getId());
+                publishJoin(communityId, user.getId(), retried.kind());
                 return toResponse(joinOutcome(retried.kind()), retried.membership(), community, user.getId());
             }
             log.info("Community join lost a uniqueness race communityId={} userId={}", communityId, user.getId());
@@ -142,6 +147,10 @@ public class CommunityMembershipServiceImpl implements CommunityMembershipServic
         LeaveWrite result = communityMembershipWriter.leave(communityId, user.getId());
         log.info("Community leave outcome={} communityId={} userId={}",
                 result.kind(), communityId, user.getId());
+        if (result.kind() == LeaveKind.LEFT) {
+            eventPublisher.publishEvent(new CommunityMembershipChanged(
+                    communityId, user.getId(), MembershipStatus.LEFT));
+        }
         return toResponse(leaveOutcome(result.kind()), result.membership(), community, user.getId());
     }
 
@@ -158,6 +167,13 @@ public class CommunityMembershipServiceImpl implements CommunityMembershipServic
             throw new CommunityMembershipRequiredException(CommunityMessages.MEMBERSHIP_REQUIRED);
         }
         return membership;
+    }
+
+    private void publishJoin(Long communityId, Long userId, JoinKind kind) {
+        if (kind == JoinKind.JOINED || kind == JoinKind.REJOINED) {
+            eventPublisher.publishEvent(new CommunityMembershipChanged(
+                    communityId, userId, MembershipStatus.ACTIVE));
+        }
     }
 
     private Community requireCommunity(Long communityId) {
