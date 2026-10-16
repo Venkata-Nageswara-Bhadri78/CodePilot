@@ -55,6 +55,7 @@ import com.developer.copilot.community.repository.CommunityUrlAliasRepository;
 import com.developer.copilot.community.service.CommunityAccountService;
 import com.developer.copilot.community.service.CommunityCreationWriter;
 import com.developer.copilot.community.service.CommunityDescriptionRefiner;
+import com.developer.copilot.community.service.CommunitySummaryMapper;
 import com.developer.copilot.community.service.matching.CommunityNameGenerator;
 import com.developer.copilot.community.service.matching.CommunityUrlMatcher;
 import com.developer.copilot.jobs.entity.JobEntity;
@@ -98,12 +99,12 @@ class CommunityCreationServiceImplTest {
                 jobRepository,
                 communityRepository,
                 communityUrlAliasRepository,
-                communityMembershipRepository,
                 matcher,
                 names,
                 writer,
                 new CommunityDescriptionRefiner(aiService),
-                properties);
+                properties,
+                new CommunitySummaryMapper(communityMembershipRepository));
         user = new User();
         user.setId(7L);
         user.setEmail("secret@example.com");

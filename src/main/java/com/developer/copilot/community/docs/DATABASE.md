@@ -2,7 +2,7 @@
 
 Community data lives in MySQL, mapped by JPA, under `com.developer.copilot.community`. The application still updates the schema with `spring.jpa.hibernate.ddl-auto` (typically `update`). This module does not add Flyway or Liquibase.
 
-Consent for the community account is implemented. A saved job can be prefilled and turned into a community; see `ACCOUNT.md` and the creation routes under `/api/v1/community`. Join, message history, and WebSocket are not implemented.
+Consent, posting match, community creation, and explicit join/leave are implemented. Message history and WebSocket are not. Membership routes are recorded in `documentation/subscription2/community/prompts/task4/endpoints.md`.
 
 ## Responsibilities
 
@@ -75,7 +75,7 @@ Matching itself is not in this module yet. The place for it is `com.developer.co
 
 One row per user per community. Columns: `community_id`, `user_id` → `users.id`, `membership_status` (`ACTIVE` or `LEFT`), `joined_at` (not null), `left_at` (nullable only while active).
 
-Unique: `uk_community_membership_community_user` on `(community_id, user_id)`. That is the active-membership rule. A racing second join cannot insert another row. Rejoin updates this row to `ACTIVE` and clears `left_at`. Leave sets `LEFT` and `left_at` and does not delete messages or the community.
+Unique: `uk_community_membership_community_user` on `(community_id, user_id)`. That is the active-membership rule. A racing second join cannot insert another row. Rejoin updates this row to `ACTIVE`, sets `joined_at` to the new period, and clears `left_at`. Leave sets `LEFT` and `left_at` and does not delete the row, the messages, or the community. `created_by_user_id` stays when the creator leaves. There is no stored member-count column. The count is the number of `ACTIVE` rows.
 
 Check: `ck_community_membership_status_left_at` requires `left_at` to be null exactly when status is `ACTIVE`.
 
@@ -93,7 +93,7 @@ History is newest first. The next page is strictly older than the cursor `(creat
 
 ## Concurrency
 
-Do not use check-then-insert as the only guard. The unique keys above are the guards. Community creation (row + canonical key + aliases + creator membership) has to be one transaction in the creation task. An uncaught integrity error still becomes the existing generic HTTP 409 from `GlobalExceptionHandler`. Later services should map these constraint names to a specific response before that, and must not put SQL in the API body.
+Do not use check-then-insert as the only guard. The unique keys above are the guards. Community creation (row + canonical key + aliases + creator membership) is one transaction. Join uses its own transaction. A `uk_community_membership_community_user` race returns the winning membership. An uncaught integrity error still becomes the existing generic HTTP 409 from `GlobalExceptionHandler`, and that body does not include SQL.
 
 ## Inspection notes
 

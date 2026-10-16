@@ -179,6 +179,8 @@ class CommunitySchemaMetadataTest {
         new PartTree("findByCommunityIdAndUserId", CommunityMembership.class);
         new PartTree("existsByCommunityIdAndUserId", CommunityMembership.class);
         new PartTree("countByCommunityIdAndMembershipStatus", CommunityMembership.class);
+        new PartTree("findByUserIdAndMembershipStatusOrderByJoinedAtDescIdDesc", CommunityMembership.class);
+        new PartTree("findByCommunityIdAndMembershipStatusOrderByJoinedAtAscIdAsc", CommunityMembership.class);
         new PartTree("findByCommunityIdOrderByCreatedAtDescIdDesc", CommunityMessage.class);
         assertNotNull(CommunityAccountRepository.class);
         assertNotNull(CommunityRepository.class);

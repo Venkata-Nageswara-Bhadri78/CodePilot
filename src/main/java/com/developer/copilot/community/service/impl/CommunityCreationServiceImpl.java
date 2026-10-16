@@ -13,7 +13,6 @@ import com.developer.copilot.common.security.CurrentUserService;
 import com.developer.copilot.common.exception.InvalidJobUrlException;
 import com.developer.copilot.community.config.CommunityAccountProperties;
 import com.developer.copilot.community.dto.CommunityMatchOutcome;
-import com.developer.copilot.community.dto.CommunityMembershipView;
 import com.developer.copilot.community.dto.request.CreateCommunityRequest;
 import com.developer.copilot.community.dto.request.ResolveCommunityRequest;
 import com.developer.copilot.community.dto.response.CommunityCreateResponse;
@@ -22,12 +21,9 @@ import com.developer.copilot.community.dto.response.CommunityMatchResponse;
 import com.developer.copilot.community.dto.response.CommunityPrefillResponse;
 import com.developer.copilot.community.dto.response.CommunitySummaryResponse;
 import com.developer.copilot.community.entity.Community;
-import com.developer.copilot.community.entity.CommunityMembership;
-import com.developer.copilot.community.entity.MembershipStatus;
 import com.developer.copilot.community.exception.CommunityAliasConflictException;
 import com.developer.copilot.community.exception.CommunityMatchUncertainException;
 import com.developer.copilot.community.exception.CommunityValidationException;
-import com.developer.copilot.community.repository.CommunityMembershipRepository;
 import com.developer.copilot.community.repository.CommunityRepository;
 import com.developer.copilot.community.repository.CommunityUrlAliasRepository;
 import com.developer.copilot.community.service.CommunityAccountService;
@@ -35,6 +31,7 @@ import com.developer.copilot.community.service.CommunityCreationService;
 import com.developer.copilot.community.service.CommunityCreationWriter;
 import com.developer.copilot.community.service.CommunityDescriptionRefiner;
 import com.developer.copilot.community.service.CommunityMessages;
+import com.developer.copilot.community.service.CommunitySummaryMapper;
 import com.developer.copilot.jobs.entity.JobEntity;
 import com.developer.copilot.jobs.exception.JobNotFoundException;
 import com.developer.copilot.jobs.repository.JobRepository;
@@ -57,12 +54,12 @@ public class CommunityCreationServiceImpl implements CommunityCreationService {
     private final JobRepository jobRepository;
     private final CommunityRepository communityRepository;
     private final CommunityUrlAliasRepository communityUrlAliasRepository;
-    private final CommunityMembershipRepository communityMembershipRepository;
     private final CommunityUrlMatcher communityUrlMatcher;
     private final CommunityNameGenerator communityNameGenerator;
     private final CommunityCreationWriter communityCreationWriter;
     private final CommunityDescriptionRefiner communityDescriptionRefiner;
     private final CommunityAccountProperties communityAccountProperties;
+    private final CommunitySummaryMapper communitySummaryMapper;
 
     @Override
     @Transactional(readOnly = true)
@@ -265,23 +262,7 @@ public class CommunityCreationServiceImpl implements CommunityCreationService {
     private CommunitySummaryResponse summary(Long communityId, Long userId) {
         Community community = communityRepository.findById(communityId)
                 .orElseThrow(() -> new IllegalStateException("Community disappeared during matching."));
-        CommunityMembership membership = communityMembershipRepository
-                .findByCommunityIdAndUserId(communityId, userId)
-                .orElse(null);
-        boolean member = membership != null && membership.getMembershipStatus() == MembershipStatus.ACTIVE;
-        long activeMembers = communityMembershipRepository.countByCommunityIdAndMembershipStatus(
-                communityId, MembershipStatus.ACTIVE);
-        return CommunitySummaryResponse.builder()
-                .id(community.getId())
-                .communityName(community.getCommunityName())
-                .title(community.getTitle())
-                .company(community.getCompany())
-                .location(community.getLocation())
-                .description(community.getDescription())
-                .createdAt(community.getCreatedAt())
-                .membership(member ? CommunityMembershipView.MEMBER : CommunityMembershipView.NOT_A_MEMBER)
-                .activeMemberCount(activeMembers)
-                .build();
+        return communitySummaryMapper.toSummary(community, userId);
     }
 
     private static String blankToNull(String value) {

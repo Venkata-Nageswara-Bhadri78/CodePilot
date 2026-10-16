@@ -24,6 +24,34 @@ public final class CommunityMessages {
 
     public static final String DESCRIPTION_REQUIRED = "Description is required.";
 
+    public static final String JOINED = "You joined the community.";
+
+    public static final String ALREADY_MEMBER = "You are already a member of this community.";
+
+    public static final String REJOINED = "You rejoined the community.";
+
+    public static final String LEFT = "You left the community. It remains open.";
+
+    public static final String ALREADY_LEFT = "You have already left this community.";
+
+    public static final String NOT_A_MEMBER = "You are not a member of this community.";
+
+    public static final String MEMBER = "You are a member of this community.";
+
+    public static final String MEMBERSHIP_REQUIRED = "Join this community to continue.";
+
+    public static final String COMMUNITY_UNAVAILABLE = "This community is not available.";
+
+    public static final String INVALID_COMMUNITY_ID = "Community id must be a positive number.";
+
+    public static final String NO_FIELDS = "Send no fields. A user id is not accepted.";
+
+    public static final String LISTED = "Communities you belong to.";
+
+    public static final String DETAILS = "Community details.";
+
+    public static final String MEMBERS = "Community members.";
+
     private CommunityMessages() {
     }
 

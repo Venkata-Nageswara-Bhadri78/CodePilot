@@ -43,6 +43,9 @@ public class CommunityOpenApiConfig {
                         + "POST /api/v1/community/resolve checks URLs and does not join. "
                         + "POST /api/v1/community creates a community, its aliases, and the creator membership, "
                         + "or returns the existing community without joining. "
-                        + "POST /api/v1/community/descriptions/refine rewrites description text only."));
+                        + "POST /api/v1/community/descriptions/refine rewrites description text only. "
+                        + "GET /api/v1/community/memberships lists communities the caller belongs to. "
+                        + "GET /api/v1/community/{communityId} and /members require an active membership. "
+                        + "POST /join and /leave change only that caller's membership."));
     }
 }
