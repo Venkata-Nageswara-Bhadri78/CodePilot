@@ -39,6 +39,10 @@ import com.developer.copilot.ai.exception.AiUnavailableException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.chatassistant.exception.CustomPromptNotFoundException;
 import com.developer.copilot.common.dto.ApiResponse;
+import com.developer.copilot.community.exception.CommunityAccountRequiredException;
+import com.developer.copilot.community.exception.CommunityConsentRejectedException;
+import com.developer.copilot.community.exception.CommunityTermsVersionException;
+import com.developer.copilot.community.exception.TermsAcceptanceRequiredException;
 import com.developer.copilot.common.metrics.CopilotMetrics;
 import com.developer.copilot.jobs.exception.DuplicateJobDraftException;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
@@ -372,6 +376,26 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(response);
+    }
+
+    @ExceptionHandler(CommunityConsentRejectedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityConsentRejected(CommunityConsentRejectedException ex) {
+        return failure(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityTermsVersionException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityTermsVersion(CommunityTermsVersionException ex) {
+        return failure(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityAccountRequiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityAccountRequired(CommunityAccountRequiredException ex) {
+        return failure(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(TermsAcceptanceRequiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityTermsRequired(TermsAcceptanceRequiredException ex) {
+        return failure(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
     @ExceptionHandler(CustomPromptNotFoundException.class)

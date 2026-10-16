@@ -2,7 +2,7 @@
 
 Community data lives in MySQL, mapped by JPA, under `com.developer.copilot.community`. The application still updates the schema with `spring.jpa.hibernate.ddl-auto` (typically `update`). This module does not add Flyway or Liquibase.
 
-There is no controller or service yet. The tables exist so later tasks can add consent, URL matching, join, and text history without redesigning the keys.
+There is no community create, join, message, or WebSocket API yet. Consent for the community account is implemented; see `ACCOUNT.md`.
 
 ## Responsibilities
 
@@ -39,7 +39,7 @@ One opt-in row per user. Columns: `id`, unique `user_id` → `users.id`, `accept
 
 Unique: `uk_community_account_user` on `user_id`.
 
-Username, full name, email, and password stay on `users`. The stored terms version is the one the user accepted. Comparing it with a future current version is how re-acceptance is required. That current version is not a column yet.
+Username, full name, email, and password stay on `users`. The stored terms version is the one the user accepted. The current required version is `app.community.terms-version` (default `1`), not a column. An account is current only when `accepted_terms_version` equals that value. A different configured version does not count as accepted; the same row is updated when the user accepts the new one. Routes are in `ACCOUNT.md`.
 
 ### `communities`
 

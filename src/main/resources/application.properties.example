@@ -130,3 +130,9 @@ app.auth.complete-username-rate-limit-per-minute=10
 app.auth.setup-password-request-rate-limit-per-minute=3
 app.auth.setup-password-confirm-rate-limit-per-minute=10
 app.auth.google-link-rate-limit-per-minute=5
+
+# Community terms
+# Version string the signed-in user must accept before a community account is current.
+# Changing this value requires every existing community account to accept the new version.
+# The comparison is an exact match after trim. It is not a secret.
+app.community.terms-version=1
