@@ -286,8 +286,27 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<ApiResponse<Void>> resumeId = handler.handleTypeMismatch(
                 new MethodArgumentTypeMismatchException("abc", Long.class, "resumeId", param, null));
 
+        ResponseEntity<ApiResponse<Void>> communityId = handler.handleTypeMismatch(
+                new MethodArgumentTypeMismatchException("abc", Long.class, "communityId", param, null));
+
         assertEquals("Invalid job id.", jobId.getBody().getMessage());
+        assertEquals("Invalid community id.", communityId.getBody().getMessage());
         assertEquals("Invalid request parameter.", resumeId.getBody().getMessage());
+    }
+
+    @Test
+    void handleCommunityMembershipExceptions() {
+        ResponseEntity<ApiResponse<Void>> missing = handler.handleCommunityUnavailable(
+                new com.developer.copilot.community.exception.CommunityUnavailableException(
+                        "This community is not available."));
+        ResponseEntity<ApiResponse<Void>> forbidden = handler.handleCommunityMembershipRequired(
+                new com.developer.copilot.community.exception.CommunityMembershipRequiredException(
+                        "Join this community to continue."));
+
+        assertEquals(HttpStatus.NOT_FOUND, missing.getStatusCode());
+        assertEquals("This community is not available.", missing.getBody().getMessage());
+        assertEquals(HttpStatus.FORBIDDEN, forbidden.getStatusCode());
+        assertEquals("Join this community to continue.", forbidden.getBody().getMessage());
     }
 
     @Test

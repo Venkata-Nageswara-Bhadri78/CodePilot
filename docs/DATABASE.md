@@ -62,6 +62,7 @@ erDiagram
 | Resumes | user | `resumes`, `resume_parsed_data` |
 | Job notebook | jobs | `jobs` |
 | Job chat | chatassistant | `chat_sessions`, `chat_messages` |
+| Community | community | `community_accounts`, `communities`, `community_url_aliases`, `community_memberships`, `community_messages` |
 | Extraction | — | **No tables.** Preview only |
 
 ## Auth
@@ -99,6 +100,18 @@ Deleting a job cascades the chat session (`ON DELETE CASCADE` on `chat_sessions.
 - **ChatSession:** unique `job_id` (one chat per job). Denormalized `user_id` for listing. `chatTitle` is not unique.
 - **ChatMessage:** unique `(chat_session_id, turn_number)`. Append-only turns (`user_prompt` + `ai_response`). Cascade delete with session.
 
+## Community
+
+Persistence only. No community HTTP API yet. Detail: `community/docs/DATABASE.md`.
+
+- **CommunityAccount:** at most one row per `users.id` (`uk_community_account_user`). Stores the accepted terms version and timestamp. Does not copy the user profile.
+- **Community:** one real-world posting. `canonical_posting_key` is a SHA-256 hex of the canonical normalized URL, unique, and is not `jobs.id`. `community_name` is unique and immutable. Shared header is title, company, location, and description. No salary column.
+- **CommunityUrlAlias:** many URLs, one community. `normalized_url_hash` is globally unique.
+- **CommunityMembership:** one row per `(community_id, user_id)`. Leave sets `LEFT` and `left_at`. Rejoin updates that row. Messages are not deleted.
+- **CommunityMessage:** text, sender `users.id`, history index `(community_id, created_at, id)`.
+
+There is no foreign key from these tables to `jobs`.
+
 ## Cross-module reads (no extra tables)
 
 - Manual/automated extraction: `JobRepository` exists-check by user + URL hash.
@@ -109,6 +122,7 @@ Deleting a job cascades the chat session (`ON DELETE CASCADE` on `chat_sessions.
 
 - Auth writes commit before sending email (after-commit mail).
 - Chat: AI call is **outside** the DB transaction; then persist the turn. Concurrent first-send uses uniqueness + `ChatConflictException` (409).
+- Community writes are not implemented yet. The schema constraints (`uk_community_account_user`, `uk_community_canonical_posting_key`, `uk_community_name`, `uk_community_url_alias_hash`, `uk_community_membership_community_user`) are what reject duplicate accounts, postings, aliases, and memberships.
 - Resume upload persists metadata then queues async parse on a dedicated executor.
 
 ## What is not in the database

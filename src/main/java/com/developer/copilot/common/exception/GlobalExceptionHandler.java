@@ -39,6 +39,15 @@ import com.developer.copilot.ai.exception.AiUnavailableException;
 import com.developer.copilot.auth.exception.ResourceAlreadyExistsException;
 import com.developer.copilot.chatassistant.exception.CustomPromptNotFoundException;
 import com.developer.copilot.common.dto.ApiResponse;
+import com.developer.copilot.community.exception.CommunityAccountRequiredException;
+import com.developer.copilot.community.exception.CommunityAliasConflictException;
+import com.developer.copilot.community.exception.CommunityConsentRejectedException;
+import com.developer.copilot.community.exception.CommunityMatchUncertainException;
+import com.developer.copilot.community.exception.CommunityMembershipRequiredException;
+import com.developer.copilot.community.exception.CommunityTermsVersionException;
+import com.developer.copilot.community.exception.CommunityUnavailableException;
+import com.developer.copilot.community.exception.CommunityValidationException;
+import com.developer.copilot.community.exception.TermsAcceptanceRequiredException;
 import com.developer.copilot.common.metrics.CopilotMetrics;
 import com.developer.copilot.jobs.exception.DuplicateJobDraftException;
 import com.developer.copilot.jobs.exception.DuplicateJobException;
@@ -348,7 +357,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        String message = "jobId".equals(ex.getName()) ? "Invalid job id." : "Invalid request parameter.";
+        String message = switch (ex.getName() == null ? "" : ex.getName()) {
+            case "jobId" -> "Invalid job id.";
+            case "communityId" -> "Invalid community id.";
+            default -> "Invalid request parameter.";
+        };
         ApiResponse<Void> response = ApiResponse.<Void>builder()
                 .success(false)
                 .message(message)
@@ -372,6 +385,51 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(response);
+    }
+
+    @ExceptionHandler(CommunityConsentRejectedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityConsentRejected(CommunityConsentRejectedException ex) {
+        return failure(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityTermsVersionException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityTermsVersion(CommunityTermsVersionException ex) {
+        return failure(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityAccountRequiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityAccountRequired(CommunityAccountRequiredException ex) {
+        return failure(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(TermsAcceptanceRequiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityTermsRequired(TermsAcceptanceRequiredException ex) {
+        return failure(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityValidation(CommunityValidationException ex) {
+        return failure(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityMatchUncertainException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityMatchUncertain(CommunityMatchUncertainException ex) {
+        return failure(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityAliasConflictException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityAliasConflict(CommunityAliasConflictException ex) {
+        return failure(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityUnavailableException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityUnavailable(CommunityUnavailableException ex) {
+        return failure(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(CommunityMembershipRequiredException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCommunityMembershipRequired(CommunityMembershipRequiredException ex) {
+        return failure(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
     @ExceptionHandler(CustomPromptNotFoundException.class)

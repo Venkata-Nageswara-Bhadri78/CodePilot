@@ -130,3 +130,42 @@ app.auth.complete-username-rate-limit-per-minute=10
 app.auth.setup-password-request-rate-limit-per-minute=3
 app.auth.setup-password-confirm-rate-limit-per-minute=10
 app.auth.google-link-rate-limit-per-minute=5
+
+# Community terms
+# Version string the signed-in user must accept before a community account is current.
+# Changing this value requires every existing community account to accept the new version.
+# The comparison is an exact match after trim. It is not a secret.
+app.community.terms-version=1
+
+# Community creation
+# Maximum alternative posting URLs on one create, in addition to the primary URL.
+# Whole number from 1 to 20. This is not a secret.
+app.community.max-url-aliases=8
+
+# Community messages
+# Maximum length of one text message, counted in Unicode characters (code points).
+# Emoji count as one character. Whole number from 1 to 10000. This is not a secret.
+app.community.max-message-length=4000
+
+# Community message history
+# Page size used when the client omits limit. Whole number from 1 to 100.
+# It cannot be larger than max-message-page-size. This is not a secret.
+app.community.message-page-size=30
+
+# Largest page a history request may ask for. Whole number from 1 to 100.
+# History never returns every message in one response. This is not a secret.
+app.community.max-message-page-size=50
+
+# Community WebSocket
+# STOMP endpoint is /ws/community. The browser upgrade is anonymous because a browser
+# cannot set Authorization on the WebSocket handshake. The STOMP CONNECT frame must send
+# Authorization: Bearer <access token>. Do not put the token in the URL.
+# Heartbeat interval in milliseconds. The server sends a heartbeat this often and expects
+# the client to do the same. A silent socket is closed, and that session drops offline.
+# Whole number from 1000 to 120000. This is not a secret.
+app.community.ws.heartbeat-ms=10000
+
+# How often, in milliseconds, to forget a presence session the broker has already closed.
+# Whole number from 1000 to 300000. This is not a secret.
+app.community.ws.presence-sweep-ms=15000
+

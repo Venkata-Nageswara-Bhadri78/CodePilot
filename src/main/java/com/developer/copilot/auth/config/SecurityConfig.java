@@ -74,7 +74,7 @@ public class SecurityConfig {
             if (!isProductionProfile()) {
                 auth.requestMatchers(SWAGGER_PATHS).permitAll();
             }
-            auth.requestMatchers(
+            auth            .requestMatchers(
                 "/api/v1/auth/register",
                 "/api/v1/auth/login",
                 "/api/v1/auth/google",
@@ -83,7 +83,9 @@ public class SecurityConfig {
                 "/api/v1/auth/forgot-password",
                 "/api/v1/auth/reset-password",
                 "/api/v1/auth/refresh-token",
-                "/error"
+                "/error",
+                "/ws/community",
+                "/ws/community/**"
             ).permitAll()
             .requestMatchers(HttpMethod.GET, "/api/v1/auth/me").access(webFrontendOnly())
             .requestMatchers(
